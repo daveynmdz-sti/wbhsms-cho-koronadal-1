@@ -23,7 +23,7 @@ $canUploadResults = in_array($_SESSION['role_id'], [1, 9]); // admin, laboratory
 $canUpdateStatus = $canUploadResults;
 
 // Check if timing columns exist
-$timingColumnsSql = "SHOW COLUMNS FROM lab_order_items WHERE Field IN ('started_at', 'completed_at', 'turnaround_time', 'waiting_time')";
+$timingColumnsSql = "SHOW COLUMNS FROM lab_order_items WHERE Field IN ('started_at', 'completed_at')";
 $timingResult = $conn->query($timingColumnsSql);
 $hasTimingColumns = $timingResult->num_rows > 0;
 
@@ -67,9 +67,9 @@ $itemsSql = "SELECT loi.item_id as lab_order_item_id, loi.test_type, loi.status,
 
 // Add timing columns if they exist
 if ($hasTimingColumns) {
-    $itemsSql .= ", loi.started_at, loi.completed_at, loi.turnaround_time, loi.waiting_time";
+    $itemsSql .= ", loi.started_at, loi.completed_at";
 } else {
-    $itemsSql .= ", NULL as started_at, NULL as completed_at, NULL as turnaround_time, NULL as waiting_time";
+    $itemsSql .= ", NULL as started_at, NULL as completed_at";
 }
 
 $itemsSql .= " FROM lab_order_items loi
@@ -357,7 +357,6 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
                 <th>Status</th>
                 <th>Start Time</th>
                 <th>Completion Time</th>
-                <th>Turnaround Time</th>
                 <th>Upload Result</th>
                 <th>View Result</th>
             </tr>
@@ -378,16 +377,6 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
                 </td>
                 <td>
                     <?= $item['completed_at'] ? date('M d, Y g:i A', strtotime($item['completed_at'])) : 'Not completed' ?>
-                </td>
-                <td>
-                    <?php if ($item['turnaround_time']): ?>
-                        <span class="timing-badge"><?= $item['turnaround_time'] ?> min</span>
-                        <?php if ($item['waiting_time']): ?>
-                        <br><small style="color: #666;">Wait: <?= $item['waiting_time'] ?> min</small>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        N/A
-                    <?php endif; ?>
                 </td>
                 <td>
                     <?php if ($canUploadResults && $item['status'] !== 'completed'): ?>
