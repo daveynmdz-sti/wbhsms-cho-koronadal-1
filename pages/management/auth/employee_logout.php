@@ -9,6 +9,9 @@ if (!$debug) {
     ini_set('log_errors', '1');
 }
 
+// Start output buffering to prevent header issues
+ob_start();
+
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 
@@ -21,34 +24,29 @@ header('X-XSS-Protection: 1; mode=block');
 $expected_token = $_SESSION['csrf_token'] ?? '';
 $provided_token = $_POST['csrf_token'] ?? $_GET['token'] ?? '';
 
-// Dynamic base URL function - same as in sidebar_admin.php
+// Dynamic base URL function - fixed for production paths
 function getBaseUrl() {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     $requestUri = $_SERVER['REQUEST_URI'];
-    $uriParts = explode('/', trim($requestUri, '/'));
     
-    $baseFolder = '';
-    if (count($uriParts) > 0) {
-        if (strpos($requestUri, '/management/') !== false || 
-            strpos($requestUri, '/dashboard/') !== false ||
-            strpos($requestUri, '/pages/') !== false) {
-            $baseFolder = $uriParts[0];
-        }
+    // Find the root of the application by looking for the first occurrence of '/pages/'
+    $pagesPos = strpos($requestUri, '/pages/');
+    if ($pagesPos !== false) {
+        // Extract everything before '/pages/' as the base URL
+        $basePath = substr($requestUri, 0, $pagesPos);
+        return $protocol . $host . $basePath;
     }
     
-    $baseUrl = $protocol . $host;
-    if (!empty($baseFolder)) {
-        $baseUrl .= '/' . $baseFolder;
-    }
-    
-    return $baseUrl;
+    // Fallback: return protocol + host only
+    return $protocol . $host;
 }
 
 // Check if user is logged in
 if (empty($_SESSION['employee_id'])) {
     // Not logged in, redirect to login - using dynamic path
     $baseUrl = getBaseUrl();
+    ob_end_clean(); // Clean output buffer before redirect
     header('Location: ' . $baseUrl . '/pages/management/auth/employee_login.php');
     exit;
 }
@@ -69,12 +67,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || (!empty($provided_token) && hash_eq
     
     // Use dynamic path to ensure this works in both local and production
     $baseUrl = getBaseUrl();
+    ob_end_clean(); // Clean output buffer before redirect
     header('Location: ' . $baseUrl . '/pages/management/auth/employee_login.php?logged_out=1');
     exit;
 }
 
 // If we get here, it's a GET request without proper token
 // Show logout confirmation form
+
+// End output buffering and flush content
+ob_end_flush();
 ?>
 <!DOCTYPE html>
 <html lang="en">
