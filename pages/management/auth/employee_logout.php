@@ -9,8 +9,10 @@ if (!$debug) {
     ini_set('log_errors', '1');
 }
 
-// Start output buffering to prevent header issues
-ob_start();
+// Ensure output buffering is active (but don't create unnecessary nested buffers)
+if (ob_get_level() === 0) {
+    ob_start();
+}
 
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
@@ -46,7 +48,12 @@ function getBaseUrl() {
 if (empty($_SESSION['employee_id'])) {
     // Not logged in, redirect to login - using dynamic path
     $baseUrl = getBaseUrl();
-    ob_end_clean(); // Clean output buffer before redirect
+    
+    // Clean all output buffers before redirect
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
     header('Location: ' . $baseUrl . '/pages/management/auth/employee_login.php');
     exit;
 }
@@ -67,7 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || (!empty($provided_token) && hash_eq
     
     // Use dynamic path to ensure this works in both local and production
     $baseUrl = getBaseUrl();
-    ob_end_clean(); // Clean output buffer before redirect
+    
+    // Clean all output buffers before redirect
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
     header('Location: ' . $baseUrl . '/pages/management/auth/employee_login.php?logged_out=1');
     exit;
 }

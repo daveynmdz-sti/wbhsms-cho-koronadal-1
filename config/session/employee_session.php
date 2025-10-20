@@ -1,6 +1,6 @@
 <?php
-// Ensure clean startup - prevent any output before session handling
-if (!ob_get_level()) {
+// Ensure output buffering is active (but don't create unnecessary nested buffers)
+if (ob_get_level() === 0) {
     ob_start();
 }
 

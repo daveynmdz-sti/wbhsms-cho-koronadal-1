@@ -95,12 +95,56 @@ if (file_exists($sessionFile)) {
     echo "❌ Session file not found\n";
 }
 
+// Test auth files for proper buffer management
+echo "Testing: Auth File Buffer Management\n";
+echo "===================================\n";
+
+$authFiles = [
+    'pages/management/auth/employee_login.php' => 'Employee Login',
+    'pages/management/auth/employee_logout.php' => 'Employee Logout'
+];
+
+foreach ($authFiles as $file => $name) {
+    echo "Testing: {$name}\n";
+    echo "File: {$file}\n";
+    
+    $fullPath = $root_path . DIRECTORY_SEPARATOR . $file;
+    
+    if (!file_exists($fullPath)) {
+        echo "❌ File not found\n\n";
+        continue;
+    }
+    
+    $content = file_get_contents($fullPath);
+    
+    // Check for safe buffer cleanup
+    if (strpos($content, 'while (ob_get_level())') !== false) {
+        echo "✅ Safe buffer cleanup present\n";
+    } else if (strpos($content, 'ob_end_clean()') !== false) {
+        echo "⚠️  Unsafe buffer cleanup detected\n";
+    } else {
+        echo "ℹ️  No buffer cleanup found\n";
+    }
+    
+    // Check for proper output buffering
+    if (strpos($content, 'ob_get_level() === 0') !== false) {
+        echo "✅ Smart output buffering\n";
+    } else if (strpos($content, 'ob_start()') !== false) {
+        echo "⚠️  Basic output buffering\n";
+    } else {
+        echo "❌ No output buffering\n";
+    }
+    
+    echo "\n";
+}
+
 echo "\n";
 echo "Session test completed.\n";
 echo "\nRecommendations:\n";
 echo "- All files should have clean PHP openings without BOM\n";
-echo "- Output buffering should be started before any session includes\n";  
+echo "- Use smart output buffering: if (ob_get_level() === 0) ob_start()\n";  
 echo "- Session configuration should check for headers_sent()\n";
-echo "- Always use ob_start() at the very beginning of PHP files\n";
+echo "- Use safe buffer cleanup: while (ob_get_level()) ob_end_clean()\n";
+echo "- Never assume buffer levels when doing redirects\n";
 
 ?>
