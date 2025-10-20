@@ -2,6 +2,7 @@
 /**
  * Database Configuration for WBHSMS CHO Koronadal
  * Provides both PDO and MySQLi connections for compatibility
+ * Auto-detects local vs production environment
  */
 
 // Enable error reporting based on environment
@@ -13,26 +14,60 @@ error_reporting(E_ALL);
 // Load environment-based PDO connection
 require_once __DIR__ . '/env.php'; // This provides $pdo
 
-// MySQLi connection (for legacy use cases)
-$host = getenv('DB_HOST') ?: 'localhost';
-$db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
-$user = getenv('DB_USERNAME') ?: 'root';
-$pass = getenv('DB_PASSWORD') ?: '';
-$port = getenv('DB_PORT') ?: '3306';
+// Auto-detect environment and set default database settings
+$is_local = ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1' || strpos($_SERVER['SERVER_NAME'], 'localhost') !== false);
 
+if ($is_local) {
+    // Local XAMPP defaults
+    $host = getenv('DB_HOST') ?: 'localhost';
+    $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
+    $user = getenv('DB_USERNAME') ?: 'root';
+    $pass = getenv('DB_PASSWORD') ?: '';
+    $port = getenv('DB_PORT') ?: '3306';
+} else {
+    // Production environment - require all environment variables
+    $host = getenv('DB_HOST');
+    $db   = getenv('DB_DATABASE');
+    $user = getenv('DB_USERNAME');
+    $pass = getenv('DB_PASSWORD');
+    $port = getenv('DB_PORT') ?: '3306';
+    
+    if (!$host || !$db || !$user) {
+        die('Production environment requires DB_HOST, DB_DATABASE, and DB_USERNAME to be set.');
+    }
+}
+
+// MySQLi connection (for legacy use cases)
 try {
-    $conn = new mysqli($host, $user, $pass, $db, $port);
+    // For localhost, force 127.0.0.1 to avoid socket connection issues
+    $connection_host = ($host === 'localhost') ? '127.0.0.1' : $host;
+    
+    $conn = new mysqli($connection_host, $user, $pass, $db, $port);
 
     if ($conn->connect_error) {
         throw new Exception('MySQLi connection failed: ' . $conn->connect_error);
     }
 
     $conn->set_charset("utf8mb4");
-} catch (Exception $e) {
+    
     if ($debug) {
-        die('Database Error: ' . $e->getMessage());
-    } else {
-        die('Database connection failed. Please check your configuration.');
+        error_log("MySQLi Database connection successful to {$db} on {$connection_host}:{$port}");
     }
+    
+} catch (Exception $e) {
+    $error_msg = $e->getMessage();
+    
+    if ($debug) {
+        echo "Database Error: " . $error_msg . "<br>";
+        echo "Connection details: Host={$host}, Database={$db}, User={$user}, Port={$port}<br>";
+        echo "Environment: " . ($is_local ? 'Local' : 'Production') . "<br>";
+        
+        if ($is_local && $host !== 'localhost' && $host !== '127.0.0.1') {
+            echo "<strong>Tip:</strong> For local development, make sure your .env.local file has DB_HOST=localhost<br>";
+        }
+    } else {
+        echo 'Database connection failed. Please check your configuration.';
+    }
+    die();
 }
 ?>

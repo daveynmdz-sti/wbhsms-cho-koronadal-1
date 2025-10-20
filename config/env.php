@@ -16,27 +16,40 @@ function loadEnvFile($envPath) {
     }
 }
 
+// Auto-detect environment
+$is_local = ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1' || strpos($_SERVER['SERVER_NAME'], 'localhost') !== false);
+
 // Load .env files - .env.local overrides .env for local development
 if (!getenv('DB_HOST')) {
     $root_dir = dirname(__DIR__);
     
-    // Load production .env first
+    // Load production .env first (if exists)
     if (file_exists($root_dir . '/.env')) {
         loadEnvFile($root_dir . '/.env');
     }
     
-    // Then load .env.local to override for local development
+    // Then load .env.local to override for local development (if exists)
     if (file_exists($root_dir . '/.env.local')) {
         loadEnvFile($root_dir . '/.env.local');
     }
 }
 
-// Assign environment variables
-$host = getenv('DB_HOST') ?: 'localhost';
-$port = getenv('DB_PORT') ?: '3306';
-$db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
-$user = getenv('DB_USERNAME') ?: 'root';
-$pass = getenv('DB_PASSWORD') ?: '';
+// Set environment-specific defaults
+if ($is_local) {
+    // Local XAMPP defaults
+    $host = getenv('DB_HOST') ?: 'localhost';
+    $port = getenv('DB_PORT') ?: '3306';
+    $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
+    $user = getenv('DB_USERNAME') ?: 'root';
+    $pass = getenv('DB_PASSWORD') ?: '';
+} else {
+    // Production environment
+    $host = getenv('DB_HOST') ?: 'localhost';
+    $port = getenv('DB_PORT') ?: '3306';
+    $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
+    $user = getenv('DB_USERNAME') ?: 'root';
+    $pass = getenv('DB_PASSWORD') ?: '';
+}
 
 // Handle host:port format in DB_HOST (for compatibility)
 if (strpos($host, ':') !== false) {
@@ -47,13 +60,13 @@ if (strpos($host, ':') !== false) {
 // Attempt database connection
 try {
     // Force TCP/IP connection instead of socket by ensuring host format
-    $connection_host = $host;
-    if ($host === 'localhost') {
-        $connection_host = '127.0.0.1'; // Force TCP/IP for localhost
-    }
+    $connection_host = ($host === 'localhost') ? '127.0.0.1' : $host;
     
     $dsn = "mysql:host=$connection_host;port=$port;dbname=$db;charset=utf8mb4";
-    error_log("Attempting PDO connection with DSN: $dsn, user: $user");
+    
+    if (getenv('APP_DEBUG') === '1') {
+        error_log("Attempting PDO connection with DSN: $dsn, user: $user");
+    }
     
     $pdo = new PDO($dsn, $user, $pass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -68,11 +81,15 @@ try {
     $pdo->query("SELECT 1");
     
     // Log successful connection for debugging (without output)
-    error_log("PDO Database connection successful to {$db} on {$connection_host}:{$port}");
+    if (getenv('APP_DEBUG') === '1') {
+        error_log("PDO Database connection successful to {$db} on {$connection_host}:{$port}");
+    }
 } catch (PDOException $e) {
     // Log detailed error information
-    error_log("PDO Database connection failed - DSN: $dsn, User: $user, Error: " . $e->getMessage());
-    error_log("PDO Error Code: " . $e->getCode() . ", SQL State: " . ($e->errorInfo[0] ?? 'unknown'));
+    if (getenv('APP_DEBUG') === '1') {
+        error_log("PDO Database connection failed - DSN: $dsn, User: $user, Error: " . $e->getMessage());
+        error_log("PDO Error Code: " . $e->getCode() . ", SQL State: " . ($e->errorInfo[0] ?? 'unknown'));
+    }
     
     // Set $pdo to null so other parts of the application can handle gracefully
     $pdo = null;

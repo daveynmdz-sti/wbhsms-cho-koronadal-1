@@ -412,6 +412,16 @@ try {
             color: white;
         }
 
+        .btn-fix {
+            background-color: #ffc107;
+            color: #212529;
+            font-weight: bold;
+        }
+
+        .btn-fix:hover {
+            background-color: #e0a800;
+        }
+
         .action-btn:hover {
             opacity: 0.8;
             transform: translateY(-1px);
@@ -880,34 +890,63 @@ try {
 
         // Automatic Status Update Functions
         function checkAndUpdateLabOrderStatuses() {
-            console.log('Checking lab order statuses for automatic updates...');
+            console.log('=== Starting Lab Order Status Check ===');
             
             // Get all lab order rows with data attributes
             const labOrderRows = document.querySelectorAll('tbody tr[data-lab-order-id]');
+            console.log(`Found ${labOrderRows.length} lab order rows`);
             
-            labOrderRows.forEach(row => {
+            labOrderRows.forEach((row, index) => {
                 const labOrderId = row.getAttribute('data-lab-order-id');
                 const completed = parseInt(row.getAttribute('data-completed'));
                 const total = parseInt(row.getAttribute('data-total'));
                 const currentStatus = row.getAttribute('data-current-status');
                 
-                if (!labOrderId || isNaN(completed) || isNaN(total)) return;
+                console.log(`Row ${index + 1}:`, {
+                    labOrderId,
+                    completed,
+                    total,
+                    currentStatus,
+                    dataAttributes: {
+                        'data-lab-order-id': row.getAttribute('data-lab-order-id'),
+                        'data-completed': row.getAttribute('data-completed'),
+                        'data-total': row.getAttribute('data-total'),
+                        'data-current-status': row.getAttribute('data-current-status')
+                    }
+                });
+                
+                if (!labOrderId || isNaN(completed) || isNaN(total)) {
+                    console.log(`Skipping row ${index + 1} - missing or invalid data`);
+                    return;
+                }
                 
                 let shouldUpdateTo = null;
                 
-                // Check if status needs updating based on completion
-                if (completed === total && total > 0 && currentStatus === 'pending') {
+                // Core logic: Only update to completed when ALL items are completed
+                if (completed === total && total > 0 && currentStatus !== 'completed') {
                     shouldUpdateTo = 'completed';
-                } else if (completed > 0 && completed < total && currentStatus === 'pending') {
+                    console.log(`Row ${index + 1}: Should update to completed (${completed}/${total} completed, current: ${currentStatus})`);
+                }
+                // If some completed but not all, update to in_progress only from pending
+                else if (completed > 0 && completed < total && currentStatus === 'pending') {
                     shouldUpdateTo = 'in_progress';
+                    console.log(`Row ${index + 1}: Should update to in_progress (${completed}/${total} completed, current: ${currentStatus})`);
+                }
+                // If no items completed, should remain pending (no update needed)
+                else {
+                    console.log(`Row ${index + 1}: No update needed (${completed}/${total} completed, current: ${currentStatus})`);
                 }
                 
                 // Update status if needed
                 if (shouldUpdateTo) {
                     console.log(`Auto-updating lab order ${labOrderId} from ${currentStatus} to ${shouldUpdateTo}`);
                     updateLabOrderStatusAutomatically(labOrderId, shouldUpdateTo, row);
+                } else {
+                    console.log(`No update required for lab order ${labOrderId}`);
                 }
             });
+            
+            console.log('=== Lab Order Status Check Complete ===');
         }
 
         // Function to automatically update lab order status
@@ -961,6 +1000,69 @@ try {
         // Re-run status check after modal operations (uploads, etc.)
         function refreshStatusChecks() {
             setTimeout(checkAndUpdateLabOrderStatuses, 500);
+        }
+
+        // Manual fix function for specific lab orders
+        function fixLabOrderStatus(labOrderId, buttonElement) {
+            console.log(`Manual fix triggered for lab order ${labOrderId}`);
+            
+            // Disable button and show loading
+            buttonElement.disabled = true;
+            buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fixing...';
+            
+            // Get the row element
+            const rowElement = buttonElement.closest('tr');
+            
+            fetch('api/update_lab_order_status.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    lab_order_id: labOrderId,
+                    overall_status: 'completed',
+                    remarks: 'Manually fixed - all items completed',
+                    auto_update: true
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the status badge in the UI immediately
+                    const statusBadge = rowElement.querySelector('.status-badge');
+                    if (statusBadge) {
+                        statusBadge.className = 'status-badge status-completed';
+                        statusBadge.textContent = 'Completed';
+                    }
+                    
+                    // Update data attribute
+                    rowElement.setAttribute('data-current-status', 'completed');
+                    
+                    // Remove the fix button since it's no longer needed
+                    buttonElement.remove();
+                    
+                    // Show success notification
+                    showAlert(`Lab Order #${labOrderId} status fixed successfully!`, 'success');
+                    
+                    // Update statistics if needed
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                    
+                } else {
+                    // Re-enable button on error
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = '<i class="fas fa-wrench"></i> Fix';
+                    showAlert('Failed to fix lab order status: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                // Re-enable button on error
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = '<i class="fas fa-wrench"></i> Fix';
+                showAlert('Error fixing lab order status: ' + error.message, 'error');
+                console.error('Error fixing lab order status:', error);
+            });
         }
 
         // Modal functions
