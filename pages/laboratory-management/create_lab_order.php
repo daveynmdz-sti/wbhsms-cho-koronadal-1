@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $conn->begin_transaction();
 
-        // Create lab order (using existing schema)
+        // Create lab order (appointment_id can be NULL if no appointment selected)
         $insertOrderSql = "INSERT INTO lab_orders (patient_id, appointment_id, visit_id, ordered_by_employee_id, remarks, status) VALUES (?, ?, ?, ?, ?, 'pending')";
         $orderStmt = $conn->prepare($insertOrderSql);
         $orderStmt->bind_param("iiiis", $patient_id, $appointment_id, $visit_id, $_SESSION['employee_id'], $remarks);
