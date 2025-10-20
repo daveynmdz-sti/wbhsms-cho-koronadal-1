@@ -9,6 +9,9 @@ if (!$debug) {
     ini_set('log_errors', '1');
 }
 
+// Start output buffering to prevent header issues
+ob_start();
+
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 require_once __DIR__ . '/../../../config/db.php';
@@ -20,6 +23,7 @@ header('X-XSS-Protection: 1; mode=block');
 
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
+    ob_end_clean(); // Clean output buffer before redirect
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
@@ -31,6 +35,7 @@ if (empty($_SESSION['reset_otp_verified']) || empty($_SESSION['reset_user_id']))
         'type' => 'error',
         'msg' => 'Your password reset session has expired. Please start the password reset process again.'
     ];
+    ob_end_clean(); // Clean output buffer before redirect
     header('Location: employee_forgot_password.php');
     exit;
 }
@@ -51,6 +56,7 @@ if (time() - $reset_time > 1800) { // 30 minutes
         'type' => 'error',
         'msg' => 'Your password reset session has expired for security. Please start over.'
     ];
+    ob_end_clean(); // Clean output buffer before redirect
     header('Location: employee_forgot_password.php');
     exit;
 }
@@ -133,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'msg' => 'Password reset successful! You can now log in with your new password.'
         ];
         
+        ob_end_clean(); // Clean output buffer before redirect
         header('Location: employee_reset_password_success.php');
         exit;
 
@@ -148,6 +155,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? array('type' => 'error', 'msg' => $error) : (!empty($success) ? array('type' => 'success', 'msg' => $success) : null));
+
+// End output buffering and flush content
+ob_end_flush();
 ?>
 <!DOCTYPE html>
 <html lang="en">

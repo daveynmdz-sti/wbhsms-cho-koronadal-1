@@ -9,6 +9,9 @@ if (!$debug) {
     ini_set('log_errors', '1');
 }
 
+// Start output buffering to prevent header issues
+ob_start();
+
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 
@@ -19,6 +22,7 @@ header('X-XSS-Protection: 1; mode=block');
 
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
+    ob_end_clean(); // Clean output buffer before redirect
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
@@ -31,6 +35,9 @@ $flash = $sessionFlash;
 
 // Auto redirect after 10 seconds
 $autoRedirect = true;
+
+// End output buffering and flush content
+ob_end_flush();
 ?>
 <!DOCTYPE html>
 <html lang="en">
