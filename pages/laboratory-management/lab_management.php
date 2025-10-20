@@ -711,7 +711,7 @@ try {
                             $patientName = trim($order['first_name'] . ' ' . $order['middle_name'] . ' ' . $order['last_name']);
                             $progressPercent = $order['total_tests'] > 0 ? round(($order['completed_tests'] / $order['total_tests']) * 100) : 0;
                             ?>
-                            <tr>
+                            <tr data-lab-order-id="<?= $order['lab_order_id'] ?>" data-completed="<?= $order['completed_tests'] ?>" data-total="<?= $order['total_tests'] ?>" data-current-status="<?= $order['overall_status'] ?>">
                                 <td>
                                     <strong><?= htmlspecialchars($patientName) ?></strong><br>
                                     <small>ID: <?= htmlspecialchars($order['patient_id_display']) ?></small>
@@ -722,7 +722,7 @@ try {
                                     <div class="progress-bar">
                                         <div class="progress-fill" style="width: <?= $progressPercent ?>%"></div>
                                     </div>
-                                    <small><?= $order['completed_tests'] ?>/<?= $order['total_tests'] ?></small>
+                                    <small class="progress-text"><?= $order['completed_tests'] ?>/<?= $order['total_tests'] ?></small>
                                 </td>
                                 <td>
                                     <span class="status-badge status-<?= $order['overall_status'] ?>">
@@ -878,6 +878,91 @@ try {
             window.location.href = window.location.pathname;
         }
 
+        // Automatic Status Update Functions
+        function checkAndUpdateLabOrderStatuses() {
+            console.log('Checking lab order statuses for automatic updates...');
+            
+            // Get all lab order rows with data attributes
+            const labOrderRows = document.querySelectorAll('tbody tr[data-lab-order-id]');
+            
+            labOrderRows.forEach(row => {
+                const labOrderId = row.getAttribute('data-lab-order-id');
+                const completed = parseInt(row.getAttribute('data-completed'));
+                const total = parseInt(row.getAttribute('data-total'));
+                const currentStatus = row.getAttribute('data-current-status');
+                
+                if (!labOrderId || isNaN(completed) || isNaN(total)) return;
+                
+                let shouldUpdateTo = null;
+                
+                // Check if status needs updating based on completion
+                if (completed === total && total > 0 && currentStatus === 'pending') {
+                    shouldUpdateTo = 'completed';
+                } else if (completed > 0 && completed < total && currentStatus === 'pending') {
+                    shouldUpdateTo = 'in_progress';
+                }
+                
+                // Update status if needed
+                if (shouldUpdateTo) {
+                    console.log(`Auto-updating lab order ${labOrderId} from ${currentStatus} to ${shouldUpdateTo}`);
+                    updateLabOrderStatusAutomatically(labOrderId, shouldUpdateTo, row);
+                }
+            });
+        }
+
+        // Function to automatically update lab order status
+        function updateLabOrderStatusAutomatically(labOrderId, newStatus, rowElement) {
+            fetch('api/update_lab_order_status.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    lab_order_id: labOrderId,
+                    overall_status: newStatus,
+                    remarks: 'Auto-updated based on item completion status',
+                    auto_update: true
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the status badge in the UI immediately
+                    const statusBadge = rowElement.querySelector('.status-badge');
+                    if (statusBadge) {
+                        statusBadge.className = `status-badge status-${newStatus}`;
+                        statusBadge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1).replace('_', ' ');
+                    }
+                    
+                    // Update data attribute
+                    rowElement.setAttribute('data-current-status', newStatus);
+                    
+                    // Show success notification
+                    console.log(`Lab Order #${labOrderId} status automatically updated to ${newStatus}`);
+                    
+                    // Optionally show a subtle notification
+                    showAlert(`Lab Order #${labOrderId} status automatically updated to ${newStatus.replace('_', ' ')}`, 'success');
+                    
+                } else {
+                    console.error('Failed to update lab order status:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating lab order status:', error);
+            });
+        }
+
+        // Run automatic status check on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Run after a short delay to ensure page is fully loaded
+            setTimeout(checkAndUpdateLabOrderStatuses, 1000);
+        });
+
+        // Re-run status check after modal operations (uploads, etc.)
+        function refreshStatusChecks() {
+            setTimeout(checkAndUpdateLabOrderStatuses, 500);
+        }
+
         // Modal functions
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
@@ -971,6 +1056,8 @@ try {
             if (orderModal && orderModal.style.display === 'block') {
                 viewOrderDetails(labOrderId);
             }
+            // Run status check and refresh if needed
+            refreshStatusChecks();
             // Also refresh the main page
             window.location.reload();
         }
@@ -981,6 +1068,8 @@ try {
             closeModal('uploadResultModal');
             // Show success message
             showAlert('Lab result uploaded successfully!', 'success');
+            // Run status check before full reload
+            refreshStatusChecks();
             // Refresh page after delay
             setTimeout(() => {
                 window.location.reload();
