@@ -445,10 +445,10 @@ try {
         <div class="page-header">
             <h1><i class="fas fa-file-invoice-dollar" style="margin-right: 0.5rem;"></i>Billing System Overview</h1>
             <div class="action-buttons">
-                <a href="../../billing/billing_management.php" class="btn btn-primary">
+                <a href="../../cashier/billing_management.php" class="btn btn-primary">
                     <i class="fas fa-tachometer-alt"></i> Full Billing Dashboard
                 </a>
-                <a href="../../billing/billing_reports.php" class="btn btn-secondary">
+                <a href="../../cashier/billing_reports.php" class="btn btn-secondary">
                     <i class="fas fa-chart-bar"></i> Financial Reports
                 </a>
             </div>
@@ -526,7 +526,7 @@ try {
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-            <a href="../../billing/billing_management.php" class="action-card">
+            <a href="../../cashier/billing_management.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-tachometer-alt"></i>
                 </div>
@@ -537,7 +537,7 @@ try {
                 <i class="fas fa-arrow-right action-arrow"></i>
             </a>
 
-            <a href="../../billing/create_invoice.php" class="action-card">
+            <a href="../../cashier/create_invoice.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-plus-circle"></i>
                 </div>
@@ -548,7 +548,7 @@ try {
                 <i class="fas fa-arrow-right action-arrow"></i>
             </a>
 
-            <a href="../../billing/process_payment.php" class="action-card">
+            <a href="../../cashier/process_payment.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-credit-card"></i>
                 </div>
@@ -559,7 +559,7 @@ try {
                 <i class="fas fa-arrow-right action-arrow"></i>
             </a>
 
-            <a href="../../billing/invoice_search.php" class="action-card">
+            <a href="../../cashier/invoice_search.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-search"></i>
                 </div>
@@ -570,7 +570,7 @@ try {
                 <i class="fas fa-arrow-right action-arrow"></i>
             </a>
 
-            <a href="../../billing/billing_reports.php" class="action-card">
+            <a href="../../cashier/billing_reports.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-chart-bar"></i>
                 </div>
@@ -581,7 +581,7 @@ try {
                 <i class="fas fa-arrow-right action-arrow"></i>
             </a>
 
-            <a href="../../billing/print_receipt.php" class="action-card">
+            <a href="../../cashier/print_receipt.php" class="action-card">
                 <div class="action-icon">
                     <i class="fas fa-print"></i>
                 </div>

@@ -197,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
                 $remarks = $_POST['remarks'] ?? 'Invoice created - payment processed';
                 $result = $queueService->updateQueueStatus($queue_entry_id, 'done', 'in_progress', $employee_id, $remarks);
                 if ($result['success']) {
-                    echo json_encode(['success' => true, 'message' => 'Invoice created successfully', 'redirect' => '/pages/billing/billing.php?queue_id=' . $queue_entry_id]);
+                    echo json_encode(['success' => true, 'message' => 'Invoice created successfully', 'redirect' => '/pages/management/cashier/billing_management.php?queue_id=' . $queue_entry_id]);
                 } else {
                     echo json_encode(['success' => false, 'message' => $result['message'] ?? 'Failed to create invoice']);
                 }
@@ -1908,7 +1908,7 @@ $employee_info = [
             }
             
             // Redirect to billing page
-            window.location.href = '/pages/billing/billing.php?queue_id=' + currentPatient.queue_entry_id;
+            window.location.href = '/pages/management/cashier/billing_management.php?queue_id=' + currentPatient.queue_entry_id;
         }
         
         function rerouteToConsultation() {

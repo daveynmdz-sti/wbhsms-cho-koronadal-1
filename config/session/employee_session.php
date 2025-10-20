@@ -6,30 +6,38 @@
  * It ensures employee sessions are separate from patient sessions.
  */
 
+// Start output buffering to prevent header issues
+if (!ob_get_level()) {
+    ob_start();
+}
+
 // Check if a session is already active - we don't want to start another one
 if (session_status() === PHP_SESSION_NONE) {
-    // Configure session settings
-    ini_set('session.use_only_cookies', '1');
-    ini_set('session.use_strict_mode', '1');
-    ini_set('session.cookie_httponly', '1');
-    ini_set('session.cookie_samesite', 'Lax');
-    ini_set('session.cookie_secure', (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? '1' : '0');
-    
-    // Set unique session name for employees
-    session_name('EMPLOYEE_SESSID');
+    // Only configure session settings if headers haven't been sent
+    if (!headers_sent()) {
+        // Configure session settings
+        ini_set('session.use_only_cookies', '1');
+        ini_set('session.use_strict_mode', '1');
+        ini_set('session.cookie_httponly', '1');
+        ini_set('session.cookie_samesite', 'Lax');
+        ini_set('session.cookie_secure', (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? '1' : '0');
+        
+        // Set unique session name for employees
+        session_name('EMPLOYEE_SESSID');
     
     // Set cookie path for employees - use root path to ensure session works across all pages
     // The restrictive path was causing redirect loops
     $cookiePath = '/';
     
-    session_set_cookie_params([
-        'lifetime' => 0, // 0 = until browser is closed
-        'path' => $cookiePath, // Limit to management path with dynamic base
-        'domain' => '', // Current domain
-        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'),
-        'httponly' => true,
-        'samesite' => 'Lax'
-    ]);
+        session_set_cookie_params([
+            'lifetime' => 0, // 0 = until browser is closed
+            'path' => $cookiePath, // Limit to management path with dynamic base
+            'domain' => '', // Current domain
+            'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'),
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+    }
     
     // Start the session
     session_start();

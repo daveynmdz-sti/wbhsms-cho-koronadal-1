@@ -1,9 +1,13 @@
 <?php
 // Cashier Billing & Invoice Management
-session_start();
+
+// Start output buffering to prevent header issues
+if (!ob_get_level()) {
+    ob_start();
+}
 
 // Root path for includes
-$root_path = dirname(dirname(__DIR__));
+$root_path = dirname(dirname(dirname(__DIR__)));
 
 // Authentication and role check
 require_once $root_path . '/config/session/employee_session.php';
@@ -14,10 +18,15 @@ if (!is_employee_logged_in()) {
 }
 
 // Check if user has cashier or admin role
-$employee_role = get_employee_session('role_name');
+$employee_role = get_employee_session('role');
 if (!in_array($employee_role, ['cashier', 'admin'])) {
     $_SESSION['error_message'] = "Access denied. Only cashiers and administrators can access billing management.";
-    header("Location: " . $root_path . "/pages/management/dashboard.php");
+    // Redirect to appropriate dashboard based on role
+    if ($employee_role === 'admin') {
+        header("Location: " . $root_path . "/pages/management/admin/dashboard.php");
+    } else {
+        header("Location: " . $root_path . "/pages/management/" . $employee_role . "/dashboard.php");
+    }
     exit();
 }
 
@@ -58,19 +67,26 @@ if ($selected_patient_id) {
     }
 }
 
-// Get service types for dropdown
-$service_types = [
-    'consultation' => 'Consultation',
-    'laboratory' => 'Laboratory Test',
-    'pharmacy' => 'Medication/Prescription',
-    'dental' => 'Dental Service',
-    'prenatal' => 'Prenatal Care',
-    'immunization' => 'Immunization/Vaccination',
-    'emergency' => 'Emergency Care',
-    'family_planning' => 'Family Planning',
-    'nutrition' => 'Nutrition Counseling',
-    'other' => 'Other Services'
-];
+// Get available services from database
+$available_services = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT service_item_id, item_name, description, category, unit_price 
+        FROM service_items 
+        WHERE status = 'active' 
+        ORDER BY category, item_name
+    ");
+    $stmt->execute();
+    $available_services = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Error fetching services: " . $e->getMessage());
+    // Fallback to basic service types if database error
+    $available_services = [
+        ['service_item_id' => 'consultation', 'item_name' => 'Consultation', 'category' => 'General', 'unit_price' => 100],
+        ['service_item_id' => 'laboratory', 'item_name' => 'Laboratory Test', 'category' => 'Laboratory', 'unit_price' => 150],
+        ['service_item_id' => 'dental', 'item_name' => 'Dental Service', 'category' => 'Dental', 'unit_price' => 200]
+    ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -80,8 +96,8 @@ $service_types = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Billing & Invoice Management - CHO Koronadal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="../../assets/css/dashboard.css">
-    <link rel="stylesheet" href="../../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../../../assets/css/dashboard.css">
+    <link rel="stylesheet" href="../../../assets/css/sidebar.css">
     <style>
         /* Billing Management Specific Styles */
         .content-wrapper {
@@ -696,13 +712,105 @@ $service_types = [
                 padding: 0.5rem;
             }
         }
+
+        /* Payment Modal Styles */
+        .payment-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            border-left: 4px solid #007bff;
+        }
+
+        .info-row, .calculation-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-row:last-child, .calculation-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .amount-highlight {
+            font-weight: 600;
+            color: #007bff;
+        }
+
+        .payment-calculation {
+            background: #e8f4fd;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border: 1px solid #bee5eb;
+        }
+
+        .change-row {
+            border-top: 2px solid #007bff;
+            padding-top: 0.5rem;
+            margin-top: 0.5rem;
+            font-weight: 600;
+        }
+
+        .change-row span:last-child {
+            color: #28a745;
+            font-size: 1.1rem;
+        }
+
+        /* Service Item Styles */
+        .service-item {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 80px 120px 40px;
+            gap: 0.5rem;
+            align-items: center;
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            border: 1px solid #dee2e6;
+        }
+
+        .service-item:hover {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+
+        .service-select {
+            font-size: 0.9rem;
+        }
+
+        .remove-service {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .remove-service:hover {
+            background: #c82333;
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            .service-item {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+            }
+        }
     </style>
 </head>
 
 <body>
     <?php
     $activePage = 'billing_management';
-    include '../../includes/sidebar_cashier.php';
+    include '../../../includes/sidebar_cashier.php';
     ?>
 
     <section class="content-wrapper">
@@ -906,6 +1014,95 @@ $service_types = [
         </div>
     </div>
 
+    <!-- Payment Processing Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-credit-card"></i> Process Payment</h3>
+                <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="paymentForm">
+                    <input type="hidden" id="paymentInvoiceId" name="invoice_id">
+                    
+                    <div class="payment-info">
+                        <div class="info-row">
+                            <span>Patient:</span>
+                            <span id="paymentPatientName"></span>
+                        </div>
+                        <div class="info-row">
+                            <span>Invoice ID:</span>
+                            <span id="paymentInvoiceNumber"></span>
+                        </div>
+                        <div class="info-row">
+                            <span>Total Amount:</span>
+                            <span id="paymentTotalAmount" class="amount-highlight"></span>
+                        </div>
+                        <div class="info-row">
+                            <span>Outstanding:</span>
+                            <span id="paymentOutstanding" class="amount-highlight"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Payment Method *</label>
+                            <select class="form-input" id="paymentMethod" name="payment_method" required>
+                                <option value="">Select Payment Method</option>
+                                <option value="cash">Cash</option>
+                                <option value="check">Check</option>
+                                <option value="card">Debit/Credit Card</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Amount Received *</label>
+                        <input type="number" class="form-input" id="amountReceived" name="amount_received" 
+                               step="0.01" min="0" required placeholder="0.00" 
+                               onchange="calculateChange()">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Reference Number (Optional)</label>
+                        <input type="text" class="form-input" id="referenceNumber" name="reference_number" 
+                               placeholder="Check number, transaction ID, etc.">
+                    </div>
+
+                    <div class="payment-calculation">
+                        <div class="calculation-row">
+                            <span>Amount Received:</span>
+                            <span id="displayAmountReceived">₱0.00</span>
+                        </div>
+                        <div class="calculation-row">
+                            <span>Outstanding:</span>
+                            <span id="displayOutstanding">₱0.00</span>
+                        </div>
+                        <div class="calculation-row change-row">
+                            <span>Change:</span>
+                            <span id="displayChange">₱0.00</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Notes (Optional)</label>
+                        <textarea class="form-input form-textarea" id="paymentNotes" name="payment_notes" 
+                                  placeholder="Additional payment notes..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" onclick="closePaymentModal()">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-success" onclick="processPayment()">
+                    <i class="fas fa-credit-card"></i> Process Payment
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Global variables
         let serviceItemCounter = 0;
@@ -944,7 +1141,7 @@ $service_types = [
                 return;
             }
 
-            fetch('../../api/search_patients.php', {
+            fetch('../../../api/search_patients.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -990,7 +1187,7 @@ $service_types = [
 
         // Invoice management
         function loadPatientInvoices(patientId) {
-            fetch(`../../api/get_patient_invoices.php?patient_id=${patientId}`)
+            fetch(`../../../api/get_patient_invoices.php?patient_id=${patientId}`)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -1046,8 +1243,13 @@ $service_types = [
                                     <i class="fas fa-eye"></i> View
                                 </button>
                                 ${invoice.status === 'unpaid' ? `
-                                    <button class="btn btn-sm btn-success" onclick="markAsPaid(${invoice.id})">
-                                        <i class="fas fa-check"></i> Mark Paid
+                                    <button class="btn btn-sm btn-success" onclick="openPaymentModal(${invoice.id}, '${invoice.patient_name}', ${invoice.total_amount}, ${invoice.paid_amount || 0})">
+                                        <i class="fas fa-credit-card"></i> Pay
+                                    </button>
+                                ` : ''}
+                                ${invoice.status === 'paid' ? `
+                                    <button class="btn btn-sm btn-info" onclick="printReceipt(${invoice.id})">
+                                        <i class="fas fa-print"></i> Receipt
                                     </button>
                                 ` : ''}
                             </div>
@@ -1085,24 +1287,25 @@ $service_types = [
         function addServiceItem() {
             serviceItemCounter++;
             const container = document.getElementById('serviceItemsContainer');
-            const serviceTypes = <?php echo json_encode($service_types); ?>;
+            const availableServices = <?php echo json_encode($available_services); ?>;
             
             const serviceHtml = `
                 <div class="service-item" id="serviceItem${serviceItemCounter}">
-                    <select class="form-input" name="service_type[]" required>
-                        <option value="">Select Service Type</option>
-                        ${Object.entries(serviceTypes).map(([key, value]) => 
-                            `<option value="${key}">${value}</option>`
+                    <select class="form-input service-select" name="service_item_id[]" required onchange="updateServiceDetails(${serviceItemCounter}, this.value)">
+                        <option value="">Select Service</option>
+                        ${availableServices.map(service => 
+                            `<option value="${service.service_item_id}" data-price="${service.unit_price}" data-description="${service.description}">
+                                ${service.item_name} (${service.category}) - ₱${parseFloat(service.unit_price).toLocaleString('en-PH', {minimumFractionDigits: 2})}
+                            </option>`
                         ).join('')}
                     </select>
                     <input type="text" class="form-input" name="service_description[]" 
-                           placeholder="Service description" required>
+                           placeholder="Service description" readonly>
                     <input type="number" class="form-input" name="service_quantity[]" 
                            placeholder="Qty" value="1" min="1" step="1" required 
                            onchange="updateInvoiceTotal()">
                     <input type="number" class="form-input" name="service_amount[]" 
-                           placeholder="Amount" step="0.01" min="0" required 
-                           onchange="updateInvoiceTotal()">
+                           placeholder="Amount" step="0.01" min="0" required readonly>
                     <button type="button" class="remove-service" onclick="removeServiceItem(${serviceItemCounter})">
                         <i class="fas fa-times"></i>
                     </button>
@@ -1110,6 +1313,24 @@ $service_types = [
             `;
             
             container.insertAdjacentHTML('beforeend', serviceHtml);
+        }
+
+        function updateServiceDetails(itemId, serviceId) {
+            if (!serviceId) return;
+            
+            const availableServices = <?php echo json_encode($available_services); ?>;
+            const service = availableServices.find(s => s.service_item_id == serviceId);
+            
+            if (service) {
+                const serviceItem = document.getElementById(`serviceItem${itemId}`);
+                const descInput = serviceItem.querySelector('input[name="service_description[]"]');
+                const amountInput = serviceItem.querySelector('input[name="service_amount[]"]');
+                
+                descInput.value = service.description || service.item_name;
+                amountInput.value = service.unit_price;
+                
+                updateInvoiceTotal();
+            }
         }
 
         function removeServiceItem(itemId) {
@@ -1141,21 +1362,20 @@ $service_types = [
             const formData = new FormData(form);
             
             // Validate form
-            const serviceTypes = document.querySelectorAll('select[name="service_type[]"]');
+            const serviceSelects = document.querySelectorAll('select[name="service_item_id[]"]');
             const serviceDescriptions = document.querySelectorAll('input[name="service_description[]"]');
             const serviceQuantities = document.querySelectorAll('input[name="service_quantity[]"]');
             const serviceAmounts = document.querySelectorAll('input[name="service_amount[]"]');
 
-            if (serviceTypes.length === 0) {
-                alert('Please add at least one service item.');
+            if (serviceSelects.length === 0) {
+                showAlert('Please add at least one service item.', 'error');
                 return;
             }
 
             // Validate all service items
-            for (let i = 0; i < serviceTypes.length; i++) {
-                if (!serviceTypes[i].value || !serviceDescriptions[i].value || 
-                    !serviceQuantities[i].value || !serviceAmounts[i].value) {
-                    alert('Please fill in all service item fields.');
+            for (let i = 0; i < serviceSelects.length; i++) {
+                if (!serviceSelects[i].value || !serviceQuantities[i].value || !serviceAmounts[i].value) {
+                    showAlert('Please fill in all service item fields.', 'error');
                     return;
                 }
             }
@@ -1170,17 +1390,17 @@ $service_types = [
             };
 
             // Collect service items
-            for (let i = 0; i < serviceTypes.length; i++) {
+            for (let i = 0; i < serviceSelects.length; i++) {
                 invoiceData.services.push({
-                    service_type: serviceTypes[i].value,
+                    service_item_id: serviceSelects[i].value,
                     description: serviceDescriptions[i].value,
                     quantity: parseFloat(serviceQuantities[i].value),
-                    unit_amount: parseFloat(serviceAmounts[i].value)
+                    unit_price: parseFloat(serviceAmounts[i].value)
                 });
             }
 
             // Save invoice
-            fetch('../../api/create_invoice.php', {
+            fetch('../../../api/billing/management/create_invoice.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1190,17 +1410,147 @@ $service_types = [
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Invoice created successfully!');
+                    showAlert('Invoice created successfully! Invoice ID: ' + data.billing_id, 'success');
                     closeCreateInvoiceModal();
                     loadPatientInvoices(selectedPatientId);
                 } else {
-                    alert('Error creating invoice: ' + data.message);
+                    showAlert('Error creating invoice: ' + data.message, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error creating invoice. Please try again.');
+                showAlert('Error creating invoice. Please try again.', 'error');
             });
+        }
+
+        // Payment Processing Functions
+        function openPaymentModal(invoiceId, patientName, totalAmount, paidAmount) {
+            const outstanding = totalAmount - (paidAmount || 0);
+            
+            // Set payment modal data
+            document.getElementById('paymentInvoiceId').value = invoiceId;
+            document.getElementById('paymentPatientName').textContent = patientName;
+            document.getElementById('paymentInvoiceNumber').textContent = '#' + String(invoiceId).padStart(6, '0');
+            document.getElementById('paymentTotalAmount').textContent = '₱' + parseFloat(totalAmount).toLocaleString('en-PH', {minimumFractionDigits: 2});
+            document.getElementById('paymentOutstanding').textContent = '₱' + outstanding.toLocaleString('en-PH', {minimumFractionDigits: 2});
+            document.getElementById('displayOutstanding').textContent = '₱' + outstanding.toLocaleString('en-PH', {minimumFractionDigits: 2});
+            
+            // Reset form
+            document.getElementById('paymentForm').reset();
+            document.getElementById('displayAmountReceived').textContent = '₱0.00';
+            document.getElementById('displayChange').textContent = '₱0.00';
+            
+            // Store outstanding amount for calculations
+            window.currentOutstanding = outstanding;
+            
+            // Show modal
+            document.getElementById('paymentModal').style.display = 'block';
+        }
+
+        function closePaymentModal() {
+            document.getElementById('paymentModal').style.display = 'none';
+            document.getElementById('paymentForm').reset();
+        }
+
+        function calculateChange() {
+            const amountReceived = parseFloat(document.getElementById('amountReceived').value) || 0;
+            const outstanding = window.currentOutstanding || 0;
+            const change = Math.max(0, amountReceived - outstanding);
+            
+            document.getElementById('displayAmountReceived').textContent = '₱' + amountReceived.toLocaleString('en-PH', {minimumFractionDigits: 2});
+            document.getElementById('displayChange').textContent = '₱' + change.toLocaleString('en-PH', {minimumFractionDigits: 2});
+        }
+
+        function processPayment() {
+            const form = document.getElementById('paymentForm');
+            const formData = new FormData(form);
+            
+            // Validate required fields
+            const invoiceId = document.getElementById('paymentInvoiceId').value;
+            const paymentMethod = document.getElementById('paymentMethod').value;
+            const amountReceived = parseFloat(document.getElementById('amountReceived').value);
+            
+            if (!paymentMethod) {
+                showAlert('Please select a payment method.', 'error');
+                return;
+            }
+            
+            if (!amountReceived || amountReceived <= 0) {
+                showAlert('Please enter a valid payment amount.', 'error');
+                return;
+            }
+            
+            if (amountReceived < window.currentOutstanding) {
+                if (!confirm('Amount received is less than outstanding balance. This will create a partial payment. Continue?')) {
+                    return;
+                }
+            }
+
+            // Prepare payment data
+            const paymentData = {
+                invoice_id: invoiceId,
+                amount_paid: amountReceived,
+                payment_method: paymentMethod,
+                reference_number: document.getElementById('referenceNumber').value,
+                payment_notes: document.getElementById('paymentNotes').value,
+                cashier_id: <?php echo $employee_id; ?>,
+                cashier_name: '<?php echo addslashes($employee_name); ?>'
+            };
+
+            // Process payment
+            fetch('../../../api/billing/management/process_payment.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(paymentData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('Payment processed successfully! Receipt ID: ' + data.receipt_id, 'success');
+                    closePaymentModal();
+                    loadPatientInvoices(selectedPatientId);
+                    
+                    // Ask if user wants to print receipt
+                    if (confirm('Payment processed successfully! Would you like to print the receipt?')) {
+                        printReceipt(data.receipt_id);
+                    }
+                } else {
+                    showAlert('Error processing payment: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error processing payment. Please try again.', 'error');
+            });
+        }
+
+        function printReceipt(receiptId) {
+            // Open print receipt in new window
+            window.open(`print_receipt.php?receipt_id=${receiptId}`, '_blank', 'width=800,height=600');
+        }
+
+        function showAlert(message, type = 'info') {
+            // Create alert element
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                ${message}
+                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+            `;
+            
+            // Insert at top of content
+            const content = document.querySelector('.content-wrapper');
+            content.insertBefore(alert, content.firstChild);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.remove();
+                }
+            }, 5000);
         }
 
         // Utility functions
@@ -1224,7 +1574,7 @@ $service_types = [
 
         function markAsPaid(invoiceId) {
             if (confirm('Mark this invoice as paid?')) {
-                fetch('../../api/update_invoice_status.php', {
+                fetch('../../../api/update_invoice_status.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1252,9 +1602,13 @@ $service_types = [
 
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('createInvoiceModal');
-            if (event.target === modal) {
+            const createInvoiceModal = document.getElementById('createInvoiceModal');
+            const paymentModal = document.getElementById('paymentModal');
+            
+            if (event.target === createInvoiceModal) {
                 closeCreateInvoiceModal();
+            } else if (event.target === paymentModal) {
+                closePaymentModal();
             }
         }
 

@@ -950,7 +950,7 @@ try {
                     <p class="action-description">View analytics and generate comprehensive reports</p>
                 </a>
                 
-                <a href="../billing/billing_management.php" class="action-card">
+                <a href="../cashier/billing_management.php" class="action-card">
                     <i class="fas fa-file-invoice-dollar action-icon"></i>
                     <h3 class="action-title">Billing Management</h3>
                     <p class="action-description">Process payments and manage billing operations</p>
