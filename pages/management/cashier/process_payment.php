@@ -1,10 +1,8 @@
-﻿<?php
+<?php
 // Payment Processing - Real-time Payment with Change Calculation
 
-// Start output buffering to prevent header issues
-if (!ob_get_level()) {
-    ob_start();
-}
+// Ensure clean startup - no output before session handling
+ob_start();
 
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/employee_session.php';

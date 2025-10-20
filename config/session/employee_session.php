@@ -1,5 +1,8 @@
 <?php
-ob_start(); // Start output buffering to prevent header issues
+// Ensure clean startup - prevent any output before session handling
+if (!ob_get_level()) {
+    ob_start();
+}
 
 /**
  * Get application base URL for consistent redirects
@@ -19,25 +22,27 @@ if (!function_exists('getAppBase')) {
     }
 }
 
-// Employee session configuration
-session_name('EMPLOYEE_SESSID');
-
-// Configure session settings
-ini_set('session.cookie_httponly', 1);
-ini_set('session.use_strict_mode', 1);
-ini_set('session.cookie_samesite', 'Lax');
-
-// Set session cookie parameters
-$cookieParams = [
-    'lifetime' => 0,
-    'path' => '/',
-    'domain' => '',
-    'secure' => false, // Set to true in production with HTTPS
-    'httponly' => true,
-    'samesite' => 'Lax'
-];
-
-session_set_cookie_params($cookieParams);
+// Employee session configuration - only if headers not sent
+if (!headers_sent()) {
+    session_name('EMPLOYEE_SESSID');
+    
+    // Configure session settings
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_strict_mode', 1);
+    ini_set('session.cookie_samesite', 'Lax');
+    
+    // Set session cookie parameters
+    $cookieParams = [
+        'lifetime' => 0,
+        'path' => '/',
+        'domain' => '',
+        'secure' => false, // Set to true in production with HTTPS
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ];
+    
+    session_set_cookie_params($cookieParams);
+}
 
 // Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
