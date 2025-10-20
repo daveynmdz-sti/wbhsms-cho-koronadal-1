@@ -62,7 +62,7 @@ if (isset($_GET['action'])) {
                         p.date_of_birth,
                         p.sex,
                         p.contact_number,
-                        p.address,
+                        p.barangay,
                         a.scheduled_date,
                         a.scheduled_time,
                         COALESCE(s.service_name, 'General Consultation') as service_name,
@@ -334,7 +334,7 @@ try {
         SELECT DISTINCT
             v.visit_id, v.patient_id, v.appointment_id, v.visit_date, v.visit_status,
             p.first_name, p.last_name, p.middle_name, p.username as patient_code,
-            p.date_of_birth, p.sex, p.contact_number, p.address,
+            p.date_of_birth, p.sex, p.contact_number, p.barangay,
             a.scheduled_date, a.scheduled_time,
             COALESCE(s.service_name, 'General Consultation') as service_name,
             c.consultation_id, c.consultation_status,
