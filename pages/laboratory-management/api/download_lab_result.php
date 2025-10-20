@@ -4,50 +4,87 @@ $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Server-side role enforcement
-if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role'], ['admin', 'laboratory_tech', 'doctor', 'nurse', 'patient'])) {
+// Check if user is logged in and has appropriate role
+$authorizedRoleIds = [1, 2, 3, 9]; // admin, doctor, nurse, laboratory_tech
+if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role_id'], $authorizedRoleIds)) {
     http_response_code(403);
     exit('Not authorized');
 }
 
-$filename = $_GET['file'] ?? null;
+$item_id = $_GET['item_id'] ?? null;
 
-if (!$filename) {
+if (!$item_id) {
     http_response_code(400);
-    exit('Filename is required');
+    exit('Lab order item ID is required');
 }
 
-// Validate filename to prevent directory traversal attacks
-if (strpos($filename, '..') !== false || strpos($filename, '/') !== false || strpos($filename, '\\') !== false) {
-    http_response_code(400);
-    exit('Invalid filename');
-}
-
-// Ensure filename has .pdf extension
-if (pathinfo($filename, PATHINFO_EXTENSION) !== 'pdf') {
-    http_response_code(400);
-    exit('Only PDF files are allowed');
-}
-
-$uploadsDir = $root_path . '/uploads/lab_results';
-$filePath = $uploadsDir . '/' . $filename;
-
-// Check if file exists
-if (!file_exists($filePath)) {
-    http_response_code(404);
-    exit('File not found');
-}
-
-// Additional authorization check - verify user has access to this file
-if ($_SESSION['role'] === 'patient') {
-    // Patients can only download their own results
-    $patient_id = $_SESSION['patient_id'] ?? null;
-    if (!$patient_id) {
-        http_response_code(403);
-        exit('Patient ID not found in session');
+try {
+    // Fetch the file data from database with patient info for better filename
+    $sql = "SELECT loi.result_file, loi.test_type, loi.result_date,
+                   p.first_name, p.last_name, p.username as patient_id_display
+            FROM lab_order_items loi
+            LEFT JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id  
+            LEFT JOIN patients p ON lo.patient_id = p.patient_id
+            WHERE loi.item_id = ? AND loi.result_file IS NOT NULL";
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $item_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_assoc();
+    
+    if (!$data || !$data['result_file']) {
+        http_response_code(404);
+        exit('File not found');
     }
     
-    // Check if this file belongs to the patient
+    // Determine content type based on file content
+    $fileData = $data['result_file'];
+    $contentType = 'application/octet-stream'; // default
+    $extension = 'bin'; // default
+    
+    // Check file signature to determine type
+    if (substr($fileData, 0, 4) === '%PDF') {
+        $contentType = 'application/pdf';
+        $extension = 'pdf';
+    } elseif (substr($fileData, 0, 2) === 'PK') {
+        // Excel files start with PK (ZIP signature)
+        $contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        $extension = 'xlsx';
+    } elseif (strpos($fileData, ',') !== false || ctype_print(substr($fileData, 0, 100))) {
+        // CSV files are typically printable text with commas
+        $contentType = 'text/csv';
+        $extension = 'csv';
+    }
+    
+    // Generate meaningful filename with patient info
+    $patientName = '';
+    if ($data['first_name'] && $data['last_name']) {
+        $patientName = trim($data['first_name'] . '_' . $data['last_name']);
+        $patientName = preg_replace('/[^a-zA-Z0-9_-]/', '', $patientName);
+        $patientName = '_' . $patientName;
+    }
+    $sanitizedTestType = preg_replace('/[^a-zA-Z0-9_-]/', '_', $data['test_type']);
+    $date = $data['result_date'] ? date('Y-m-d', strtotime($data['result_date'])) : date('Y-m-d');
+    $filename = "Lab_Result{$patientName}_{$sanitizedTestType}_{$date}_Item{$item_id}.{$extension}";
+    
+    // Set headers for file download
+    header('Content-Type: ' . $contentType);
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . strlen($fileData));
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    
+    // Output the file data
+    echo $fileData;
+    
+} catch (Exception $e) {
+    error_log("File download error: " . $e->getMessage());
+    http_response_code(500);
+    exit('Error downloading file');
+}
+?>
     $authSql = "SELECT COUNT(*) as count 
                 FROM lab_order_items loi
                 LEFT JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id

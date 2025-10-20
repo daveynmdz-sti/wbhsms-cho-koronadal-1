@@ -1013,7 +1013,7 @@ try {
         ]);
         ?>
 
-        <div class="profile-wrapper" style="margin: 0 200px;">
+        <div class="profile-wrapper">
             <!-- Reminders Box -->
             <div class="reminders-box">
                 <strong>Reminders:</strong>

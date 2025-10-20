@@ -4,8 +4,9 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Server-side role enforcement
-if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role'], ['admin', 'doctor', 'nurse'])) {
+// Server-side role enforcement - allow roles 1,2,3,9 (admin, doctor, nurse, laboratory_tech)
+$authorizedRoleIds = [1, 2, 3, 9];
+if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role_id'], $authorizedRoleIds)) {
     http_response_code(403);
     exit('Not authorized');
 }
@@ -29,9 +30,12 @@ if (isset($_GET['action'])) {
             $searchParam = "%{$search}%";
             
             $sql = "SELECT p.patient_id, p.first_name, p.last_name, p.middle_name, p.username, 
-                           p.date_of_birth, p.sex, p.contact_number
+                           p.date_of_birth, p.sex, p.contact_number, b.barangay_name
                     FROM patients p 
-                    WHERE (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? OR p.contact_number LIKE ?)
+                    LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+                    WHERE (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? 
+                           OR p.contact_number LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
+                           OR b.barangay_name LIKE ?)
                     ORDER BY p.last_name, p.first_name 
                     LIMIT 20";
             
@@ -40,7 +44,7 @@ if (isset($_GET['action'])) {
                 throw new Exception('Failed to prepare SQL statement: ' . $conn->error);
             }
             
-            $stmt->bind_param("ssss", $searchParam, $searchParam, $searchParam, $searchParam);
+            $stmt->bind_param("ssssss", $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
             
             if (!$stmt->execute()) {
                 throw new Exception('Failed to execute query: ' . $stmt->error);
@@ -68,6 +72,84 @@ if (isset($_GET['action'])) {
                     'file' => __FILE__,
                     'line' => __LINE__,
                     'search_term' => $search ?? 'undefined'
+                ]
+            ]);
+            exit();
+        }
+    }
+    
+    if ($_GET['action'] === 'search_patients_direct') {
+        try {
+            // Validate database connection
+            if (!$conn || $conn->connect_error) {
+                throw new Exception('Database connection failed: ' . ($conn ? $conn->connect_error : 'No connection object'));
+            }
+            
+            $search = $_GET['search'] ?? '';
+            $barangay_filter = $_GET['barangay'] ?? '';
+            
+            $sql = "SELECT p.patient_id, p.first_name, p.last_name, p.middle_name, p.username, 
+                           p.date_of_birth, p.sex, p.contact_number, b.barangay_name
+                    FROM patients p 
+                    LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+                    WHERE 1=1";
+            
+            $params = [];
+            $types = "";
+            
+            if (!empty($search)) {
+                $sql .= " AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? 
+                           OR p.contact_number LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?)";
+                $searchParam = "%{$search}%";
+                array_push($params, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
+                $types .= "sssss";
+            }
+            
+            if (!empty($barangay_filter)) {
+                $sql .= " AND b.barangay_name LIKE ?";
+                $barangayParam = "%{$barangay_filter}%";
+                array_push($params, $barangayParam);
+                $types .= "s";
+            }
+            
+            $sql .= " ORDER BY p.last_name, p.first_name LIMIT 50";
+            
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                throw new Exception('Failed to prepare SQL statement: ' . $conn->error);
+            }
+            
+            if (!empty($types)) {
+                $stmt->bind_param($types, ...$params);
+            }
+            
+            if (!$stmt->execute()) {
+                throw new Exception('Failed to execute query: ' . $stmt->error);
+            }
+            
+            $result = $stmt->get_result();
+            if (!$result) {
+                throw new Exception('Failed to get result: ' . $stmt->error);
+            }
+            
+            $patients = [];
+            while ($row = $result->fetch_assoc()) {
+                $patients[] = $row;
+            }
+            
+            echo json_encode($patients);
+            exit();
+            
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode([
+                'error' => true,
+                'message' => 'Search failed: ' . $e->getMessage(),
+                'debug' => [
+                    'file' => __FILE__,
+                    'line' => __LINE__,
+                    'search_term' => $search ?? 'undefined',
+                    'barangay_filter' => $barangay_filter ?? 'undefined'
                 ]
             ]);
             exit();
@@ -137,6 +219,13 @@ if (isset($_GET['action'])) {
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Debug: Log form submission data
+    error_log("=== LAB ORDER FORM SUBMISSION ===");
+    error_log("Request Method: " . $_SERVER['REQUEST_METHOD']);
+    error_log("POST Data: " . print_r($_POST, true));
+    error_log("Session Employee ID: " . ($_SESSION['employee_id'] ?? 'NOT SET'));
+    error_log("================================");
+    
     $patient_id = $_POST['patient_id'] ?? null;
     $selected_tests = $_POST['selected_tests'] ?? [];
     $others_test = $_POST['others_test'] ?? '';
@@ -144,7 +233,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $appointment_id = $_POST['appointment_id'] ?? null;
     $visit_id = $_POST['visit_id'] ?? null;
 
-    if (!$patient_id || empty($selected_tests)) {
+    // Convert empty strings to NULL for database insertion
+    $appointment_id = (!empty($appointment_id) && $appointment_id !== '') ? intval($appointment_id) : null;
+    $visit_id = (!empty($visit_id) && $visit_id !== '') ? intval($visit_id) : null;
+
+    // Debug: Log extracted values
+    error_log("Extracted Values:");
+    error_log("Patient ID: " . ($patient_id ?? 'NULL'));
+    error_log("Selected Tests: " . print_r($selected_tests, true));
+    error_log("Others Test: " . ($others_test ?? 'EMPTY'));
+    error_log("Remarks: " . ($remarks ?? 'EMPTY'));
+    error_log("Appointment ID: " . ($appointment_id === null ? 'NULL' : $appointment_id));
+    error_log("Visit ID: " . ($visit_id === null ? 'NULL' : $visit_id));
+
+    if (!$patient_id || (empty($selected_tests) && empty($others_test))) {
+        error_log("VALIDATION FAILED: Patient ID=" . ($patient_id ?? 'NULL') . ", Tests count=" . count($selected_tests) . ", Others test=" . ($others_test ?? 'EMPTY'));
         $_SESSION['lab_message'] = 'Please select a patient and at least one lab test.';
         $_SESSION['lab_message_type'] = 'error';
         header('Location: lab_management.php');
@@ -152,30 +255,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
+        error_log("Starting database transaction...");
         $conn->begin_transaction();
 
-        // Create lab order (appointment_id can be NULL if no appointment selected)
+        // Create lab order (appointment_id and visit_id can be NULL if no appointment selected)
         $insertOrderSql = "INSERT INTO lab_orders (patient_id, appointment_id, visit_id, ordered_by_employee_id, remarks, status) VALUES (?, ?, ?, ?, ?, 'pending')";
+        error_log("Preparing lab order SQL: " . $insertOrderSql);
         $orderStmt = $conn->prepare($insertOrderSql);
+        
+        if (!$orderStmt) {
+            throw new Exception("Failed to prepare lab order statement: " . $conn->error);
+        }
+        
+        error_log("Binding parameters: patient_id=$patient_id, appointment_id=" . ($appointment_id === null ? 'NULL' : $appointment_id) . ", visit_id=" . ($visit_id === null ? 'NULL' : $visit_id) . ", employee_id=" . $_SESSION['employee_id'] . ", remarks=$remarks");
+        
         $orderStmt->bind_param("iiiis", $patient_id, $appointment_id, $visit_id, $_SESSION['employee_id'], $remarks);
-        $orderStmt->execute();
+        
+        if (!$orderStmt->execute()) {
+            throw new Exception("Failed to execute lab order statement: " . $orderStmt->error);
+        }
+        
         $lab_order_id = $conn->insert_id;
+        error_log("Lab order created with ID: " . $lab_order_id);
 
         // Create lab order items for each selected test (using existing schema)
         $insertItemSql = "INSERT INTO lab_order_items (lab_order_id, test_type, status) VALUES (?, ?, 'pending')";
+        error_log("Preparing lab order items SQL: " . $insertItemSql);
         $itemStmt = $conn->prepare($insertItemSql);
+        
+        if (!$itemStmt) {
+            throw new Exception("Failed to prepare lab order items statement: " . $conn->error);
+        }
 
         // Add "Others" test if specified
         if (!empty($others_test)) {
             $selected_tests[] = "Others: " . $others_test;
+            error_log("Added Others test: " . $others_test);
         }
 
+        error_log("Inserting " . count($selected_tests) . " test items...");
         foreach ($selected_tests as $test_type) {
+            error_log("Inserting test: " . $test_type);
             $itemStmt->bind_param("is", $lab_order_id, $test_type);
-            $itemStmt->execute();
+            if (!$itemStmt->execute()) {
+                throw new Exception("Failed to execute lab order item statement for test '$test_type': " . $itemStmt->error);
+            }
         }
 
         $conn->commit();
+        error_log("Transaction committed successfully!");
         
         $_SESSION['lab_message'] = 'Lab order created successfully.';
         $_SESSION['lab_message_type'] = 'success';
@@ -191,6 +319,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
 
     } catch (Exception $e) {
+        error_log("EXCEPTION in lab order creation: " . $e->getMessage());
+        error_log("Exception trace: " . $e->getTraceAsString());
         $conn->rollback();
         $_SESSION['lab_message'] = 'Error creating lab order: ' . $e->getMessage();
         $_SESSION['lab_message_type'] = 'error';
@@ -204,6 +334,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: lab_management.php');
         exit();
     }
+}
+
+// Fetch available barangays for the search filter
+$barangays = [];
+try {
+    $barangayQuery = "SELECT barangay_id, barangay_name FROM barangay WHERE status = 'active' ORDER BY barangay_name";
+    $barangayResult = $conn->query($barangayQuery);
+    if ($barangayResult) {
+        while ($row = $barangayResult->fetch_assoc()) {
+            $barangays[] = $row;
+        }
+    }
+} catch (Exception $e) {
+    // Log error but don't stop the page from loading
+    error_log("Error fetching barangays: " . $e->getMessage());
 }
 
 // Available lab tests based on requirements
@@ -229,539 +374,507 @@ $available_tests = [
     'Lipid Profile',
     'Serum Na K'
 ];
+
+// Include reusable topbar component
+require_once $root_path . '/includes/topbar.php';
 ?>
 
-<style>
-    .create-order-form {
-        max-width: 700px;
-        margin: 0 auto;
-        background: white;
-        padding: 25px;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
+<!DOCTYPE html>
+<html lang="en">
 
-    .form-section {
-        margin-bottom: 25px;
-        padding: 15px;
-        border: 1px solid #e9ecef;
-        border-radius: 8px;
-        background-color: #f8f9fa;
-    }
-
-    .section-title {
-        font-size: 1.1em;
-        font-weight: bold;
-        color: #03045e;
-        margin-bottom: 15px;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #03045e;
-    }
-
-    .search-container {
-        position: relative;
-        margin-bottom: 15px;
-    }
-
-    .search-input {
-        width: 100%;
-        padding: 12px;
-        border: 2px solid #ddd;
-        border-radius: 6px;
-        font-size: 0.9em;
-        transition: border-color 0.3s;
-    }
-
-    .search-input:focus {
-        border-color: #03045e;
-        outline: none;
-    }
-
-    .search-results {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: white;
-        border: 1px solid #ddd;
-        border-top: none;
-        border-radius: 0 0 6px 6px;
-        max-height: 200px;
-        overflow-y: auto;
-        z-index: 1000;
-        display: none;
-    }
-
-    .search-result-item {
-        padding: 10px;
-        cursor: pointer;
-        border-bottom: 1px solid #eee;
-        transition: background-color 0.3s;
-    }
-
-    .search-result-item:hover {
-        background-color: #f8f9fa;
-    }
-
-    .search-result-item:last-child {
-        border-bottom: none;
-    }
-
-    .selected-info {
-        padding: 10px;
-        background-color: #e8f5e8;
-        border: 1px solid #4CAF50;
-        border-radius: 5px;
-        margin-top: 10px;
-        display: none;
-    }
-
-    .tests-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 10px;
-        margin-top: 15px;
-    }
-
-    .test-checkbox {
-        display: flex;
-        align-items: center;
-        padding: 8px 12px;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-
-    .test-checkbox:hover {
-        background-color: #f0f8ff;
-        border-color: #007bff;
-    }
-
-    .test-checkbox input[type="checkbox"] {
-        margin-right: 8px;
-        transform: scale(1.2);
-    }
-
-    .test-checkbox input[type="checkbox"]:checked + label {
-        color: #007bff;
-        font-weight: bold;
-    }
-
-    .others-input {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        margin-top: 5px;
-        display: none;
-    }
-
-    .form-group {
-        margin-bottom: 15px;
-    }
-
-    .form-label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: bold;
-        color: #333;
-    }
-
-    .form-input, .form-textarea {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        font-size: 0.9em;
-    }
-
-    .form-textarea {
-        height: 80px;
-        resize: vertical;
-    }
-
-    .btn-container {
-        display: flex;
-        gap: 10px;
-        justify-content: flex-end;
-        margin-top: 25px;
-        padding-top: 15px;
-        border-top: 1px solid #eee;
-    }
-
-    .btn {
-        padding: 12px 20px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 0.9em;
-        transition: all 0.3s;
-    }
-
-    .btn-primary {
-        background-color: #03045e;
-        color: white;
-    }
-
-    .btn-primary:hover {
-        background-color: #0218A7;
-    }
-
-    .btn-secondary {
-        background-color: #6c757d;
-        color: white;
-    }
-
-    .btn-secondary:hover {
-        background-color: #545b62;
-    }
-
-    .loading {
-        text-align: center;
-        padding: 20px;
-        color: #666;
-    }
-
-    .alert {
-        padding: 10px 15px;
-        margin-bottom: 15px;
-        border-radius: 5px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .alert-success {
-        background-color: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-    }
-
-    .alert-error {
-        background-color: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-    }
-
-    /* New Search Interface Styles */
-    .input-group {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        margin-bottom: 15px;
-    }
-
-    .input-group label {
-        min-width: 120px;
-        font-weight: bold;
-        color: #333;
-    }
-
-    .input-group input {
-        flex: 1;
-        padding: 8px 12px;
-        border: 2px solid #ddd;
-        border-radius: 5px;
-        font-size: 0.9em;
-    }
-
-    .input-group input:focus {
-        border-color: #03045e;
-        outline: none;
-    }
-
-    .search-button-container {
-        display: flex;
-        gap: 10px;
-        margin: 15px 0;
-        justify-content: flex-end;
-    }
-
-    .search-button-container button {
-        padding: 8px 20px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 0.9em;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
-
-    .btn-search {
-        background-color: #03045e;
-        color: white;
-    }
-
-    .btn-search:hover {
-        background-color: #02024a;
-    }
-
-    .btn-clear {
-        background-color: #6c757d;
-        color: white;
-    }
-
-    .btn-clear:hover {
-        background-color: #545b62;
-    }
-
-    .results-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 15px;
-        background: white;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .results-table th,
-    .results-table td {
-        padding: 12px;
-        text-align: left;
-        border-bottom: 1px solid #e9ecef;
-    }
-
-    .results-table th {
-        background-color: #03045e;
-        color: white;
-        font-weight: bold;
-        font-size: 0.9em;
-    }
-
-    .results-table tr:hover {
-        background-color: #f8f9fa;
-    }
-
-    .results-table td {
-        font-size: 0.9em;
-    }
-
-    .results-table input[type="radio"] {
-        transform: scale(1.2);
-        margin: 0;
-    }
-
-    .search-message-info {
-        background-color: #d1ecf1;
-        border: 1px solid #bee5eb;
-        color: #0c5460;
-    }
-
-    .search-message-warning {
-        background-color: #fff3cd;
-        border: 1px solid #ffeaa7;
-        color: #856404;
-    }
-
-    .search-message-error {
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        color: #721c24;
-    }
-
-    .tests-disabled-message {
-        text-align: center;
-        padding: 20px;
-        background-color: #f8f9fa;
-        border: 2px dashed #dee2e6;
-        border-radius: 8px;
-        margin: 15px 0;
-    }
-
-    .form-actions {
-        display: flex;
-        gap: 15px;
-        justify-content: center;
-        margin-top: 25px;
-        padding-top: 20px;
-        border-top: 2px solid #e9ecef;
-    }
-
-    .form-actions button:disabled {
-        background-color: #e9ecef;
-        color: #adb5bd;
-        cursor: not-allowed;
-    }
-
-    @media (max-width: 768px) {
-        .create-order-form {
-            margin: 10px;
-            padding: 15px;
+<head>
+    <meta charset="UTF-8" />
+    <title>Create Lab Order | CHO Koronadal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="../../assets/css/topbar.css" />
+    <link rel="stylesheet" href="../../assets/css/profile-edit-responsive.css" />
+    <link rel="stylesheet" href="../../assets/css/profile-edit.css" />
+    <link rel="stylesheet" href="../../assets/css/edit.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <style>
+        .search-container {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #0077b6;
         }
-        
-        .tests-grid {
-            grid-template-columns: 1fr;
+
+        .form-section {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #0077b6;
         }
-        
-        .input-group {
+
+        .search-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            align-items: end;
+            margin-bottom: 1rem;
+        }
+
+        .patient-table {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #0077b6;
+        }
+
+        .patient-table table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            min-width: 600px;
+        }
+
+        .patient-table th,
+        .patient-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .patient-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #0077b6;
+        }
+
+        .patient-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .patient-checkbox {
+            width: 18px;
+            height: 18px;
+            margin-right: 0.5rem;
+        }
+
+        .lab-order-form {
+            opacity: 0.5;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+
+        .lab-order-form.enabled {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-group {
+            display: flex;
             flex-direction: column;
-            align-items: flex-start;
-            gap: 5px;
         }
-        
-        .input-group label {
-            min-width: auto;
+
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #0077b6;
         }
-        
-        .search-button-container {
-            justify-content: center;
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 0.75rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s ease;
         }
-        
-        .form-actions {
-            flex-direction: column;
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #0077b6;
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.1);
+        }
+
+        .selected-patient {
+            background: #d4edda !important;
+            border-left: 4px solid #28a745;
+        }
+
+        .empty-search {
+            text-align: center;
+            padding: 2rem;
+            color: #6c757d;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
             align-items: center;
+            gap: 0.5rem;
         }
-        
-        .results-table {
-            font-size: 0.8em;
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
         }
-    }
-</style>
 
-<div class="create-order-form">
-    <h2 style="text-align: center; color: #03045e; margin-bottom: 25px;">
-        <i class="fas fa-plus-circle"></i> Create New Lab Order
-    </h2>
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, #023e8a, #001d3d);
+            transform: translateY(-2px);
+        }
 
-    <form id="createOrderForm" method="POST">
-        <!-- Search by Filter Section -->
-        <div class="form-section">
-            <div class="section-title">
-                <i class="fas fa-search"></i> Search by Filter
-            </div>
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .tests-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .test-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .test-checkbox:hover {
+            background-color: #f0f8ff;
+            border-color: #007bff;
+        }
+
+        .test-checkbox input[type="checkbox"] {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+
+        .test-checkbox input[type="checkbox"]:checked + label {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f1b2b7;
+        }
+
+        /* Loading Screen Styles */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0077b6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        .loading-text {
+            font-size: 1.2rem;
+            color: #0077b6;
+            font-weight: 600;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .search-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .tests-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Creating Lab Order...</div>
+    </div>
+
+    <?php 
+    // Render snackbar notification system
+    renderSnackbar();
+    
+    // Render topbar
+    renderTopbar([
+        'title' => 'Create New Lab Order',
+        'back_url' => 'lab_management.php',
+        'user_type' => 'employee',
+        'vendor_path' => '../../vendor/'
+    ]);
+    ?>
+
+    <section class="homepage">
+        <?php 
+        // Render back button with modal
+        renderBackButton([
+            'back_url' => 'lab_management.php',
+            'button_text' => '← Back / Cancel',
+            'modal_title' => 'Cancel Creating Lab Order?',
+            'modal_message' => 'Are you sure you want to go back/cancel? Unsaved changes will be lost.',
+            'confirm_text' => 'Yes, Cancel',
+            'stay_text' => 'Stay'
+        ]);
+        ?>
+
+        <div class="profile-wrapper">
+            <!-- Lab Order Creation Form -->
+            <form method="POST" action="" id="createOrderForm">
             
-            <div class="search-inputs">
-                <div class="input-group">
-                    <label class="form-label" for="patientIdFilter">Patient ID</label>
-                    <input type="text" 
-                           class="form-input" 
-                           id="patientIdFilter" 
-                           name="patient_id_filter"
-                           placeholder="Enter Patient ID..."
-                           autocomplete="off">
-                </div>
+            <!-- Reminders Box -->
+            <div class="reminders-box">
+                <strong>Reminders:</strong>
+                <ul>
+                    <li>Search and select a patient from the list below before creating a lab order.</li>
+                    <li>You can search by patient ID, name, appointment, or visit details.</li>
+                    <li>Direct patient search allows creating orders without appointments (for authorized roles).</li>
+                    <li>Select at least one lab test from the available options.</li>
+                    <li>Fields marked with * are required.</li>
+                </ul>
+            </div>
+
+            <!-- Patient Search Section -->
+            <div class="form-section">
+                <h3 style="color: #0077b6; margin-bottom: 1rem;">
+                    <i class="fas fa-search"></i> Patient Search Method
+                </h3>
                 
-                <div class="input-group">
-                    <label class="form-label" for="appointmentIdFilter">Appointment ID</label>
-                    <input type="text" 
-                           class="form-input" 
-                           id="appointmentIdFilter" 
-                           name="appointment_id_filter"
-                           placeholder="Enter Appointment ID..."
-                           autocomplete="off">
+                <div style="display: flex; gap: 20px; margin-bottom: 20px; justify-content: center;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="searchMode" value="appointment" id="appointmentMode" checked onchange="toggleSearchMode()">
+                        <span>Search with Appointment/Visit</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="searchMode" value="direct" id="directMode" onchange="toggleSearchMode()">
+                        <span>Direct Patient Search (No Appointment Required)</span>
+                    </label>
                 </div>
-                
-                <div class="input-group">
-                    <label class="form-label" for="visitIdFilter">Visit ID</label>
-                    <input type="text" 
-                           class="form-input" 
-                           id="visitIdFilter" 
-                           name="visit_id_filter"
-                           placeholder="Enter Visit ID..."
-                           autocomplete="off">
+            </div>
+
+            <!-- Appointment-based Search Section -->
+            <div class="search-container" id="appointmentSearchSection">
+                <h4 style="color: #0077b6; margin-bottom: 1rem;">Search by Appointment/Visit Details</h4>
+                <div class="search-grid">
+                    <div class="form-group">
+                        <label for="patientIdFilter">Patient ID</label>
+                        <input type="text" id="patientIdFilter" placeholder="Enter Patient ID">
+                    </div>
+                    <div class="form-group">
+                        <label for="appointmentIdFilter">Appointment ID</label>
+                        <input type="text" id="appointmentIdFilter" placeholder="Enter Appointment ID">
+                    </div>
+                    <div class="form-group">
+                        <label for="visitIdFilter">Visit ID</label>
+                        <input type="text" id="visitIdFilter" placeholder="Enter Visit ID">
+                    </div>
                 </div>
-                
-                <div class="search-button-container">
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1rem;">
                     <button type="button" class="btn btn-primary" onclick="searchPatients()">
                         <i class="fas fa-search"></i> Search
                     </button>
-                    <button type="button" class="btn btn-secondary" onclick="clearSearch()">
+                    <button type="button" class="btn" onclick="clearSearch()" style="background: #6c757d; color: white;">
                         <i class="fas fa-times"></i> Clear
                     </button>
                 </div>
             </div>
-            
-            <!-- Search Results Table -->
-            <div class="search-results-container" id="searchResultsContainer" style="display: none;">
-                <h4 style="color: #03045e; margin-bottom: 15px;">Search Results</h4>
-                <div class="table-responsive">
-                    <table class="results-table" id="searchResultsTable">
+
+            <!-- Direct Patient Search Section -->
+            <div class="search-container" id="directSearchSection" style="display: none;">
+                <h4 style="color: #0077b6; margin-bottom: 1rem;">Direct Patient Search</h4>
+                <div class="search-grid">
+                    <div class="form-group">
+                        <label for="patientNameFilter">General Search</label>
+                        <input type="text" id="patientNameFilter" placeholder="Patient ID, Name">
+                    </div>
+                    <div class="form-group">
+                        <label for="patientFirstName">First Name</label>
+                        <input type="text" id="patientFirstName" placeholder="Enter first name">
+                    </div>
+                    <div class="form-group">
+                        <label for="patientLastName">Last Name</label>
+                        <input type="text" id="patientLastName" placeholder="Enter last name">
+                    </div>
+                    <div class="form-group">
+                        <label for="barangayFilter">Barangay</label>
+                        <select id="barangayFilter">
+                            <option value="">All Barangays</option>
+                            <?php foreach ($barangays as $barangay): ?>
+                                <option value="<?= htmlspecialchars($barangay['barangay_name']) ?>">
+                                    <?= htmlspecialchars($barangay['barangay_name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1rem;">
+                    <button type="button" class="btn btn-primary" onclick="searchPatientsDirect()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button type="button" class="btn" onclick="clearDirectSearch()" style="background: #6c757d; color: white;">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search Results Section -->
+            <div class="patient-table" id="searchResultsContainer" style="display: none;">
+                <h4 style="color: #0077b6; margin-bottom: 1rem;">Patient Search Results</h4>
+                <div style="overflow-x: auto;">
+                    <table id="searchResultsTable" style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr>
                                 <th>Select</th>
-                                <th>Patient Name</th>
                                 <th>Patient ID</th>
-                                <th>Appointment ID</th>
-                                <th>Visit ID</th>
-                                <th>Date</th>
-                                <th>Type</th>
+                                <th>Name</th>
+                                <th>Username</th>
+                                <th>Age</th>
+                                <th>Sex</th>
+                                <th>Barangay</th>
                             </tr>
                         </thead>
                         <tbody id="searchResultsBody">
-                            <!-- Results will be populated here -->
+                            <!-- Search results will be populated here -->
                         </tbody>
                     </table>
                 </div>
             </div>
-            
+        
             <!-- Selected Patient Info -->
-            <div class="selected-info" id="selectedInfo" style="display: none;">
-                <strong>Selected Patient:</strong> <span id="selectedDetails"></span>
-                <input type="hidden" name="patient_id" id="selectedPatientId">
-                <input type="hidden" name="appointment_id" id="selectedAppointmentId">
-                <input type="hidden" name="visit_id" id="selectedVisitId">
+            <div id="selectedInfo" class="search-container" style="display: none; background: #d4edda; border-left: 4px solid #28a745;">
+                <h4 style="color: #28a745; margin-bottom: 1rem;">
+                    <i class="fas fa-user-check"></i> Selected Patient
+                </h4>
+                <div id="selectedDetails">
+                    <!-- Selected patient details will appear here -->
+                </div>
             </div>
-        </div>
 
         <!-- Lab Tests Section -->
         <div class="form-section" id="labTestsSection">
-            <div class="section-title">
-                <i class="fas fa-flask"></i> Select Lab Tests
+            <h3 style="color: #0077b6; margin-bottom: 1rem;">
+                <i class="fas fa-flask"></i> Laboratory Tests *
+            </h3>
+            
+            <div id="testsDisabledMessage" class="empty-search">
+                <i class="fas fa-info-circle" style="font-size: 2em; color: #6c757d; margin-bottom: 1rem;"></i>
+                <p>Please select a patient first to enable lab test selection.</p>
             </div>
             
-            <div class="tests-disabled-message" id="testsDisabledMessage">
-                <p style="text-align: center; color: #666; font-style: italic; margin: 20px 0;">
-                    <i class="fas fa-info-circle"></i> Please select a patient from the search results above to enable lab test selection.
-                </p>
-            </div>
-            
-            <div class="tests-grid" id="testsGrid" style="display: none;">
+            <div id="testsGrid" class="tests-grid" style="display: none;">
                 <?php foreach ($available_tests as $test): ?>
-                <div class="test-checkbox">
-                    <input type="checkbox" 
-                           name="selected_tests[]" 
-                           value="<?= htmlspecialchars($test) ?>" 
-                           id="test_<?= md5($test) ?>"
-                           disabled>
-                    <label for="test_<?= md5($test) ?>"><?= htmlspecialchars($test) ?></label>
-                </div>
+                    <div class="test-checkbox">
+                        <input type="checkbox" name="selected_tests[]" value="<?= htmlspecialchars($test) ?>" id="test_<?= md5($test) ?>">
+                        <label for="test_<?= md5($test) ?>"><?= htmlspecialchars($test) ?></label>
+                    </div>
                 <?php endforeach; ?>
+                
+                <!-- Others option -->
+                <div class="test-checkbox">
+                    <input type="checkbox" name="others_checkbox" id="others_checkbox" onchange="toggleOthersInput()">
+                    <label for="others_checkbox">Others (Specify)</label>
+                </div>
+            </div>
+            
+            <div class="form-group" style="margin-top: 1rem; display: none;" id="othersInputGroup">
+                <label for="others_test">Specify Other Test *</label>
+                <input type="text" name="others_test" id="others_test" placeholder="Enter specific test name">
             </div>
         </div>
 
         <!-- Additional Information -->
         <div class="form-section">
-            <div class="section-title">
-                <i class="fas fa-notes-medical"></i> Additional Information
-            </div>
+            <h3 style="color: #0077b6; margin-bottom: 1rem;">
+                <i class="fas fa-clipboard"></i> Additional Information
+            </h3>
             
             <div class="form-group">
-                <label class="form-label" for="remarks">Remarks/Instructions</label>
-                <textarea class="form-textarea" 
-                         id="remarks" 
-                         name="remarks" 
-                         placeholder="Optional: Add any special instructions or remarks..."></textarea>
+                <label for="remarks">Remarks / Notes</label>
+                <textarea name="remarks" id="remarks" rows="4" placeholder="Any additional notes or special instructions..."></textarea>
             </div>
         </div>
 
-        <div class="form-actions">
+        <!-- Form Actions -->
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+            <button type="button" class="btn" onclick="window.location.href='lab_management.php'" style="background: #6c757d; color: white;">
+                <i class="fas fa-times"></i> Cancel
+            </button>
             <button type="submit" class="btn btn-primary" id="submitButton" disabled>
                 <i class="fas fa-plus"></i> Create Lab Order
             </button>
-            <a href="lab_management.php" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> Back to Dashboard
-            </a>
         </div>
 
-        <!-- Hidden Form Fields -->
-        <input type="hidden" name="patient_id" id="hiddenPatientId">
-        <input type="hidden" name="visit_id" id="hiddenVisitId">
-    </form>
-</div>
+                <!-- Hidden Form Fields -->
+                <input type="hidden" name="patient_id" id="patientIdField">
+                <input type="hidden" name="visit_id" id="hiddenVisitId">
+                <input type="hidden" name="appointment_id" id="hiddenAppointmentId">
+            </form>
+        </div>
+    </section>
 
 <script>
 // Debug: Log that this script is loading
@@ -996,10 +1109,14 @@ function selectPatient(radio) {
         
         console.log('Patient selected:', { patientId, patientName, username });
         
-        // Set hidden form fields
-        const hiddenPatientId = document.getElementById('hiddenPatientId');
-        if (hiddenPatientId) {
-            hiddenPatientId.value = patientId;
+        // Set the single patient ID field
+        const patientIdField = document.getElementById('patientIdField');
+        
+        if (patientIdField) {
+            patientIdField.value = patientId;
+            console.log('Patient ID field set to:', patientId);
+        } else {
+            console.error('Patient ID field not found!');
         }
         
         // Show selected patient info
@@ -1013,11 +1130,11 @@ function selectPatient(radio) {
             selectedInfo.style.display = 'block';
         }
         
-        // Set form fields for submission
-        const selectedPatientId = document.getElementById('selectedPatientId');
-        if (selectedPatientId) {
-            selectedPatientId.value = patientId;
-        }
+        console.log('Patient selection completed:', {
+            patientId: patientId,
+            patientName: patientName,
+            fieldValue: patientIdField?.value
+        });
         
         // Enable lab tests section
         enableLabTests();
@@ -1094,10 +1211,10 @@ function disableLabTests() {
         });
         
         // Clear hidden form fields
-        const hiddenPatientId = document.getElementById('hiddenPatientId');
+        const patientIdField = document.getElementById('patientIdField');
         const hiddenVisitId = document.getElementById('hiddenVisitId');
         
-        if (hiddenPatientId) hiddenPatientId.value = '';
+        if (patientIdField) patientIdField.value = '';
         if (hiddenVisitId) hiddenVisitId.value = '';
         
         // Disable submit button
@@ -1128,38 +1245,270 @@ document.addEventListener('DOMContentLoaded', function() {
     
     form.addEventListener('submit', function(e) {
         console.log('Form submission attempted');
-        e.preventDefault();
         
         try {
             // Validate required fields
-            const patientId = document.getElementById('hiddenPatientId').value;
-            console.log('Patient ID for submission:', patientId);
+            const patientIdField = document.getElementById('patientIdField');
+            const patientId = patientIdField?.value;
+            
+            console.log('Form submission validation:', {
+                patientIdFieldExists: !!patientIdField,
+                patientIdValue: patientId
+            });
             
             if (!patientId) {
-                alert('Please select a patient from the search results.');
+                e.preventDefault();
+                alert('Please select a patient from the search results first.');
                 return;
             }
             
             const selectedTests = document.querySelectorAll('input[name="selected_tests[]"]:checked');
-            console.log('Selected tests count:', selectedTests.length);
+            const othersCheckbox = document.getElementById('others_checkbox');
+            const othersInput = document.getElementById('others_test');
             
-            if (selectedTests.length === 0) {
-                alert('Please select at least one lab test.');
+            console.log('Selected tests count:', selectedTests.length);
+            console.log('Others checkbox checked:', othersCheckbox?.checked);
+            console.log('Others input value:', othersInput?.value);
+            
+            // Check if at least one test is selected (including Others)
+            const hasSelectedTests = selectedTests.length > 0;
+            const hasOthersTest = othersCheckbox?.checked && othersInput?.value.trim();
+            
+            if (!hasSelectedTests && !hasOthersTest) {
+                e.preventDefault();
+                alert('Please select at least one lab test or specify an "Others" test.');
                 return;
             }
             
-            // Submit form normally (not AJAX since we want to redirect)
-            console.log('Submitting form...');
-            this.submit();
+            // If Others is checked but no value is provided
+            if (othersCheckbox?.checked && !othersInput?.value.trim()) {
+                e.preventDefault();
+                alert('Please specify the "Others" test name.');
+                othersInput?.focus();
+                return;
+            }
+            
+            console.log('Form validation passed. Allowing form submission with patient ID:', patientId);
+            
+            // Show loading screen
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'flex';
+            }
+            
+            // Let the form submit naturally - don't prevent default if validation passes
+            console.log('Form will submit naturally to:', this.action || window.location.href);
+            
         } catch (error) {
+            e.preventDefault();
             console.error('Error during form submission:', error);
-            alert(`Error during form submission: ${error.message}`);
+            alert(`Error during form submission: ${error.message}. Check console for details.`);
+            
+            // Hide loading screen on error
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
+            }
         }
     });
     
     console.log('Form submission handler set up successfully');
 });
 
+// New functions for search mode toggle and direct patient search
+
+function toggleSearchMode() {
+    const appointmentMode = document.getElementById('appointmentMode');
+    const directMode = document.getElementById('directMode');
+    const appointmentSection = document.getElementById('appointmentSearchSection');
+    const directSection = document.getElementById('directSearchSection');
+    
+    if (directMode.checked) {
+        appointmentSection.style.display = 'none';
+        directSection.style.display = 'block';
+        clearSearch(); // Clear any previous search
+    } else {
+        appointmentSection.style.display = 'block';
+        directSection.style.display = 'none';
+        clearDirectSearch(); // Clear any previous direct search
+    }
+}
+
+function searchPatientsDirect() {
+    console.log('searchPatientsDirect function called');
+    
+    try {
+        const patientNameEl = document.getElementById('patientNameFilter');
+        const patientFirstNameEl = document.getElementById('patientFirstName');
+        const patientLastNameEl = document.getElementById('patientLastName');
+        const barangayEl = document.getElementById('barangayFilter');
+        
+        const patientName = patientNameEl ? patientNameEl.value.trim() : '';
+        const patientFirstName = patientFirstNameEl ? patientFirstNameEl.value.trim() : '';
+        const patientLastName = patientLastNameEl ? patientLastNameEl.value.trim() : '';
+        const barangay = barangayEl ? barangayEl.value : '';
+        
+        console.log('Direct search values:', { patientName, patientFirstName, patientLastName, barangay });
+        
+        if (!patientName && !patientFirstName && !patientLastName && !barangay) {
+            showSearchMessage('Please enter at least one search criteria (Patient Name, First Name, Last Name, or Barangay) to search for patients.', 'warning');
+            return;
+        }
+        
+        // Show the results container
+        const resultsContainer = document.getElementById('searchResultsContainer');
+        if (resultsContainer) {
+            resultsContainer.style.display = 'block';
+        }
+        
+        // Use the primary search term (name, first name, or last name)
+        const searchTerm = patientName || `${patientFirstName} ${patientLastName}`.trim() || '';
+        const requestUrl = `create_lab_order.php?action=search_patients_direct&search=${encodeURIComponent(searchTerm)}&barangay=${encodeURIComponent(barangay)}`;
+        
+        console.log('Making direct search request to:', requestUrl);
+        
+        fetch(requestUrl)
+            .then(response => {
+                console.log('Direct search response received:', response.status);
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    return response.text().then(text => {
+                        console.error('Non-JSON response:', text);
+                        throw new Error('Server returned an error page instead of search results.');
+                    });
+                }
+                
+                return response.json().then(data => {
+                    if (!response.ok) {
+                        if (data.error && data.message) {
+                            throw new Error(data.message);
+                        } else {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                    }
+                    return data;
+                });
+            })
+            .then(data => {
+                console.log('Direct search results:', data);
+                
+                const resultsTable = document.getElementById('searchResultsTable');
+                const tableBody = document.getElementById('searchResultsBody');
+                
+                if (!resultsTable || !tableBody) {
+                    console.error('Results table elements not found');
+                    showSearchMessage('Error: Results table not found.', 'error');
+                    return;
+                }
+                
+                // Clear previous results
+                tableBody.innerHTML = '';
+                
+                if (data && Array.isArray(data) && data.length > 0) {
+                    data.forEach(patient => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>
+                                <input type="radio" name="selectedPatient" value="${patient.patient_id}" 
+                                       data-patient-id="${patient.patient_id}" 
+                                       data-patient-name="${patient.first_name} ${patient.last_name}"
+                                       data-username="${patient.username}"
+                                       data-barangay="${patient.barangay_name || 'N/A'}"
+                                       onchange="selectPatient(this)">
+                            </td>
+                            <td>${patient.first_name} ${patient.middle_name || ''} ${patient.last_name}</td>
+                            <td>${patient.username || patient.patient_id || 'N/A'}</td>
+                            <td colspan="2">Direct Search - No Appointment Required</td>
+                            <td>${patient.date_of_birth || 'N/A'}</td>
+                            <td>${patient.barangay_name || 'N/A'}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                    resultsTable.style.display = 'table';
+                    console.log('Direct search results populated successfully');
+                } else {
+                    let searchedFor = [];
+                    if (patientName) searchedFor.push(`Name "${patientName}"`);
+                    if (patientFirstName) searchedFor.push(`First Name "${patientFirstName}"`);
+                    if (patientLastName) searchedFor.push(`Last Name "${patientLastName}"`);
+                    if (barangay) searchedFor.push(`Barangay "${barangay}"`);
+                    
+                    const searchText = searchedFor.join(', ');
+                    showSearchMessage(`No patients found with ${searchText}. Please verify the information and try different search criteria.`, 'info');
+                    console.log('No direct search results found for:', searchText);
+                }
+            })
+            .catch(error => {
+                console.error('Direct search error:', error);
+                showSearchMessage(`Direct search failed: ${error.message}`, 'error');
+            });
+    } catch (error) {
+        console.error('Unexpected error in searchPatientsDirect:', error);
+        alert(`Unexpected error: ${error.message}`);
+    }
+}
+
+function clearDirectSearch() {
+    console.log('clearDirectSearch function called');
+    
+    try {
+        // Clear direct search input fields
+        const patientNameEl = document.getElementById('patientNameFilter');
+        const patientFirstNameEl = document.getElementById('patientFirstName');
+        const patientLastNameEl = document.getElementById('patientLastName');
+        const barangayEl = document.getElementById('barangayFilter');
+        
+        if (patientNameEl) patientNameEl.value = '';
+        if (patientFirstNameEl) patientFirstNameEl.value = '';
+        if (patientLastNameEl) patientLastNameEl.value = '';
+        if (barangayEl) barangayEl.value = '';
+        
+        // Clear results table
+        const resultsContainer = document.getElementById('searchResultsContainer');
+        const tableBody = document.getElementById('searchResultsBody');
+        
+        if (tableBody) tableBody.innerHTML = '';
+        if (resultsContainer) resultsContainer.style.display = 'none';
+        
+        // Reset lab tests section
+        disableLabTests();
+        
+        console.log('Direct search cleared successfully');
+    } catch (error) {
+        console.error('Error in clearDirectSearch:', error);
+        alert(`Error clearing direct search: ${error.message}`);
+    }
+}
+
+// Assign functions to window object for global access
+window.toggleSearchMode = toggleSearchMode;
+window.searchPatientsDirect = searchPatientsDirect;
+window.clearDirectSearch = clearDirectSearch;
+
+// Toggle Others input field
+function toggleOthersInput() {
+    const othersCheckbox = document.getElementById('others_checkbox');
+    const othersInputGroup = document.getElementById('othersInputGroup');
+    const othersInput = document.getElementById('others_test');
+    
+    if (othersCheckbox && othersInputGroup && othersInput) {
+        if (othersCheckbox.checked) {
+            othersInputGroup.style.display = 'block';
+            othersInput.required = true;
+        } else {
+            othersInputGroup.style.display = 'none';
+            othersInput.required = false;
+            othersInput.value = '';
+        }
+    }
+}
+
+window.toggleOthersInput = toggleOthersInput;
+
 // Debug: Log when script finishes loading
 console.log('create_lab_order.php script loaded completely');
 </script>
+
+</body>
+</html>

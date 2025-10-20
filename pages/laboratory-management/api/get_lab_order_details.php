@@ -4,8 +4,9 @@ $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Server-side role enforcement
-if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role'], ['admin', 'laboratory_tech', 'doctor', 'nurse'])) {
+// Server-side role enforcement using role_id
+$authorizedRoleIds = [1, 2, 3, 9]; // admin, doctor, nurse, laboratory_tech
+if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role_id'], $authorizedRoleIds)) {
     http_response_code(403);
     exit('Not authorized');
 }
@@ -17,8 +18,8 @@ if (!$lab_order_id) {
     exit('Lab order ID is required');
 }
 
-// Check authorization based on role
-$canUploadResults = $_SESSION['role'] === 'laboratory_tech' || $_SESSION['role'] === 'admin';
+// Check authorization based on role_id
+$canUploadResults = in_array($_SESSION['role_id'], [1, 9]); // admin, laboratory_tech
 $canUpdateStatus = $canUploadResults;
 
 // Check if timing columns exist
@@ -29,7 +30,7 @@ $hasTimingColumns = $timingResult->num_rows > 0;
 // Fetch lab order details with enhanced timing info
 $orderSql = "SELECT lo.lab_order_id, lo.patient_id, lo.order_date, lo.status, lo.status as overall_status,
                     lo.ordered_by_employee_id, lo.remarks, lo.appointment_id, lo.visit_id,
-                    p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.gender, p.username as patient_id_display,
+                    p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.sex as gender, p.username as patient_id_display,
                     e.first_name as ordered_by_first_name, e.last_name as ordered_by_last_name,
                     TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age";
 
@@ -45,6 +46,11 @@ $orderSql .= " FROM lab_orders lo
                WHERE lo.lab_order_id = ?";
 
 $orderStmt = $conn->prepare($orderSql);
+if (!$orderStmt) {
+    error_log("SQL prepare failed: " . $conn->error);
+    http_response_code(500);
+    exit('Database error: Failed to prepare statement');
+}
 $orderStmt->bind_param("i", $lab_order_id);
 $orderStmt->execute();
 $orderResult = $orderStmt->get_result();
@@ -71,6 +77,11 @@ $itemsSql .= " FROM lab_order_items loi
                ORDER BY loi.created_at ASC";
 
 $itemsStmt = $conn->prepare($itemsSql);
+if (!$itemsStmt) {
+    error_log("SQL prepare failed for items: " . $conn->error);
+    http_response_code(500);
+    exit('Database error: Failed to prepare items statement');
+}
 $itemsStmt->bind_param("i", $lab_order_id);
 $itemsStmt->execute();
 $itemsResult = $itemsStmt->get_result();
@@ -322,7 +333,7 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
                     <span class="info-value"><?= $order['appointment_id'] ?></span>
                 </div>
                 <?php endif; ?>
-                <?php if ($order['consultation_id']): ?>
+                <?php if (!empty($order['consultation_id'])): ?>
                 <div class="info-item">
                     <span class="info-label">Consultation ID:</span>
                     <span class="info-value"><?= $order['consultation_id'] ?></span>
@@ -353,11 +364,6 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
         </thead>
         <tbody>
             <?php while ($item = $itemsResult->fetch_assoc()): ?>
-            <?php
-                $uploadedBy = $item['uploaded_by_first_name'] ? 
-                             trim($item['uploaded_by_first_name'] . ' ' . $item['uploaded_by_last_name']) : 
-                             'N/A';
-            ?>
             <tr>
                 <td class="test-details">
                     <strong><?= htmlspecialchars($item['test_type']) ?></strong>
@@ -388,27 +394,17 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
                         <button class="action-btn btn-upload" onclick="uploadItemResult(<?= $item['lab_order_item_id'] ?>)">
                             <i class="fas fa-upload"></i> Upload
                         </button>
-                    <?php elseif ($_SESSION['role'] === 'laboratory_tech'): ?>
-                        <span class="text-muted">Lab Tech Only</span>
+                    <?php elseif (!$canUploadResults): ?>
+                        <span class="text-muted">Not Authorized</span>
                     <?php else: ?>
-                        <span class="text-muted">Not Available</span>
+                        <span class="text-muted">Completed</span>
                     <?php endif; ?>
                 </td>
                 <td>
                     <?php if ($item['result_file']): ?>
-                        <?php 
-                        // Check both storage locations for files
-                        $storageFile = $root_path . '/storage/lab_results/' . $item['result_file'];
-                        $uploadsFile = $root_path . '/uploads/lab_results/' . $item['result_file'];
-                        $fileExists = file_exists($storageFile) || file_exists($uploadsFile);
-                        ?>
-                        <?php if ($fileExists): ?>
-                        <button class="action-btn btn-download" onclick="downloadResult('<?= htmlspecialchars($item['result_file']) ?>')">
+                        <button class="action-btn btn-download" onclick="downloadResult(<?= $item['lab_order_item_id'] ?>)">
                             <i class="fas fa-download"></i> View
                         </button>
-                        <?php else: ?>
-                        <span class="text-muted">File Missing</span>
-                        <?php endif; ?>
                     <?php else: ?>
                         <span class="text-muted">No Result</span>
                     <?php endif; ?>
@@ -449,14 +445,27 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
 </div>
 
 <script>
-    function downloadResult(filename) {
-        window.open(`../api/download_lab_result.php?file=${filename}`, '_blank');
+    function downloadResult(itemId) {
+        window.open(`../api/download_lab_result.php?item_id=${itemId}`, '_blank');
     }
 
     function uploadItemResult(labOrderItemId) {
-        closeModal('orderDetailsModal');
+        console.log('uploadItemResult called with ID:', labOrderItemId);
+        
+        // Close the order details modal
+        if (window.parent && window.parent.closeModal) {
+            window.parent.closeModal('orderDetailsModal');
+        }
+        
+        // Call the parent window's uploadResult function
         setTimeout(() => {
-            uploadResult(labOrderItemId);
+            if (window.parent && typeof window.parent.uploadResult === 'function') {
+                console.log('Calling parent uploadResult function');
+                window.parent.uploadResult(labOrderItemId);
+            } else {
+                console.error('Parent uploadResult function not found');
+                alert('Upload function not available. Please refresh the page and try again.');
+            }
         }, 100);
     }
 
@@ -635,5 +644,25 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
             console.error('Error:', error);
             alert('Error updating order status');
         });
+    }
+
+    function uploadItemResult(labOrderItemId) {
+        // Close the current order details modal
+        closeModal('orderDetailsModal');
+        
+        // Call the upload function from the parent page
+        if (typeof uploadResult === 'function') {
+            uploadResult(labOrderItemId);
+        } else {
+            // Fallback: redirect to upload page
+            window.location.href = `../upload_lab_result.php?lab_order_item_id=${labOrderItemId}`;
+        }
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.style.display = 'none';
+        }
     }
 </script>

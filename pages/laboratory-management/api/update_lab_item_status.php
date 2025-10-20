@@ -123,56 +123,34 @@ try {
         throw new Exception('Lab order item not found or no changes made');
     }
 
-    // Update overall order status and calculate average turnaround time
+    // Update overall order status using utility function and calculate average turnaround time
     $lab_order_id = $currentData['lab_order_id'];
     
-    // Calculate overall status based on individual item statuses
-    $statusSql = "SELECT 
-                    COUNT(*) as total_items,
-                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_items,
-                    SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_items,
-                    SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_items,
-                    AVG(CASE WHEN turnaround_time IS NOT NULL THEN turnaround_time END) as avg_turnaround
+    require_once '../../../utils/LabOrderStatusManager.php';
+    $statusUpdated = updateLabOrderStatus($lab_order_id, $conn);
+    
+    if (!$statusUpdated) {
+        error_log("Warning: Could not update lab order status for order ID: $lab_order_id");
+    }
+    
+    // Update average turnaround time separately
+    $avgTatSql = "SELECT AVG(CASE WHEN turnaround_time IS NOT NULL THEN turnaround_time END) as avg_turnaround
                   FROM lab_order_items 
                   WHERE lab_order_id = ?";
     
-    $statusStmt = $conn->prepare($statusSql);
-    $statusStmt->bind_param("i", $lab_order_id);
-    $statusStmt->execute();
-    $statusResult = $statusStmt->get_result();
-    $statusData = $statusResult->fetch_assoc();
+    $avgStmt = $conn->prepare($avgTatSql);
+    $avgStmt->bind_param("i", $lab_order_id);
+    $avgStmt->execute();
+    $avgResult = $avgStmt->get_result()->fetch_assoc();
     
-    // Determine overall status
-    $overall_status = 'pending';
-    if ($statusData['completed_items'] == $statusData['total_items']) {
-        $overall_status = 'completed';
-    } elseif ($statusData['cancelled_items'] == $statusData['total_items']) {
-        $overall_status = 'cancelled';
-    } elseif ($statusData['completed_items'] > 0 || $statusData['in_progress_items'] > 0) {
-        if ($statusData['completed_items'] > 0) {
-            $overall_status = 'partial';
-        } else {
-            $overall_status = 'in_progress';
-        }
+    // Update average turnaround time if column exists
+    $checkTatColumn = $conn->query("SHOW COLUMNS FROM lab_orders LIKE 'average_tat'");
+    if ($checkTatColumn->num_rows > 0 && $avgResult['avg_turnaround'] !== null) {
+        $updateTatSql = "UPDATE lab_orders SET average_tat = ?, updated_at = NOW() WHERE lab_order_id = ?";
+        $updateTatStmt = $conn->prepare($updateTatSql);
+        $updateTatStmt->bind_param("di", $avgResult['avg_turnaround'], $lab_order_id);
+        $updateTatStmt->execute();
     }
-    
-    // Check if overall_status column exists, if not use regular status
-    $checkColumnSql = "SHOW COLUMNS FROM lab_orders LIKE 'overall_status'";
-    $columnResult = $conn->query($checkColumnSql);
-    $hasOverallStatus = $columnResult->num_rows > 0;
-    
-    // Update overall order status and average turnaround time
-    if ($hasOverallStatus) {
-        $updateOrderSql = "UPDATE lab_orders SET overall_status = ?, average_tat = ?, updated_at = NOW() WHERE lab_order_id = ?";
-        $updateOrderStmt = $conn->prepare($updateOrderSql);
-        $updateOrderStmt->bind_param("sdi", $overall_status, $statusData['avg_turnaround'], $lab_order_id);
-    } else {
-        // Fallback if overall_status column doesn't exist
-        $updateOrderSql = "UPDATE lab_orders SET status = ?, updated_at = NOW() WHERE lab_order_id = ?";
-        $updateOrderStmt = $conn->prepare($updateOrderSql);
-        $updateOrderStmt->bind_param("si", $overall_status, $lab_order_id);
-    }
-    $updateOrderStmt->execute();
 
     $conn->commit();
     

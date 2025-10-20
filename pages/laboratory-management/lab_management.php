@@ -17,13 +17,26 @@ if (!isset($_SESSION['employee_id'])) {
 // Set active page for sidebar highlighting
 $activePage = 'laboratory_management';
 
-// Define role-based permissions
-$canViewLab = in_array($_SESSION['role'], ['admin', 'laboratory_tech', 'doctor', 'nurse']);
-$canUploadResults = $_SESSION['role'] === 'laboratory_tech' || $_SESSION['role'] === 'admin';
-$canCreateOrders = in_array($_SESSION['role'], ['admin', 'doctor', 'nurse']);
+// Define role-based permissions using role_id
+$canViewLab = in_array($_SESSION['role_id'], [1, 2, 3, 9]); // admin, doctor, nurse, laboratory_tech
+$canUploadResults = in_array($_SESSION['role_id'], [1, 9]); // admin, laboratory_tech
+$canCreateOrders = in_array($_SESSION['role_id'], [1, 2, 3, 9]); // admin, doctor, nurse, laboratory_tech
 
 if (!$canViewLab) {
-    $role = $_SESSION['role'];
+    $role_id = $_SESSION['role_id'];
+    // Map role_id to role name for redirect
+    $roleMap = [
+        1 => 'admin',
+        2 => 'doctor', 
+        3 => 'nurse',
+        4 => 'pharmacist',
+        5 => 'dho',
+        6 => 'bhw',
+        7 => 'records_officer',
+        8 => 'cashier',
+        9 => 'laboratory_tech'
+    ];
+    $role = $roleMap[$role_id] ?? 'employee';
     header("Location: ../management/$role/dashboard.php");
     exit();
 }
@@ -54,7 +67,7 @@ $ordersSql = "SELECT lo.lab_order_id, lo.patient_id, lo.order_date, lo.status,
               LEFT JOIN patients p ON lo.patient_id = p.patient_id
               LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
               LEFT JOIN lab_order_items loi ON lo.lab_order_id = loi.lab_order_id
-              WHERE 1=1";
+              WHERE (DATE(lo.order_date) = CURDATE() OR $statusColumn = 'pending')";
 
 $params = [];
 $types = "";
@@ -67,7 +80,7 @@ if (!empty($searchQuery)) {
 }
 
 if (!empty($statusFilter)) {
-    $ordersSql .= " AND lo.overall_status = ?";
+    $ordersSql .= " AND $statusColumn = ?";
     array_push($params, $statusFilter);
     $types .= "s";
 }
@@ -106,6 +119,46 @@ $recentSql = "SELECT loi.item_id as lab_order_item_id, loi.lab_order_id, loi.tes
 $recentStmt = $conn->prepare($recentSql);
 $recentStmt->execute();
 $recentResult = $recentStmt->get_result();
+
+// Calculate statistics for dashboard cards
+$lab_stats = [];
+try {
+    // Get statistics based on available status column
+    $statsColumn = $hasOverallStatus ? 'overall_status' : 'status';
+    
+    $statsSql = "SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN $statsColumn = 'pending' THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN $statsColumn = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                    SUM(CASE WHEN $statsColumn = 'completed' THEN 1 ELSE 0 END) as completed,
+                    SUM(CASE WHEN $statsColumn = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+                 FROM lab_orders 
+                 WHERE order_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+    
+    $statsResult = $conn->query($statsSql);
+    if ($statsResult) {
+        $lab_stats = $statsResult->fetch_assoc();
+    } else {
+        // Default values if query fails
+        $lab_stats = [
+            'total' => 0,
+            'pending' => 0,
+            'in_progress' => 0,
+            'completed' => 0,
+            'cancelled' => 0
+        ];
+    }
+} catch (Exception $e) {
+    // Default values if error occurs
+    error_log("Lab stats calculation error: " . $e->getMessage());
+    $lab_stats = [
+        'total' => 0,
+        'pending' => 0,
+        'in_progress' => 0,
+        'completed' => 0,
+        'cancelled' => 0
+    ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -536,7 +589,7 @@ $recentResult = $recentStmt->get_result();
         <div class="page-header">
             <h1><i class="fas fa-flask"></i> Laboratory Management</h1>
             <?php if ($canCreateOrders): ?>
-                <a href="#" class="btn btn-primary" onclick="openCreateOrderModal(); return false;">
+                <a href="create_lab_order.php" class="btn btn-primary">
                     <i class="fas fa-plus"></i> Create Lab Order
                 </a>
             <?php endif; ?>
@@ -680,6 +733,11 @@ $recentResult = $recentStmt->get_result();
                                     <button class="action-btn btn-view" onclick="viewOrderDetails(<?= $order['lab_order_id'] ?>)">
                                         <i class="fas fa-eye"></i> View
                                     </button>
+                                    <?php if ($canUploadResults && $order['overall_status'] !== 'completed'): ?>
+                                        <button class="action-btn btn-upload" onclick="showQuickUpload(<?= $order['lab_order_id'] ?>)" title="Quick Upload">
+                                            <i class="fas fa-upload"></i> Upload
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endwhile; ?>
@@ -726,8 +784,8 @@ $recentResult = $recentStmt->get_result();
                                     <?= $record['result_date'] ? date('M d, Y', strtotime($record['result_date'])) : 'N/A' ?>
                                 </td>
                                 <td>
-                                    <?php if ($record['result_file'] && file_exists($root_path . '/uploads/lab_results/' . $record['result_file'])): ?>
-                                        <button class="action-btn btn-download" onclick="downloadResult('<?= $record['result_file'] ?>')">
+                                    <?php if ($record['result_file']): ?>
+                                        <button class="action-btn btn-download" onclick="downloadResult(<?= $record['lab_order_item_id'] ?>)">
                                             <i class="fas fa-download"></i>
                                         </button>
                                     <?php elseif ($canUploadResults && $record['status'] !== 'completed'): ?>
@@ -758,19 +816,6 @@ $recentResult = $recentStmt->get_result();
         </div>
     </div>
 
-    <!-- Create Order Modal -->
-    <div id="createOrderModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Create New Lab Order</h3>
-                <button class="close-btn" onclick="closeModal('createOrderModal')">&times;</button>
-            </div>
-            <div id="createOrderBody">
-                <!-- Content loaded via AJAX -->
-            </div>
-        </div>
-    </div>
-
     <!-- Upload Result Modal -->
     <div id="uploadResultModal" class="modal">
         <div class="modal-content">
@@ -780,6 +825,19 @@ $recentResult = $recentStmt->get_result();
             </div>
             <div id="uploadResultBody">
                 <!-- Content loaded via AJAX -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Upload Modal -->
+    <div id="quickUploadModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Lab Results</h3>
+                <button class="close-btn" onclick="closeModal('quickUploadModal')">&times;</button>
+            </div>
+            <div id="quickUploadBody">
+                <!-- Content will be loaded here -->
             </div>
         </div>
     </div>
@@ -839,60 +897,102 @@ $recentResult = $recentStmt->get_result();
                 });
         }
 
-        function openCreateOrderModal() {
-            document.getElementById('createOrderModal').style.display = 'block';
-            document.getElementById('createOrderBody').innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+        function showQuickUpload(labOrderId) {
+            console.log('Quick upload called for lab order:', labOrderId);
+            
+            document.getElementById('quickUploadModal').style.display = 'block';
+            document.getElementById('quickUploadBody').innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
 
-            fetch('create_lab_order.php')
-                .then(response => response.text())
-                .then(html => {
-                    document.getElementById('createOrderBody').innerHTML = html;
-
-                    // Execute any scripts that were loaded with the content
-                    const scripts = document.getElementById('createOrderBody').getElementsByTagName('script');
-                    for (let i = 0; i < scripts.length; i++) {
-                        const script = scripts[i];
-                        const newScript = document.createElement('script');
-
-                        if (script.src) {
-                            newScript.src = script.src;
-                        } else {
-                            newScript.textContent = script.textContent;
-                        }
-
-                        document.head.appendChild(newScript);
-                        script.parentNode.removeChild(script);
+            fetch(`api/get_lab_order_items.php?lab_order_id=${labOrderId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
-
-                    console.log('Create order modal content loaded and scripts executed');
+                    return response.text();
+                })
+                .then(html => {
+                    document.getElementById('quickUploadBody').innerHTML = html;
                 })
                 .catch(error => {
-                    console.error('Error loading create order form:', error);
-                    document.getElementById('createOrderBody').innerHTML = '<div class="alert alert-error">Error loading create order form.</div>';
+                    console.error('Error loading lab items:', error);
+                    document.getElementById('quickUploadBody').innerHTML = '<div class="alert alert-error">Error loading lab items: ' + error.message + '</div>';
                 });
         }
 
         function uploadResult(labOrderItemId) {
             <?php if ($canUploadResults): ?>
+                console.log('Upload function called with item ID:', labOrderItemId);
+                
+                // Close any open order details modal first
+                closeModal('orderDetailsModal');
+                
                 document.getElementById('uploadResultModal').style.display = 'block';
-                document.getElementById('uploadResultBody').innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
-
-                fetch(`upload_lab_result.php?lab_order_item_id=${labOrderItemId}`)
-                    .then(response => response.text())
-                    .then(html => {
-                        document.getElementById('uploadResultBody').innerHTML = html;
-                    })
-                    .catch(error => {
-                        document.getElementById('uploadResultBody').innerHTML = '<div class="alert alert-error">Error loading upload form.</div>';
-                    });
+                
+                // Use iframe approach for better isolation
+                const iframe = document.createElement('iframe');
+                iframe.src = `upload_lab_result_modal.php?item_id=${labOrderItemId}`;
+                iframe.style.cssText = `
+                    width: 100%; 
+                    height: 600px; 
+                    border: none; 
+                    border-radius: 8px;
+                `;
+                
+                const uploadBody = document.getElementById('uploadResultBody');
+                uploadBody.innerHTML = ''; // Clear existing content
+                uploadBody.appendChild(iframe);
+                
             <?php else: ?>
                 showAlert('You are not authorized to upload lab results.', 'error');
             <?php endif; ?>
         }
 
-        function downloadResult(filename) {
-            window.open(`api/download_lab_result.php?file=${filename}`, '_blank');
+        function downloadResult(itemId) {
+            window.open(`api/download_lab_result.php?item_id=${itemId}`, '_blank');
         }
+
+        function uploadItemResult(labOrderItemId) {
+            // This function handles upload from the modal details view
+            uploadResult(labOrderItemId);
+        }
+        
+        function uploadSingleResult(labOrderItemId) {
+            // This function handles upload from the quick upload modal
+            console.log('uploadSingleResult called with item ID:', labOrderItemId);
+            closeModal('quickUploadModal');
+            setTimeout(() => {
+                uploadResult(labOrderItemId);
+            }, 100);
+        }
+
+        function refreshOrderDetails(labOrderId) {
+            // Refresh the order details modal if it's open
+            const orderModal = document.getElementById('orderDetailsModal');
+            if (orderModal && orderModal.style.display === 'block') {
+                viewOrderDetails(labOrderId);
+            }
+            // Also refresh the main page
+            window.location.reload();
+        }
+        
+        // Add global refresh function for upload success
+        window.refreshAfterUpload = function() {
+            // Close upload modal
+            closeModal('uploadResultModal');
+            // Show success message
+            showAlert('Lab result uploaded successfully!', 'success');
+            // Refresh page after delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        };
+        
+        // Make upload function globally accessible
+        window.uploadResult = uploadResult;
+        window.uploadSingleResult = uploadSingleResult;
+        window.downloadResult = downloadResult;
+
+        // Functions are now handled by inline events in modal content
 
         function showAlert(message, type = 'success') {
             const alertContainer = document.getElementById('alertContainer');
@@ -912,9 +1012,83 @@ $recentResult = $recentStmt->get_result();
             }, 5000);
         }
 
+        // File handling functions for upload modal
+        function triggerFileSelect() {
+            console.log('triggerFileSelect called from main page');
+            const fileInput = document.getElementById('result_file');
+            if (fileInput) {
+                fileInput.click();
+                console.log('File input clicked');
+            } else {
+                console.error('File input not found');
+            }
+        }
+
+        function handleFileSelect(event) {
+            console.log('handleFileSelect called from main page', event);
+            const file = event.target.files[0];
+            console.log('Selected file:', file);
+            if (file) {
+                updateFileDisplay(file);
+            }
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            const file = event.dataTransfer.files[0];
+            if (file) {
+                document.getElementById('result_file').files = event.dataTransfer.files;
+                updateFileDisplay(file);
+            }
+            event.target.classList.remove('drag-over');
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.target.classList.add('drag-over');
+        }
+
+        function handleDragLeave(event) {
+            event.target.classList.remove('drag-over');
+        }
+
+        function updateFileDisplay(file) {
+            console.log('updateFileDisplay called with file:', file);
+            
+            // Try to update the selected file div
+            const selectedFileDiv = document.getElementById('selectedFile');
+            if (selectedFileDiv) {
+                selectedFileDiv.innerHTML = `
+                    <div class="file-details">
+                        <i class="fas fa-file"></i>
+                        <strong>Selected:</strong> ${file.name}<br>
+                        <strong>Size:</strong> ${(file.size / 1024 / 1024).toFixed(2)} MB<br>
+                        <strong>Type:</strong> ${file.type || 'Unknown'}
+                    </div>
+                `;
+                selectedFileDiv.style.display = 'block';
+                console.log('Updated selectedFile div');
+            }
+            
+            // Try to update the upload text
+            const uploadText = document.querySelector('.upload-text');
+            if (uploadText) {
+                uploadText.textContent = 'File selected successfully!';
+                console.log('Updated upload text');
+            }
+            
+            // Also try the older file-info selector for compatibility
+            const fileInfo = document.querySelector('.file-info');
+            if (fileInfo && !selectedFileDiv) {
+                fileInfo.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+                console.log('Updated file info text');
+            }
+        }
+
         // Close modals when clicking outside
         window.addEventListener('click', function(event) {
-            const modals = ['orderDetailsModal', 'createOrderModal', 'uploadResultModal'];
+            const modals = ['orderDetailsModal', 'uploadResultModal', 'quickUploadModal'];
             modals.forEach(modalId => {
                 const modal = document.getElementById(modalId);
                 if (event.target === modal) {

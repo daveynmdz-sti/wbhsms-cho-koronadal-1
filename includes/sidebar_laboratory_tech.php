@@ -122,30 +122,6 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'laboratory_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-flask"></i> Laboratory Management
         </a>
-        <a href="<?= $nav_base ?>management/laboratory_tech/test_requests.php"
-            class="<?= $activePage === 'test_requests' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-vial"></i> Test Requests
-        </a>
-        <a href="<?= $nav_base ?>management/laboratory_tech/specimen_collection.php"
-            class="<?= $activePage === 'specimen_collection' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-microscope"></i> Specimen Collection
-        </a>
-        <a href="<?= $nav_base ?>management/laboratory_tech/test_results.php"
-            class="<?= $activePage === 'test_results' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-clipboard-check"></i> Test Results
-        </a>
-        <a href="<?= $nav_base ?>management/laboratory_tech/equipment_maintenance.php"
-            class="<?= $activePage === 'equipment' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-tools"></i> Equipment
-        </a>
-        <a href="<?= $nav_base ?>management/laboratory_tech/quality_control.php"
-            class="<?= $activePage === 'quality_control' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-shield-alt"></i> Quality Control
-        </a>
-        <a href="<?= $nav_base ?>management/laboratory_tech/inventory.php"
-            class="<?= $activePage === 'inventory' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-boxes"></i> Inventory
-        </a>
         <a href="<?= $nav_base ?>management/laboratory_tech/reports.php"
             class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-chart-bar"></i> Reports
