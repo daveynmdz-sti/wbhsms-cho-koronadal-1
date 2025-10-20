@@ -1,4 +1,7 @@
 <?php
+// Start output buffering to prevent header issues
+ob_start();
+
 // Include employee session configuration
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
@@ -108,13 +111,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($medications as $medication) {
                 if (empty(trim($medication['medication_name']))) continue;
                 
+                // Store trimmed values in variables for bind_param reference
+                $med_name = trim($medication['medication_name']);
+                $med_dosage = trim($medication['dosage'] ?? '');
+                $med_frequency = trim($medication['frequency'] ?? '');
+                $med_duration = trim($medication['duration'] ?? '');
+                $med_instructions = trim($medication['instructions'] ?? '');
+                
                 $medication_stmt->bind_param("isssss",
                     $prescription_id,
-                    trim($medication['medication_name']),
-                    trim($medication['dosage'] ?? ''),
-                    trim($medication['frequency'] ?? ''),
-                    trim($medication['duration'] ?? ''),
-                    trim($medication['instructions'] ?? '')
+                    $med_name,
+                    $med_dosage,
+                    $med_frequency,
+                    $med_duration,
+                    $med_instructions
                 );
                 
                 if (!$medication_stmt->execute()) {
@@ -124,6 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $conn->commit();
             $_SESSION['success_message'] = "Prescription created successfully for " . $patient['first_name'] . " " . $patient['last_name'];
+            
+            // Clean output buffer before redirect
+            ob_end_clean();
             header("Location: prescription_management.php");
             exit();
             
