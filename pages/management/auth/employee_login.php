@@ -6,6 +6,9 @@ ini_set('display_errors', '1');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/logs/employee_login_errors.log');
 
+// Start output buffering to prevent header issues
+ob_start();
+
 // Log every request to help debug redirect issues
 error_log('Login page accessed - Request data: ' . json_encode([
     'SESSION' => $_SESSION ?? 'none', 
@@ -64,6 +67,7 @@ if (!empty($_SESSION['employee_id'])) {
             // Debug log
             error_log('Employee login - Redirecting user to role dashboard: ' . $role . ' -> ' . $redirect);
             
+            ob_end_clean(); // Clean output buffer before redirect
             header('Location: ' . $redirect);
             exit;
         }
@@ -77,6 +81,7 @@ if (isset($_GET['logged_out'])) {
 }
 if (isset($_GET['expired'])) {
     $_SESSION['flash'] = array('type' => 'error', 'msg' => 'Your session expired. Please log in again.');
+    ob_end_clean(); // Clean output buffer before redirect
     header('Location: employee_login.php');
     exit;
 }
@@ -304,6 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Simplified dashboard redirection
             error_log('[employee_login] Successful login for ' . $employee_number . ' with role ' . $role);
             $redirectPath = '../' . $role . '/dashboard.php';
+            ob_end_clean(); // Clean output buffer before redirect
             header('Location: ' . $redirectPath);
             exit();
         } else {
@@ -325,6 +331,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? ['type' => 'error', 'msg' => $error] : null);
+
+// End output buffering and flush content
+ob_end_flush();
 ?>
 <!DOCTYPE html>
 <html lang="en">
