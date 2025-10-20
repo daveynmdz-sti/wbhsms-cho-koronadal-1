@@ -1,9 +1,19 @@
 <?php
+// Ensure output buffering is active (but don't create unnecessary nested buffers)
+if (ob_get_level() === 0) {
+    ob_start();
+}
+
 // Include necessary configuration and session handling
 // Use absolute path resolution for API files
 $root_path = dirname(__DIR__); // API is one level down from root
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
+
+// Clean any output buffer before sending JSON
+if (ob_get_level()) {
+    ob_clean();
+}
 
 // Set JSON response headers
 header('Content-Type: application/json');

@@ -1,4 +1,9 @@
 <?php
+// Ensure output buffering is active (but don't create unnecessary nested buffers)
+if (ob_get_level() === 0) {
+    ob_start();
+}
+
 // Include employee session configuration
 // Use absolute path resolution
 $root_path = dirname(dirname(__DIR__));
@@ -1901,8 +1906,8 @@ try {
 
         // Function to automatically update prescription status
         function updatePrescriptionStatusAutomatically(prescriptionId, newStatus, rowElement) {
-            // Use absolute path to avoid any relative path issues
-            const apiPath = '/wbhsms-cho-koronadal-1/api/update_prescription_status.php';
+            // Use relative path from prescription-management directory
+            const apiPath = '../../api/update_prescription_status.php';
             
             console.log(`Calling API: ${apiPath} for prescription ${prescriptionId} -> ${newStatus}`);
             
