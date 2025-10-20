@@ -17,15 +17,27 @@ if (!isset($_SESSION['employee_id'])) {
 // Set active page for sidebar highlighting
 $activePage = 'prescription_management';
 
-// Define role-based permissions for prescription management
-$canViewPrescriptions = in_array($_SESSION['role'], ['admin', 'doctor', 'nurse', 'pharmacist']);
-$canDispensePrescriptions = $_SESSION['role'] === 'pharmacist' || $_SESSION['role'] === 'admin';
-$canCreatePrescriptions = in_array($_SESSION['role'], ['admin', 'doctor', 'pharmacist']);
-// Role IDs: 1 = Admin, 9 = Pharmacist
-$canUpdateMedications = isset($_SESSION['role_id']) && in_array($_SESSION['role_id'], [1, 9]);
+// Define role-based permissions for prescription management using role_id
+$canViewPrescriptions = in_array($_SESSION['role_id'], [1, 2, 3, 4]); // admin, doctor, nurse, pharmacist
+$canDispensePrescriptions = in_array($_SESSION['role_id'], [1, 4]); // admin, pharmacist
+$canCreatePrescriptions = in_array($_SESSION['role_id'], [1, 2, 4]); // admin, doctor, pharmacist
+$canUpdateMedications = in_array($_SESSION['role_id'], [1, 4]); // admin, pharmacist
 
 if (!$canViewPrescriptions) {
-    $role = $_SESSION['role'];
+    $role_id = $_SESSION['role_id'];
+    // Map role_id to role name for redirect
+    $roleMap = [
+        1 => 'admin',
+        2 => 'doctor', 
+        3 => 'nurse',
+        4 => 'pharmacist',
+        5 => 'dho',
+        6 => 'bhw',
+        7 => 'records_officer',
+        8 => 'cashier',
+        9 => 'laboratory_tech'
+    ];
+    $role = $roleMap[$role_id] ?? 'employee';
     header("Location: ../management/$role/dashboard.php");
     exit();
 }
@@ -39,21 +51,44 @@ $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $recordsPerPage = 15;
 $offset = ($page - 1) * $recordsPerPage;
 
-// Check if prescriptions table exists, create basic structure assumption
-// Note: This assumes a prescriptions table structure - adjust based on actual database schema
+// Check if overall_status column exists, if not use regular status
+$checkColumnSql = "SHOW COLUMNS FROM prescriptions LIKE 'overall_status'";
+$columnResult = $conn->query($checkColumnSql);
+$hasOverallStatus = $columnResult->num_rows > 0;
+
+// Fetch prescriptions with patient information and medication counts
+$statusColumn = $hasOverallStatus ? 'p.overall_status' : 'p.status';
 $prescriptionsSql = "SELECT p.prescription_id, p.patient_id, 
                      p.prescription_date, 
-                     p.status, p.prescribed_by_employee_id, 
+                     p.status, 
+                     $statusColumn as overall_status,
+                     p.prescribed_by_employee_id, 
                      p.remarks,
                      pt.first_name, pt.last_name, pt.middle_name, 
                      COALESCE(pt.username, pt.patient_id) as patient_id_display, 
                      b.barangay_name as barangay,
-                     e.first_name as prescribed_by_first_name, e.last_name as prescribed_by_last_name
+                     e.first_name as prescribed_by_first_name, e.last_name as prescribed_by_last_name,
+                     COUNT(pm.prescribed_medication_id) as total_medications,
+                     SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) as dispensed_medications
               FROM prescriptions p
               LEFT JOIN patients pt ON p.patient_id = pt.patient_id
               LEFT JOIN barangay b ON pt.barangay_id = b.barangay_id
               LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
-              WHERE COALESCE(p.status, 'active') != 'cancelled'";
+              LEFT JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id
+              WHERE (
+                  -- Show today's prescriptions (all statuses)
+                  DATE(p.prescription_date) = CURDATE() 
+                  OR 
+                  -- Show past prescriptions only if they have pending medications
+                  (DATE(p.prescription_date) < CURDATE() AND EXISTS (
+                      SELECT 1 FROM prescribed_medications pm_check 
+                      WHERE pm_check.prescription_id = p.prescription_id 
+                      AND pm_check.status = 'pending'
+                  ))
+                  OR
+                  -- Always show active prescriptions regardless of date (fallback for status filter)
+                  $statusColumn = 'active'
+              )";
 
 $params = [];
 $types = "";
@@ -72,13 +107,9 @@ if (!empty($barangayFilter)) {
 }
 
 if (!empty($statusFilter)) {
-    if ($statusFilter === 'active') {
-        $prescriptionsSql .= " AND COALESCE(p.status, 'active') = 'active'";
-    } else {
-        $prescriptionsSql .= " AND p.status = ?";
-        array_push($params, $statusFilter);
-        $types .= "s";
-    }
+    $prescriptionsSql .= " AND $statusColumn = ?";
+    array_push($params, $statusFilter);
+    $types .= "s";
 }
 
 if (!empty($dateFilter)) {
@@ -87,7 +118,8 @@ if (!empty($dateFilter)) {
     $types .= "s";
 }
 
-$prescriptionsSql .= " ORDER BY p.prescription_date DESC 
+$prescriptionsSql .= " GROUP BY p.prescription_id 
+                       ORDER BY p.prescription_date DESC 
                        LIMIT ? OFFSET ?";
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
@@ -721,7 +753,7 @@ try {
         <div class="page-header">
             <h1><i class="fas fa-pills"></i> Prescription Management</h1>
             <?php if ($canCreatePrescriptions): ?>
-                <a href="#" class="btn btn-primary" onclick="openCreatePrescriptionModal(); return false;">
+                <a href="create_prescription_standalone.php" class="btn btn-primary">
                     <i class="fas fa-plus"></i> Create Prescription
                 </a>
             <?php endif; ?>
@@ -729,6 +761,23 @@ try {
 
         <!-- Success/Error Messages -->
         <div id="alertContainer"></div>
+        
+        <!-- Display server-side messages -->
+        <?php if (isset($_SESSION['success_message'])): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i> <?= htmlspecialchars($_SESSION['success_message']) ?>
+                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+            </div>
+            <?php unset($_SESSION['success_message']); ?>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['error_message'])): ?>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($_SESSION['error_message']) ?>
+                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+            </div>
+            <?php unset($_SESSION['error_message']); ?>
+        <?php endif; ?>
 
         <!-- Prescription Statistics -->
         <div class="stats-grid">
@@ -742,15 +791,23 @@ try {
             ];
 
             try {
+                $statsColumn = $hasOverallStatus ? 'overall_status' : 'status';
                 $stats_sql = "SELECT 
                                     COUNT(*) as total,
-                                    SUM(CASE WHEN COALESCE(status, 'active') = 'active' THEN 1 ELSE 0 END) as pending,
-                                    SUM(CASE WHEN COALESCE(status, 'active') IN ('issued', 'dispensed') THEN 1 ELSE 0 END) as dispensed,
-                                    SUM(CASE WHEN COALESCE(status, 'active') = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'active' THEN 1 ELSE 0 END) as pending,
+                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'issued' THEN 1 ELSE 0 END) as issued,
+                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'dispensed' THEN 1 ELSE 0 END) as dispensed,
+                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'cancelled' THEN 1 ELSE 0 END) as cancelled
                               FROM prescriptions WHERE DATE(prescription_date) >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)";
                 $stats_result = $conn->query($stats_sql);
                 if ($stats_result && $row = $stats_result->fetch_assoc()) {
-                    $prescription_stats = $row;
+                    $prescription_stats = [
+                        'total' => intval($row['total'] ?? 0),
+                        'pending' => intval($row['pending'] ?? 0),
+                        'issued' => intval($row['issued'] ?? 0),
+                        'dispensed' => intval($row['dispensed'] ?? 0),
+                        'cancelled' => intval($row['cancelled'] ?? 0)
+                    ];
                 }
             } catch (Exception $e) {
                 // Use default values if query fails (table doesn't exist)
@@ -767,14 +824,14 @@ try {
                 <div class="stat-label">Active</div>
             </div>
 
-            <div class="stat-card completed">
-                <div class="stat-number"><?= number_format($prescription_stats['dispensed']) ?></div>
+            <div class="stat-card active">
+                <div class="stat-number"><?= number_format($prescription_stats['issued']) ?></div>
                 <div class="stat-label">Issued</div>
             </div>
 
-            <div class="stat-card voided">
-                <div class="stat-number"><?= number_format($prescription_stats['cancelled']) ?></div>
-                <div class="stat-label">Cancelled</div>
+            <div class="stat-card completed">
+                <div class="stat-number"><?= number_format($prescription_stats['dispensed']) ?></div>
+                <div class="stat-label">Dispensed</div>
             </div>
         </div>
 
@@ -840,8 +897,9 @@ try {
                             <tr>
                                 <th>Prescription ID</th>
                                 <th>Patient Name</th>
-                                <th>Prescribing Doctor</th>
                                 <th>Date Prescribed</th>
+                                <th>Medications</th>
+                                <th>Progress</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -851,8 +909,9 @@ try {
                                 <?php
                                 $patientName = trim($prescription['first_name'] . ' ' . $prescription['middle_name'] . ' ' . $prescription['last_name']);
                                 $doctorName = trim($prescription['prescribed_by_first_name'] . ' ' . $prescription['prescribed_by_last_name']);
+                                $progressPercent = $prescription['total_medications'] > 0 ? round(($prescription['dispensed_medications'] / $prescription['total_medications']) * 100) : 0;
                                 ?>
-                                <tr>
+                                <tr data-prescription-id="<?= $prescription['prescription_id'] ?>" data-dispensed="<?= $prescription['dispensed_medications'] ?>" data-total="<?= $prescription['total_medications'] ?>" data-current-status="<?= $prescription['overall_status'] ?>">
                                     <td>
                                         <strong>RX-<?= sprintf('%06d', $prescription['prescription_id']) ?></strong>
                                     </td>
@@ -860,13 +919,17 @@ try {
                                         <strong><?= htmlspecialchars($patientName) ?></strong><br>
                                         <small>ID: <?= htmlspecialchars($prescription['patient_id_display']) ?></small>
                                     </td>
-                                    <td>
-                                        <strong><?= htmlspecialchars($doctorName ?: 'Unknown') ?></strong>
-                                    </td>
                                     <td><?= date('M d, Y', strtotime($prescription['prescription_date'])) ?></td>
+                                    <td><?= $prescription['total_medications'] ?> medication(s)</td>
                                     <td>
-                                        <span class="status-badge status-<?= $prescription['status'] ?>">
-                                            <?= ucfirst(str_replace('_', ' ', $prescription['status'])) ?>
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: <?= $progressPercent ?>%"></div>
+                                        </div>
+                                        <small class="progress-text"><?= $prescription['dispensed_medications'] ?>/<?= $prescription['total_medications'] ?></small>
+                                    </td>
+                                    <td>
+                                        <span class="status-badge status-<?= $prescription['overall_status'] ?>">
+                                            <?= ucfirst(str_replace('_', ' ', $prescription['overall_status'])) ?>
                                         </span>
                                     </td>
                                     <td>
@@ -926,9 +989,6 @@ try {
                                     <td>
                                         <button class="btn btn-sm btn-primary" onclick="viewDispensedPrescription(<?= $dispensed['prescription_id'] ?>)">
                                             <i class="fas fa-eye"></i> View
-                                        </button>
-                                        <button class="btn btn-sm btn-success" onclick="printPrescription(<?= $dispensed['prescription_id'] ?>)">
-                                            <i class="fas fa-print"></i> Print
                                         </button>
                                     </td>
                                 </tr>
@@ -1774,6 +1834,143 @@ try {
                 originalCloseModal(modalId);
             }
         };
+
+        // Automatic Status Update Functions for Prescriptions
+        function checkAndUpdatePrescriptionStatuses() {
+            console.log('=== Starting Prescription Status Check ===');
+            
+            // Get all prescription rows with data attributes
+            const prescriptionRows = document.querySelectorAll('tbody tr[data-prescription-id]');
+            console.log(`Found ${prescriptionRows.length} prescription rows`);
+            
+            prescriptionRows.forEach((row, index) => {
+                const prescriptionId = row.getAttribute('data-prescription-id');
+                const dispensed = parseInt(row.getAttribute('data-dispensed'));
+                const total = parseInt(row.getAttribute('data-total'));
+                const currentStatus = row.getAttribute('data-current-status');
+                
+                console.log(`Row ${index + 1}:`, {
+                    prescriptionId,
+                    dispensed,
+                    total,
+                    currentStatus,
+                    dataAttributes: {
+                        'data-prescription-id': row.getAttribute('data-prescription-id'),
+                        'data-dispensed': row.getAttribute('data-dispensed'),
+                        'data-total': row.getAttribute('data-total'),
+                        'data-current-status': row.getAttribute('data-current-status')
+                    }
+                });
+                
+                if (!prescriptionId || isNaN(dispensed) || isNaN(total)) {
+                    console.log(`Skipping row ${index + 1} - missing or invalid data`);
+                    return;
+                }
+                
+                let shouldUpdateTo = null;
+                
+                // Core logic: Only update to dispensed when ALL medications are dispensed
+                if (dispensed === total && total > 0 && currentStatus !== 'dispensed') {
+                    shouldUpdateTo = 'dispensed';
+                    console.log(`Row ${index + 1}: Should update to dispensed (${dispensed}/${total} dispensed, current: ${currentStatus})`);
+                }
+                // If some dispensed but not all, update to issued only from active
+                else if (dispensed > 0 && dispensed < total && currentStatus === 'active') {
+                    shouldUpdateTo = 'issued';
+                    console.log(`Row ${index + 1}: Should update to issued (${dispensed}/${total} dispensed, current: ${currentStatus})`);
+                }
+                // If no medications dispensed, should remain active (no update needed)
+                else {
+                    console.log(`Row ${index + 1}: No update needed (${dispensed}/${total} dispensed, current: ${currentStatus})`);
+                }
+                
+                // Update status if needed
+                if (shouldUpdateTo) {
+                    console.log(`Auto-updating prescription ${prescriptionId} from ${currentStatus} to ${shouldUpdateTo}`);
+                    updatePrescriptionStatusAutomatically(prescriptionId, shouldUpdateTo, row);
+                } else {
+                    console.log(`No update required for prescription ${prescriptionId}`);
+                }
+            });
+            
+            console.log('=== Prescription Status Check Complete ===');
+        }
+
+        // Function to automatically update prescription status
+        function updatePrescriptionStatusAutomatically(prescriptionId, newStatus, rowElement) {
+            // Use absolute path to avoid any relative path issues
+            const apiPath = '/wbhsms-cho-koronadal-1/api/update_prescription_status.php';
+            
+            console.log(`Calling API: ${apiPath} for prescription ${prescriptionId} -> ${newStatus}`);
+            
+            fetch(apiPath, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    prescription_id: prescriptionId,
+                    overall_status: newStatus,
+                    remarks: 'Auto-updated based on medication dispensing status',
+                    auto_update: true
+                })
+            })
+            .then(response => {
+                console.log(`Response status: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
+                
+                // Check if response is actually JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    // Response is not JSON, probably an error page
+                    return response.text().then(text => {
+                        console.error('Server returned non-JSON response:', text.substring(0, 500));
+                        throw new Error(`Server error: Expected JSON but received ${contentType || 'unknown content type'}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('API Response:', data);
+                
+                if (data.success) {
+                    // Update the status badge in the UI immediately
+                    const statusBadge = rowElement.querySelector('.status-badge');
+                    if (statusBadge) {
+                        statusBadge.className = `status-badge status-${newStatus}`;
+                        statusBadge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1).replace('_', ' ');
+                    }
+                    
+                    // Update data attribute
+                    rowElement.setAttribute('data-current-status', newStatus);
+                    
+                    // Show success notification
+                    console.log(`✅ Prescription #${prescriptionId} status automatically updated to ${newStatus}`);
+                    
+                    // Optionally show a subtle notification
+                    showAlert(`Prescription #${prescriptionId} status automatically updated to ${newStatus.replace('_', ' ')}`, 'success');
+                    
+                } else {
+                    console.error('❌ Failed to update prescription status:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error updating prescription status:', error.message);
+                // Don't show error alerts for automatic updates to avoid spam
+                // But log the full error for debugging
+                console.error('Full error details:', error);
+            });
+        }
+
+        // Run automatic status check on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Run after a short delay to ensure page is fully loaded
+            setTimeout(checkAndUpdatePrescriptionStatuses, 1000);
+        });
+
+        // Re-run status check after modal operations (dispensing, etc.)
+        function refreshStatusChecks() {
+            setTimeout(checkAndUpdatePrescriptionStatuses, 500);
+        }
 
         // Handle server-side messages
         <?php if (isset($_SESSION['prescription_message'])): ?>

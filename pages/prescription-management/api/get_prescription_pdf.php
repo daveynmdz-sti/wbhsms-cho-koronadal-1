@@ -278,6 +278,25 @@ try {
         
         .btn:hover {
             background: #005a87;
+            transform: translateY(-1px);
+        }
+        
+        .btn[style*="background: #28a745"]:hover {
+            background: #218838 !important;
+        }
+        
+        .btn[style*="background: #6c757d"]:hover {
+            background: #545b62 !important;
+        }
+        
+        .btn[style*="background: #17a2b8"]:hover {
+            background: #138496 !important;
+        }
+        
+        /* PDF mode optimizations */
+        .pdf-mode {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
         }
     </style>
 </head>
@@ -285,7 +304,7 @@ try {
     <div class="prescription-container">
         <!-- Header -->
         <div class="header-section">
-            <img src="../../../assets/images/Nav_Logo.png" alt="City Health Office Logo" class="print-logo" onerror="this.style.display='none'">
+            <img src="../../../assets/images/Nav_LogoClosed.png" alt="City Health Office Logo" class="print-logo" onerror="this.style.display='none'">
             <div class="clinic-name">CITY HEALTH OFFICE OF KORONADAL</div>
             <div class="clinic-subtitle">Medical Prescription</div>
         </div>
@@ -394,18 +413,23 @@ try {
     <div class="download-actions no-print">
         <div style="background: #e7f3ff; border: 1px solid #b3d9ff; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
             <h4 style="margin: 0 0 10px 0; color: #0066cc;">
-                <i class="fas fa-info-circle"></i> How to Save as PDF
+                <i class="fas fa-info-circle"></i> How to Save this Prescription
             </h4>
             <p style="margin: 0; font-size: 14px;">
-                Click "Print / Save as PDF" below, then in the print dialog:
-                <br>• Select "Save as PDF" as destination
-                <br>• Choose your preferred settings
+                <strong>Option 1:</strong> Click "Direct Download" for instant PDF download (easiest)
+                <br><strong>Option 2:</strong> Click "Save as PDF" button to use print dialog
+                <br><strong>Option 3:</strong> Use keyboard shortcut Ctrl+S
+                <br><strong>Option 4:</strong> Click "Print" then select "Save as PDF" as destination
+                <br>• Choose your preferred settings in the print dialog
                 <br>• Click "Save" to download the PDF file
             </p>
         </div>
         
         <button class="btn" onclick="window.print()" style="font-size: 16px; padding: 12px 24px;">
-            <i class="fas fa-print"></i> Print / Save as PDF
+            <i class="fas fa-print"></i> Print
+        </button>
+        <button class="btn" onclick="downloadPrescription()" style="font-size: 16px; padding: 12px 24px; background: #17a2b8;">
+            <i class="fas fa-file-download"></i> Direct Download
         </button>
         <button class="btn" onclick="window.close()" style="background: #6c757d;">
             <i class="fas fa-times"></i> Close
@@ -416,11 +440,118 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <script>
+        // Direct download function - creates a downloadable HTML file
+        function downloadPrescription() {
+            try {
+                // Get the prescription content without buttons
+                const prescriptionContent = document.querySelector('.prescription-container').innerHTML;
+                const prescriptionId = <?= json_encode(sprintf("%06d", $prescription["prescription_id"])) ?>;
+                const patientName = <?= json_encode($patientName) ?>;
+                
+                // Create a clean HTML document for download
+                const htmlContent = '<!DOCTYPE html>' +
+                    '<html lang="en">' +
+                    '<head>' +
+                    '<meta charset="UTF-8">' +
+                    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+                    '<title>Prescription - RX-' + prescriptionId + '</title>' +
+                    '<style>' +
+                    '@page { size: A4; margin: 1in; }' +
+                    '@media print { body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }' +
+                    'body { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; margin: 0; padding: 20px; color: #000; background: white; }' +
+                    '.prescription-container { max-width: 800px; margin: 0 auto; background: white; border: 2px solid #000; padding: 20px; }' +
+                    '.header-section { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 15px; }' +
+                    '.print-logo { max-height: 80px; margin-bottom: 10px; }' +
+                    '.clinic-name { font-size: 24px; font-weight: bold; color: #003366; margin-bottom: 5px; }' +
+                    '.clinic-subtitle { font-size: 16px; color: #666; margin-bottom: 10px; }' +
+                    '.prescription-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; }' +
+                    '.patient-section, .doctor-section { margin-bottom: 25px; }' +
+                    '.section-title { font-weight: bold; font-size: 14px; color: #003366; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }' +
+                    '.patient-info, .doctor-info { margin-left: 20px; }' +
+                    '.info-row { margin-bottom: 5px; }' +
+                    '.medications-section { margin-bottom: 30px; }' +
+                    '.medications-table { width: 100%; border-collapse: collapse; margin-top: 10px; }' +
+                    '.medications-table th, .medications-table td { border: 1px solid #000; padding: 8px; text-align: left; font-size: 11px; }' +
+                    '.medications-table th { background-color: #f5f5f5; font-weight: bold; }' +
+                    '.clinical-info-print { margin-bottom: 25px; border: 1px solid #000; padding: 10px; }' +
+                    '.signatures-section { margin-top: 40px; display: flex; justify-content: space-between; }' +
+                    '.signature-block { text-align: center; width: 45%; }' +
+                    '.signature-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 5px; font-size: 10px; }' +
+                    '.rx-number { font-size: 18px; font-weight: bold; color: #d32f2f; }' +
+                    '</style>' +
+                    '</head>' +
+                    '<body>' +
+                    '<div class="prescription-container">' +
+                    prescriptionContent +
+                    '</div>' +
+                    '</body>' +
+                    '</html>';
+
+                // Create downloadable file
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Prescription_RX-' + prescriptionId + '_' + patientName.replace(/[^a-zA-Z0-9]/g, '_') + '.html';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                // Show success message
+                showDownloadSuccess();
+            } catch (error) {
+                console.error('Download error:', error);
+                alert('Error downloading prescription. Please try again.');
+            }
+        }
+        
+        // Show download success notification
+        function showDownloadSuccess() {
+            const notification = document.createElement('div');
+            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; background: #28a745; color: white; padding: 15px 20px; border-radius: 5px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); font-weight: bold; max-width: 300px;';
+            notification.innerHTML = '<i class="fas fa-check-circle"></i> Prescription downloaded successfully!<br><small>The file will auto-print when opened.</small>';
+            document.body.appendChild(notification);
+            
+            // Remove after 4 seconds
+            setTimeout(function() {
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s';
+                setTimeout(function() { 
+                    if (notification.parentNode) {
+                        document.body.removeChild(notification); 
+                    }
+                }, 300);
+            }, 4000);
+        }
+        
+        // Save as PDF function (using print dialog)
+        function savePDF() {
+            // Set print styles to optimize for PDF
+            document.body.classList.add('pdf-mode');
+            
+            // Trigger print dialog with focus on PDF saving
+            setTimeout(function() {
+                window.print();
+                document.body.classList.remove('pdf-mode');
+            }, 100);
+        }
+        
         // Add keyboard shortcut for printing
         document.addEventListener('keydown', function(e) {
             if (e.ctrlKey && e.key === 'p') {
                 e.preventDefault();
                 window.print();
+            }
+            // Add Ctrl+S for Save as PDF
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                savePDF();
+            }
+            // Add Ctrl+D for Direct Download
+            if (e.ctrlKey && e.key === 'd') {
+                e.preventDefault();
+                downloadPrescription();
             }
         });
         

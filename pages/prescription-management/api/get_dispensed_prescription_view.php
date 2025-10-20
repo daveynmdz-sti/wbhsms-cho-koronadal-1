@@ -322,12 +322,6 @@ try {
             </p>
         </div>
         
-        <div style="text-align: center; margin-top: 20px;">
-            <button class="btn btn-success" onclick="printPrescription(<?= $prescription_id ?>)">
-                <i class="fas fa-print"></i> Print Prescription
-            </button>
-        </div>
-        
         <?php else: ?>
         <div class="empty-state">
             <i class="fas fa-pills"></i>
