@@ -18,6 +18,9 @@ ini_set('display_errors', $debug ? '1' : '0');
 ini_set('display_startup_errors', $debug ? '1' : '0');
 error_reporting(E_ALL);
 
+// Start output buffering to prevent header issues
+ob_start();
+
 // ---- Session hardening ----
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
     || (($_SERVER['SERVER_PORT'] ?? null) == 443);
@@ -59,6 +62,7 @@ function back_with_error(string $msg, int $http_code = 303): void
     $_SESSION['registration_error'] = $msg;
     http_response_code($http_code);
     global $return_page;
+    ob_end_clean(); // Clean output buffer before redirect
     header('Location: ' . $return_page, true, $http_code);
     exit;
 }
@@ -369,6 +373,7 @@ try {
                 $_SESSION['dev_message'] = "DEVELOPMENT MODE: Your OTP is {$otp}";
             }
             
+            ob_end_clean(); // Clean output buffer before redirect
             header('Location: ' . $otp_page, true, 303);
             exit;
         }
@@ -404,6 +409,7 @@ try {
             $mail->send();
 
             // Success → redirect to OTP page
+            ob_end_clean(); // Clean output buffer before redirect
             header('Location: ' . $otp_page, true, 303);
             exit;
         } catch (Exception $e) {
