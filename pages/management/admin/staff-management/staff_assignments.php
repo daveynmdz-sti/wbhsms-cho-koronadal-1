@@ -8,7 +8,9 @@ require_once $root_path . '/config/session/employee_session.php';
 
 // If user is not logged in, bounce to login
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
-    header('Location: ../../auth/employee_login.php');
+    ob_end_clean();
+    error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
+    header('Location: /pages/management/auth/employee_login.php');
     exit();
 }
 

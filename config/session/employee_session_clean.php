@@ -74,8 +74,13 @@ function clear_employee_session() {
  * Redirect to login if not authenticated
  * @param string $login_url
  */
-function require_employee_login($login_url = '/wbhsms-cho-koronadal-1/pages/management/login.php') {
+function require_employee_login($login_url = null) {
     if (!is_employee_logged_in()) {
+        if ($login_url === null) {
+            $login_url = '/pages/management/auth/employee_login.php';
+        }
+        ob_end_clean();
+        error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
         header('Location: ' . $login_url);
         exit();
     }

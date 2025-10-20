@@ -1,6 +1,24 @@
 <?php
 ob_start(); // Start output buffering to prevent header issues
 
+/**
+ * Get application base URL for consistent redirects
+ * @return string
+ */
+if (!function_exists('getAppBase')) {
+    function getAppBase() {
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? 'https://' : 'http://';
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        
+        // Determine base path prefix up to (but not including) /pages/
+        $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
+        $pagesPos = strpos($requestUri, '/pages/');
+        $basePath = ($pagesPos !== false) ? substr($requestUri, 0, $pagesPos) : '';
+        
+        return $protocol . $host . $basePath . '/';
+    }
+}
+
 // Employee session configuration
 session_name('EMPLOYEE_SESSID');
 
@@ -74,8 +92,13 @@ function clear_employee_session() {
  * Redirect to login if not authenticated
  * @param string $login_url
  */
-function require_employee_login($login_url = '/wbhsms-cho-koronadal-1/pages/management/login.php') {
+function require_employee_login($login_url = null) {
     if (!is_employee_logged_in()) {
+        if ($login_url === null) {
+            $login_url = getAppBase() . 'pages/management/auth/employee_login.php';
+        }
+        ob_end_clean();
+        error_log('Redirecting to employee_login (via getAppBase) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
         header('Location: ' . $login_url);
         exit();
     }

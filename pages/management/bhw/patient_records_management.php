@@ -10,7 +10,9 @@ $assets_path = '../../../assets';
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id'])) {
-    header("Location: ../../auth/employee_login.php");
+    ob_end_clean();
+    error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
+    header("Location: /pages/management/auth/employee_login.php");
     exit();
 }
 
