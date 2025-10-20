@@ -9,6 +9,9 @@ if (!$debug) {
     ini_set('log_errors', '1');
 }
 
+// Start output buffering to prevent header issues
+ob_start();
+
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 
@@ -26,6 +29,7 @@ header('X-XSS-Protection: 1; mode=block');
 
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
+    ob_end_clean(); // Clean output buffer before redirect
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
@@ -151,6 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'msg' => 'Identity verified! OTP sent to ' . $employee['email'] . '. Check your inbox and enter the code below.'
                 ];
                 
+                ob_end_clean(); // Clean output buffer before redirect
                 header('Location: employee_forgot_password_otp.php');
                 exit;
                 
@@ -165,6 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'type' => 'success', 
                 'msg' => 'Identity verified! OTP sent to ' . $employee['email'] . '. Check your inbox and enter the code below.'
             ];
+            ob_end_clean(); // Clean output buffer before redirect
             header('Location: employee_forgot_password_otp.php');
             exit;
             
@@ -186,6 +192,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? array('type' => 'error', 'msg' => $error) : (!empty($success) ? array('type' => 'success', 'msg' => $success) : null));
+
+// End output buffering and flush content
+ob_end_flush();
 ?>
 <!DOCTYPE html>
 <html lang="en">

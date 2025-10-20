@@ -2,20 +2,47 @@
 // registration_otp.php
 session_start();
 
+// Start output buffering to prevent header issues
+ob_start();
+
 // Use absolute path resolution
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/db.php'; // must set $pdo (PDO, ERRMODE_EXCEPTION recommended)
+
+// Helper: Map form philhealth_type values to database ENUM values
+function mapPhilhealthType($formValue) {
+    $mapping = [
+        'Employees' => 'Employed Private',
+        'Kasambahay' => 'Employed Private',
+        'Self-earning' => 'Individual Paying', 
+        'OFW' => 'OFW',
+        'Filipinos_abroad' => 'Individual Paying',
+        'Lifetime' => 'Lifetime Member',
+        'Indigents' => 'Indigent',
+        '4Ps' => 'Sponsored',
+        'Senior_citizens' => 'Senior Citizen',
+        'PWD' => 'PWD',
+        'SK_officials' => 'Employed Government',
+        'LGU_sponsored' => 'Sponsored', 
+        'No_capacity' => 'Indigent',
+        'Solo_parent' => 'Sponsored'
+    ];
+    
+    return $mapping[$formValue] ?? null;
+}
 
 // Helper: respond JSON for AJAX, otherwise redirect with a flash-style message
 function respond($isAjax, $ok, $payload = [])
 {
     if ($isAjax) {
+        ob_end_clean(); // Clean output buffer before JSON response
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(array_merge(['success' => $ok], $payload));
         exit;
     } else {
         // For non-AJAX: put message in session and redirect back to OTP page or success page
         $_SESSION['flash'] = $payload['message'] ?? ($ok ? 'OK' : 'Error');
+        ob_end_clean(); // Clean output buffer before redirect
         if ($ok && !empty($payload['redirect'])) {
             header('Location: ' . $payload['redirect']);
         } else {
@@ -56,6 +83,12 @@ if ($isPost) {
     // ---- OTP valid -> insert patient
     $regData = $_SESSION['registration'];
     $hashedPassword = password_hash($regData['password'], PASSWORD_DEFAULT);
+    
+    // Map philhealth_type from form values to database ENUM values
+    $mappedPhilhealthType = null;
+    if (!empty($regData['philhealth_type'])) {
+        $mappedPhilhealthType = mapPhilhealthType($regData['philhealth_type']);
+    }
 
     try {
         // Email uniqueness check removed to allow multiple patients with the same email
@@ -82,7 +115,7 @@ if ($isPost) {
             $regData['isPWD']       ?? 0,
             $regData['pwd_id_number'] ?? null,
             $regData['isPhilHealth'] ?? 0,
-            $regData['philhealth_type'] ?? null,
+            $mappedPhilhealthType,  // Use mapped value instead of raw form value
             $regData['philhealth_id_number'] ?? null,
             $regData['isSenior']    ?? 0,
             $regData['senior_citizen_id'] ?? null
@@ -156,6 +189,8 @@ if ($isPost) {
 }
 
 // For non-AJAX requests, just render the HTML below (no JSON output)
+// End output buffering and flush content
+ob_end_flush();
 ?>
 
 <!DOCTYPE html>
