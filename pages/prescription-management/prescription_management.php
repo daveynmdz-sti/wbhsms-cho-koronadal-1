@@ -45,7 +45,7 @@ if (!$canViewPrescriptions) {
 // Handle AJAX requests for search and filter
 $searchQuery = isset($_GET['search']) ? $_GET['search'] : '';
 $barangayFilter = isset($_GET['barangay']) ? $_GET['barangay'] : '';
-$statusFilter = isset($_GET['status']) ? $_GET['status'] : 'active';  // Default to active prescriptions
+$statusFilter = isset($_GET['status']) ? $_GET['status'] : 'issued';  // Default to issued prescriptions
 $dateFilter = isset($_GET['date']) ? $_GET['date'] : '';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $recordsPerPage = 15;
@@ -86,7 +86,10 @@ $prescriptionsSql = "SELECT p.prescription_id, p.patient_id,
                       AND pm_check.status = 'pending'
                   ))
                   OR
-                  -- Always show active prescriptions regardless of date (fallback for status filter)
+                  -- Always show issued prescriptions regardless of date (fallback for status filter)
+                  $statusColumn = 'issued'
+                  OR
+                  -- Keep showing active prescriptions for backward compatibility
                   $statusColumn = 'active'
               )";
 
@@ -1356,7 +1359,7 @@ try {
         function clearFilters() {
             document.getElementById('searchPrescriptions').value = '';
             document.getElementById('barangayFilter').value = '';
-            document.getElementById('statusFilter').value = 'active'; // Default to active
+            document.getElementById('statusFilter').value = 'issued'; // Default to issued
             document.getElementById('dateFilter').value = '';
 
             // Redirect to page without any filters

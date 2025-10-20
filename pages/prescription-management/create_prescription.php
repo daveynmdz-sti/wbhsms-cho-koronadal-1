@@ -150,8 +150,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_prescription']
                 prescribed_by_employee_id, 
                 prescription_date, 
                 status,
+                overall_status,
                 remarks
-            ) VALUES (?, ?, ?, ?, ?, NOW(), 'active', 'Prescription created by system')
+            ) VALUES (?, ?, ?, ?, ?, NOW(), 'issued', 'issued', 'Prescription created by system')
         ");
         
         if (!$prescription_stmt) {

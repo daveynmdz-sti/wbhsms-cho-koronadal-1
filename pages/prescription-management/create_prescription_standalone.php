@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     overall_status,
                     remarks,
                     created_at
-                ) VALUES (?, ?, NOW(), 'active', 'active', ?, NOW())
+                ) VALUES (?, ?, NOW(), 'issued', 'issued', ?, NOW())
             ");
             
             $prescription_stmt->bind_param("iis", $patient_id, $_SESSION['employee_id'], $remarks);
