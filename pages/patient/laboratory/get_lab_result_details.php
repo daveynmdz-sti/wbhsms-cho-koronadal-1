@@ -25,23 +25,13 @@ if (!$result_id) {
     exit;
 }
 
-$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+// Get patient information from session - patient_id is the numeric ID
+$patient_id = $_SESSION['patient_id']; // This is the numeric patient ID from login
+$patient_username = $_SESSION['patient_username'] ?? ''; // This is the username like "P000007"
 
-// Get the actual numeric patient_id from the username
-$patient_id = null;
-try {
-    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
-    $patientStmt->bind_param("s", $patient_username);
-    $patientStmt->execute();
-    $patientResult = $patientStmt->get_result()->fetch_assoc();
-    if (!$patientResult) {
-        echo json_encode(['success' => false, 'message' => 'Patient not found']);
-        exit;
-    }
-    $patient_id = $patientResult['patient_id'];
-    $patientStmt->close();
-} catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Database error']);
+// Validate that we have a valid numeric patient_id
+if (!$patient_id || !is_numeric($patient_id)) {
+    echo json_encode(['success' => false, 'message' => 'Invalid session data']);
     exit;
 }
 

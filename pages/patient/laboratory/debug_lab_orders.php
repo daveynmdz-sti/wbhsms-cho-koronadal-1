@@ -14,11 +14,22 @@ echo "<pre>" . print_r($_SESSION, true) . "</pre>";
 
 // Check if patient exists and get their info
 if (isset($_SESSION['patient_id'])) {
-    $patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+    // Determine if patient_id is numeric (new) or string username (old format)
+    $patient_session_id = $_SESSION['patient_id'];
+    $patient_username = $_SESSION['patient_username'] ?? '';
     
     echo "<h2>2. Patient Information</h2>";
-    $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE username = ?");
-    $stmt->bind_param("s", $patient_username);
+    echo "<p><strong>Session Format:</strong> " . (is_numeric($patient_session_id) ? "New (numeric ID)" : "Old (username)") . "</p>";
+    
+    if (is_numeric($patient_session_id)) {
+        // New format: patient_id is numeric
+        $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE patient_id = ?");
+        $stmt->bind_param("i", $patient_session_id);
+    } else {
+        // Old format: patient_id contains username
+        $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE username = ?");
+        $stmt->bind_param("s", $patient_session_id);
+    }
     $stmt->execute();
     $patient = $stmt->get_result()->fetch_assoc();
     

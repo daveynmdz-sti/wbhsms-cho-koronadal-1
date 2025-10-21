@@ -28,14 +28,21 @@ if ($conn) {
 
 // If we have a patient_id, let's test everything
 if (isset($_SESSION['patient_id'])) {
-    $patient_username = $_SESSION['patient_id'];
-    echo "<p><strong>Testing with Patient Username:</strong> " . $patient_username . "</p>";
+    $patient_session_id = $_SESSION['patient_id'];
+    echo "<p><strong>Testing with Patient Session ID:</strong> " . $patient_session_id . " (" . (is_numeric($patient_session_id) ? "numeric" : "username") . ")</p>";
     
     // Test 1: Check if patient exists
     echo "<h2>3. Patient Verification</h2>";
     try {
-        $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE username = ?");
-        $stmt->bind_param("s", $patient_username);
+        if (is_numeric($patient_session_id)) {
+            // New format: patient_id is numeric
+            $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE patient_id = ?");
+            $stmt->bind_param("i", $patient_session_id);
+        } else {
+            // Old format: patient_id contains username
+            $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE username = ?");
+            $stmt->bind_param("s", $patient_session_id);
+        }
         $stmt->execute();
         $patient = $stmt->get_result()->fetch_assoc();
         

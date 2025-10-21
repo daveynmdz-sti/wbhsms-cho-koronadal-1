@@ -15,25 +15,16 @@ require_once $root_path . '/config/db.php';
 // Include automatic status updater
 require_once $root_path . '/utils/automatic_status_updater.php';
 
-$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
-$patient_id = null;
+// Get patient information from session - patient_id is the numeric ID
+$patient_id = $_SESSION['patient_id']; // This is the numeric patient ID from login
+$patient_username = $_SESSION['patient_username'] ?? ''; // This is the username like "P000007"
 $message = '';
 $error = '';
 
-// Get the actual numeric patient_id from the username
-try {
-    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
-    $patientStmt->bind_param("s", $patient_username);
-    $patientStmt->execute();
-    $patientResult = $patientStmt->get_result()->fetch_assoc();
-    if (!$patientResult) {
-        $error = "Patient not found. Please contact administrator.";
-    } else {
-        $patient_id = $patientResult['patient_id'];
-    }
-    $patientStmt->close();
-} catch (Exception $e) {
-    $error = "Database error occurred: " . $e->getMessage();
+// Validate that we have a valid patient_id
+if (!$patient_id || !is_numeric($patient_id)) {
+    $error = "Invalid session data. Please log in again.";
+    $patient_id = null;
 }
 
 // Only proceed if we have a valid patient_id

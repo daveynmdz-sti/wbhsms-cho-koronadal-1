@@ -16,22 +16,13 @@ $root_path = dirname(dirname(dirname(__DIR__)));
 // Include database connection
 require_once $root_path . '/config/db.php';
 
-$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+// Get patient information from session - patient_id is the numeric ID
+$patient_id = $_SESSION['patient_id']; // This is the numeric patient ID from login
+$patient_username = $_SESSION['patient_username'] ?? ''; // This is the username like "P000007"
 
-// Get the actual numeric patient_id from the username
-$patient_id = null;
-try {
-    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
-    $patientStmt->bind_param("s", $patient_username);
-    $patientStmt->execute();
-    $patientResult = $patientStmt->get_result()->fetch_assoc();
-    if (!$patientResult) {
-        die('Patient not found');
-    }
-    $patient_id = $patientResult['patient_id'];
-    $patientStmt->close();
-} catch (Exception $e) {
-    die('Database error');
+// Validate that we have a valid numeric patient_id
+if (!$patient_id || !is_numeric($patient_id)) {
+    die('Invalid session data');
 }
 
 try {

@@ -12,11 +12,16 @@ echo "<pre>" . print_r($_SESSION, true) . "</pre>";
 require_once $root_path . '/config/db.php';
 
 if (isset($_SESSION['patient_id'])) {
-    $patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+    $patient_session_id = $_SESSION['patient_id'];
     
-    // Check if this patient exists
-    $stmt = $conn->prepare("SELECT * FROM patients WHERE username = ?");
-    $stmt->bind_param("s", $patient_username);
+    // Check if this patient exists - handle both old and new session formats
+    if (is_numeric($patient_session_id)) {
+        $stmt = $conn->prepare("SELECT * FROM patients WHERE patient_id = ?");
+        $stmt->bind_param("i", $patient_session_id);
+    } else {
+        $stmt = $conn->prepare("SELECT * FROM patients WHERE username = ?");
+        $stmt->bind_param("s", $patient_session_id);
+    }
     $stmt->execute();
     $patient = $stmt->get_result()->fetch_assoc();
     
