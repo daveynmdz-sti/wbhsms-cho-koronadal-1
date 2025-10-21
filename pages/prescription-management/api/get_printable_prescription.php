@@ -100,7 +100,7 @@ try {
 <div class="print-prescription">
     <!-- Header with CHO Logo and Information -->
     <div class="print-header">
-        <img src="../../../assets/images/Nav_Logo_Dark.png" alt="City Health Office Logo" class="print-logo" onerror="this.style.display='none'">
+        <img src="../../../assets/images/Nav_LogoClosed.png" alt="City Health Office Logo" class="print-logo" onerror="this.style.display='none'">
         <h2>CITY HEALTH OFFICE - KORONADAL</h2>
         <p>9VP8+8GX, Koronadal, South Cotabato</p>
         <p>Phone: (083) 228-xxxx | Email: cho.koronadal@example.com</p>

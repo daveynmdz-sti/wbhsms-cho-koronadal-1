@@ -17,7 +17,16 @@ function loadEnvFile($envPath) {
 }
 
 // Auto-detect environment
-$is_local = ($_SERVER['SERVER_NAME'] === 'localhost' || $_SERVER['SERVER_NAME'] === '127.0.0.1' || strpos($_SERVER['SERVER_NAME'], 'localhost') !== false);
+$is_local = ($_SERVER['SERVER_NAME'] === 'localhost' || 
+            $_SERVER['SERVER_NAME'] === '127.0.0.1' || 
+            strpos($_SERVER['SERVER_NAME'], 'localhost') !== false ||
+            $_SERVER['HTTP_HOST'] === 'localhost' ||
+            (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'localhost') !== false));
+
+// Check if we're on production server (your specific IP)
+$is_production = (isset($_SERVER['SERVER_ADDR']) && $_SERVER['SERVER_ADDR'] === '31.97.106.60') ||
+                 (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], '31.97.106.60') !== false) ||
+                 (getenv('ENVIRONMENT') === 'production');
 
 // Load .env files - .env.local overrides .env for local development
 if (!getenv('DB_HOST')) {
@@ -35,7 +44,14 @@ if (!getenv('DB_HOST')) {
 }
 
 // Set environment-specific defaults
-if ($is_local) {
+if ($is_production) {
+    // Production environment - your specific server
+    $host = getenv('DB_HOST') ?: '31.97.106.60';
+    $port = getenv('DB_PORT') ?: '3307';
+    $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
+    $user = getenv('DB_USERNAME') ?: 'root';
+    $pass = getenv('DB_PASSWORD') ?: '';
+} elseif ($is_local) {
     // Local XAMPP defaults
     $host = getenv('DB_HOST') ?: 'localhost';
     $port = getenv('DB_PORT') ?: '3306';
@@ -43,7 +59,7 @@ if ($is_local) {
     $user = getenv('DB_USERNAME') ?: 'root';
     $pass = getenv('DB_PASSWORD') ?: '';
 } else {
-    // Production environment
+    // Other environments
     $host = getenv('DB_HOST') ?: 'localhost';
     $port = getenv('DB_PORT') ?: '3306';
     $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';

@@ -1351,7 +1351,7 @@ try {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        displayOrderDetails(data.order);
+                        displayOrderDetails(data);
                     } else {
                         modalBody.innerHTML = `
                             <div class="error-state">
@@ -1389,7 +1389,7 @@ try {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        displayResultDetails(data.result);
+                        displayResultDetails(data);
                     } else {
                         modalBody.innerHTML = `
                             <div class="error-state">
