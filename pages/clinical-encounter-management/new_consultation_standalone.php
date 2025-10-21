@@ -833,6 +833,85 @@ if ($selected_patient_id) {
                 display: none;
             }
         }
+        
+        /* Redirect Overlay Styles */
+        .redirect-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        .redirect-content {
+            background: white;
+            padding: 3rem;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 90%;
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        .redirect-content .loading i {
+            color: #28a745;
+            font-size: 3em;
+            margin-bottom: 1rem;
+            animation: spin 2s linear infinite;
+        }
+        
+        .redirect-content h3 {
+            color: #28a745;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+        
+        .redirect-content p {
+            color: #6c757d;
+            margin-bottom: 1.5rem;
+        }
+        
+        .countdown {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #495057;
+            border: 2px solid #28a745;
+        }
+        
+        .countdown span {
+            color: #28a745;
+            font-size: 1.2em;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideIn {
+            from { 
+                transform: translateY(-30px);
+                opacity: 0;
+            }
+            to { 
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 
@@ -885,6 +964,45 @@ if ($selected_patient_id) {
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i> <?= htmlspecialchars($success_message) ?>
                 </div>
+                
+                <!-- Loading Screen for Redirect -->
+                <div id="successRedirectOverlay" class="redirect-overlay">
+                    <div class="redirect-content">
+                        <div class="loading">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <h3>Consultation Created Successfully!</h3>
+                            <p>Redirecting you back to the main consultation page...</p>
+                            <div class="countdown">Redirecting in <span id="countdown">3</span> seconds</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <script>
+                    // Auto-redirect after successful consultation creation
+                    let countdownValue = 3;
+                    const countdownElement = document.getElementById('countdown');
+                    const overlay = document.getElementById('successRedirectOverlay');
+                    
+                    // Show the overlay immediately
+                    overlay.style.display = 'flex';
+                    
+                    // Start countdown
+                    const countdownInterval = setInterval(() => {
+                        countdownValue--;
+                        countdownElement.textContent = countdownValue;
+                        
+                        if (countdownValue <= 0) {
+                            clearInterval(countdownInterval);
+                            window.location.href = 'index.php';
+                        }
+                    }, 1000);
+                    
+                    // Allow manual click to redirect immediately
+                    overlay.addEventListener('click', () => {
+                        clearInterval(countdownInterval);
+                        window.location.href = 'index.php';
+                    });
+                </script>
             <?php endif; ?>
 
             <?php if (!empty($error_message)): ?>
