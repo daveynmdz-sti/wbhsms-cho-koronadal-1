@@ -44,10 +44,12 @@ try {
         SELECT p.*,
                CONCAT(e.first_name, ' ', e.last_name) as doctor_name,
                e.position, e.license_number,
-               a.appointment_date, a.appointment_time
+               a.appointment_date, a.appointment_time,
+               c.consultation_id, c.consultation_date, c.chief_complaint, c.diagnosis
         FROM prescriptions p
         LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
         LEFT JOIN appointments a ON p.appointment_id = a.appointment_id
+        LEFT JOIN consultations c ON p.consultation_id = c.consultation_id
         WHERE p.prescription_id = ? AND p.patient_id = ?
     ");
     $stmt->bind_param("ii", $prescription_id, $patient_id);

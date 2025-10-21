@@ -972,18 +972,36 @@ try {
 
         // View prescription details
         function viewPrescriptionDetails(prescriptionId) {
+            console.log('viewPrescriptionDetails called with ID:', prescriptionId);
             currentPrescriptionId = prescriptionId;
             const modal = document.getElementById('prescriptionModal');
             const modalBody = document.getElementById('prescriptionModalBody');
+            
+            if (!modal || !modalBody) {
+                console.error('Modal elements not found:', { modal, modalBody });
+                alert('Error: Modal elements not found. Please refresh the page.');
+                return;
+            }
+            
+            console.log('Modal elements found, showing modal');
             
             // Show loading state
             modalBody.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading prescription details...</div>';
             modal.style.display = 'block';
             
+            console.log('Fetching prescription details from:', `get_prescription_details.php?id=${prescriptionId}`);
+            
             // Fetch prescription details via AJAX
             fetch(`get_prescription_details.php?id=${prescriptionId}`)
-                .then(response => response.json())
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('Response data:', data);
                     if (data.success) {
                         displayPrescriptionDetails(data.prescription, data.medications);
                     } else {
@@ -1002,6 +1020,15 @@ try {
                         <div class="error-state">
                             <i class="fas fa-exclamation-triangle"></i>
                             <h3>Error Loading Prescription</h3>
+                            <p>Network error: ${error.message}</p>
+                        </div>
+                    `;
+                });
+        }
+                    modalBody.innerHTML = `
+                        <div class="error-state">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <h3>Error Loading Prescription</h3>
                             <p>Failed to load prescription details. Please try again.</p>
                         </div>
                     `;
@@ -1010,10 +1037,18 @@ try {
 
         // Display prescription details in modal
         function displayPrescriptionDetails(prescription, medications) {
+            console.log('displayPrescriptionDetails called with:', { prescription, medications });
             const modalBody = document.getElementById('prescriptionModalBody');
+            
+            if (!modalBody) {
+                console.error('Modal body not found');
+                return;
+            }
             
             const statusClass = prescription.status;
             const statusText = prescription.status.toUpperCase();
+            
+            console.log('Building modal HTML');
             
             modalBody.innerHTML = `
                 <div class="prescription-details">
@@ -1081,6 +1116,8 @@ try {
                     </div>
                 </div>
             `;
+            
+            console.log('Modal HTML updated successfully');
         }
 
         // Close prescription modal
@@ -1091,13 +1128,38 @@ try {
 
         // Print prescription
         function printPrescription(prescriptionId) {
-            window.open(`print_prescription.php?id=${prescriptionId}`, '_blank');
+            console.log('printPrescription called with ID:', prescriptionId);
+            
+            if (!prescriptionId) {
+                console.error('No prescription ID provided');
+                alert('Error: No prescription ID provided for printing.');
+                return;
+            }
+            
+            const printUrl = `print_prescription.php?id=${prescriptionId}`;
+            console.log('Opening print URL:', printUrl);
+            
+            // Open print page in new window
+            const printWindow = window.open(printUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+            
+            if (!printWindow) {
+                console.error('Popup blocked or failed to open');
+                alert('Print window was blocked. Please allow popups for this site and try again.');
+                return;
+            }
+            
+            // Focus on the print window
+            printWindow.focus();
         }
 
         // Print current prescription (from modal)
         function printCurrentPrescription() {
+            console.log('printCurrentPrescription called, currentPrescriptionId:', currentPrescriptionId);
             if (currentPrescriptionId) {
                 printPrescription(currentPrescriptionId);
+            } else {
+                console.error('No current prescription ID');
+                alert('Error: No prescription selected for printing.');
             }
         }
 
@@ -1108,20 +1170,92 @@ try {
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded - Initializing prescription page');
+            
+            // Check if critical elements exist
+            const modal = document.getElementById('prescriptionModal');
+            const modalBody = document.getElementById('prescriptionModalBody');
+            const prescriptionTable = document.querySelector('.prescription-table');
+            
+            console.log('Critical elements check:', {
+                modal: !!modal,
+                modalBody: !!modalBody,
+                prescriptionTable: !!prescriptionTable
+            });
+            
+            if (!modal || !modalBody) {
+                console.error('Critical modal elements missing!');
+            }
+            
             // Set default active filter
             const prescriptionTabs = document.querySelectorAll('.filter-tab');
             if (prescriptionTabs.length > 0) {
                 prescriptionTabs[0].classList.add('active');
+                console.log('Default filter tab activated');
             }
 
             // Close modal when clicking outside
             window.onclick = function(event) {
                 const modal = document.getElementById('prescriptionModal');
                 if (event.target === modal) {
+                    console.log('Closing modal due to outside click');
                     closePrescriptionModal();
                 }
             }
+            
+            console.log('Prescription page initialization complete');
         });
+
+        // Debug function for testing prescription functionality
+        window.debugPrescriptionPage = function() {
+            console.log('=== PRESCRIPTION PAGE DEBUG ===');
+            
+            const modal = document.getElementById('prescriptionModal');
+            const modalBody = document.getElementById('prescriptionModalBody');
+            const viewButtons = document.querySelectorAll('[onclick*="viewPrescriptionDetails"]');
+            const printButtons = document.querySelectorAll('[onclick*="printPrescription"]');
+            
+            console.log('Modal elements:', {
+                modal: !!modal,
+                modalBody: !!modalBody,
+                modalDisplay: modal ? modal.style.display : 'N/A'
+            });
+            
+            console.log('Action buttons:', {
+                viewButtons: viewButtons.length,
+                printButtons: printButtons.length
+            });
+            
+            if (viewButtons.length > 0) {
+                console.log('First view button onclick:', viewButtons[0].getAttribute('onclick'));
+            }
+            
+            if (printButtons.length > 0) {
+                console.log('First print button onclick:', printButtons[0].getAttribute('onclick'));
+            }
+            
+            console.log('Current prescription ID:', window.currentPrescriptionId || 'None');
+            
+            console.log('=== END DEBUG ===');
+            
+            return {
+                modalExists: !!modal,
+                modalBodyExists: !!modalBody,
+                viewButtonsCount: viewButtons.length,
+                printButtonsCount: printButtons.length,
+                currentPrescriptionId: window.currentPrescriptionId || null
+            };
+        };
+
+        // Test function to manually trigger view modal
+        window.testViewModal = function(prescriptionId) {
+            console.log('Testing view modal with ID:', prescriptionId);
+            if (prescriptionId) {
+                viewPrescriptionDetails(prescriptionId);
+            } else {
+                console.log('Please provide a prescription ID, e.g., testViewModal(1)');
+            }
+        };
     </script>
 
     <!-- Alert Styles -->

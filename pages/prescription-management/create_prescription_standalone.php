@@ -872,84 +872,258 @@ if ($search_query || $first_name || $last_name) {
     <script>
         let medicationCount = 1;
 
-        function addMedication() {
-            const container = document.getElementById('medications-container');
-            const newRow = document.createElement('div');
-            newRow.className = 'medication-row';
-            newRow.innerHTML = `
-                <div class="form-group">
-                    <input type="text" name="medications[${medicationCount}][medication_name]" placeholder="e.g., Paracetamol" required>
-                </div>
-                <div class="form-group">
-                    <input type="text" name="medications[${medicationCount}][dosage]" placeholder="e.g., 500mg">
-                </div>
-                <div class="form-group">
-                    <input type="text" name="medications[${medicationCount}][frequency]" placeholder="e.g., 3x daily">
-                </div>
-                <div class="form-group">
-                    <input type="text" name="medications[${medicationCount}][duration]" placeholder="e.g., 7 days">
-                </div>
-                <div class="form-group">
-                    <textarea name="medications[${medicationCount}][instructions]" placeholder="Additional instructions..."></textarea>
-                </div>
-                <div class="form-group">
-                    <button type="button" class="remove-medication" onclick="removeMedication(this)">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            `;
-            container.appendChild(newRow);
-            medicationCount++;
+        // Ensure DOM is fully loaded before executing functions
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM fully loaded');
             
-            // Show remove buttons for all rows when we have more than one
-            updateRemoveButtons();
+            // Initialize the page
+            initializePage();
+            
+            // Add form validation
+            const prescriptionForm = document.getElementById('prescriptionForm');
+            if (prescriptionForm) {
+                prescriptionForm.addEventListener('submit', validateForm);
+                console.log('Form validation listener added');
+            } else {
+                console.error('Prescription form not found!');
+            }
+
+            // Log critical elements for debugging
+            console.log('=== CRITICAL ELEMENTS CHECK ===');
+            console.log('medications-container:', document.getElementById('medications-container'));
+            console.log('prescriptionForm:', document.getElementById('prescriptionForm'));
+            console.log('selectedPatientId:', document.getElementById('selectedPatientId'));
+            console.log('=== END CRITICAL ELEMENTS CHECK ===');
+        });
+
+        function initializePage() {
+            try {
+                // Check if required elements exist
+                const container = document.getElementById('medications-container');
+                if (!container) {
+                    console.error('Critical Error: medications-container not found on page load');
+                    return;
+                }
+                
+                // Update remove buttons on initial load
+                updateRemoveButtons();
+                
+                console.log('Page initialized successfully');
+            } catch (error) {
+                console.error('Error initializing page:', error);
+            }
+        }
+
+        // Safe alert function with fallback
+        function safeAlert(message, type = 'info') {
+            try {
+                if (typeof showAlert === 'function') {
+                    showAlert(message, type);
+                } else {
+                    console.warn('showAlert function not available, using console.log');
+                    console.log(`[${type.toUpperCase()}] ${message}`);
+                    // Try native alert as last resort for critical errors
+                    if (type === 'error') {
+                        alert(message);
+                    }
+                }
+            } catch (error) {
+                console.error('Error showing alert:', error);
+                console.log(`[${type.toUpperCase()}] ${message}`);
+                // Try native alert as last resort
+                try {
+                    alert(message);
+                } catch (alertError) {
+                    console.error('Cannot show any alert:', alertError);
+                }
+            }
+        }
+
+        // Debug function for production troubleshooting
+        window.debugPrescriptionPage = function() {
+            console.log('=== PRESCRIPTION PAGE DEBUG INFO ===');
+            console.log('Medication count:', medicationCount);
+            
+            const container = document.getElementById('medications-container');
+            console.log('Medications container:', container);
+            console.log('Container children count:', container ? container.children.length : 'N/A');
+            
+            const form = document.getElementById('prescriptionForm');
+            console.log('Prescription form:', form);
+            
+            const medicationInputs = document.querySelectorAll('input[name*="[medication_name]"]');
+            console.log('Medication name inputs found:', medicationInputs.length);
+            
+            const selectedPatientId = document.getElementById('selectedPatientId');
+            console.log('Selected patient ID element:', selectedPatientId);
+            console.log('Selected patient ID value:', selectedPatientId ? selectedPatientId.value : 'N/A');
+            
+            console.log('=== END DEBUG INFO ===');
+            
+            return {
+                medicationCount,
+                containerExists: !!container,
+                containerChildren: container ? container.children.length : 0,
+                formExists: !!form,
+                medicationInputsCount: medicationInputs.length,
+                selectedPatientId: selectedPatientId ? selectedPatientId.value : null
+            };
+        };
+
+        function addMedication() {
+            console.log('addMedication function called');
+            
+            try {
+                const container = document.getElementById('medications-container');
+                console.log('Container found:', container);
+                
+                if (!container) {
+                    console.error('Medications container not found');
+                    
+                    // Use safe alert function
+                    safeAlert('Error: Cannot find medications container. Please refresh the page.', 'error');
+                    return;
+                }
+                
+                console.log('Creating new medication row with count:', medicationCount);
+                
+                const newRow = document.createElement('div');
+                newRow.className = 'medication-row';
+                
+                // Build the HTML string more carefully
+                const medicationHTML = `
+                    <div class="form-group">
+                        <input type="text" name="medications[${medicationCount}][medication_name]" placeholder="e.g., Paracetamol" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="text" name="medications[${medicationCount}][dosage]" placeholder="e.g., 500mg">
+                    </div>
+                    <div class="form-group">
+                        <input type="text" name="medications[${medicationCount}][frequency]" placeholder="e.g., 3x daily">
+                    </div>
+                    <div class="form-group">
+                        <input type="text" name="medications[${medicationCount}][duration]" placeholder="e.g., 7 days">
+                    </div>
+                    <div class="form-group">
+                        <textarea name="medications[${medicationCount}][instructions]" placeholder="Additional instructions..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="remove-medication" onclick="removeMedication(this)">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                
+                console.log('Setting innerHTML');
+                newRow.innerHTML = medicationHTML;
+                
+                console.log('Appending to container');
+                container.appendChild(newRow);
+                
+                medicationCount++;
+                console.log('Medication count incremented to:', medicationCount);
+                
+                // Show remove buttons for all rows when we have more than one
+                updateRemoveButtons();
+                
+                console.log('Medication added successfully');
+                
+                // Try to show success message
+                safeAlert('Medication row added successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error adding medication:', error);
+                console.error('Error stack:', error.stack);
+                
+                // Use safe alert function
+                safeAlert('Error adding medication: ' + error.message, 'error');
+            }
         }
 
         function removeMedication(button) {
-            const container = document.getElementById('medications-container');
-            if (container.children.length > 1) {
-                button.closest('.medication-row').remove();
-                updateRemoveButtons();
+            try {
+                const container = document.getElementById('medications-container');
+                if (!container) {
+                    console.error('Medications container not found');
+                    showAlert('Error: Cannot find medications container', 'error');
+                    return;
+                }
+                
+                if (container.children.length > 1) {
+                    const rowToRemove = button.closest('.medication-row');
+                    if (rowToRemove) {
+                        rowToRemove.remove();
+                        updateRemoveButtons();
+                        console.log('Medication removed successfully');
+                    } else {
+                        console.error('Could not find medication row to remove');
+                    }
+                } else {
+                    showAlert('Cannot remove the last medication. At least one medication is required.', 'warning');
+                }
+            } catch (error) {
+                console.error('Error removing medication:', error);
+                showAlert('Error removing medication: ' + error.message, 'error');
             }
         }
 
         function updateRemoveButtons() {
-            const container = document.getElementById('medications-container');
-            const removeButtons = container.querySelectorAll('.remove-medication');
-            
-            removeButtons.forEach(button => {
-                button.style.display = container.children.length > 1 ? 'block' : 'none';
-            });
+            try {
+                const container = document.getElementById('medications-container');
+                if (!container) {
+                    console.error('Medications container not found in updateRemoveButtons');
+                    return;
+                }
+                
+                const removeButtons = container.querySelectorAll('.remove-medication');
+                
+                removeButtons.forEach(button => {
+                    button.style.display = container.children.length > 1 ? 'block' : 'none';
+                });
+                
+                console.log('Remove buttons updated. Container has', container.children.length, 'children');
+            } catch (error) {
+                console.error('Error updating remove buttons:', error);
+            }
         }
 
-        // Form validation
-        document.getElementById('prescriptionForm').addEventListener('submit', function(e) {
-            const selectedPatientId = document.getElementById('selectedPatientId').value;
-            const medicationInputs = document.querySelectorAll('input[name*="[medication_name]"]');
-            let hasValidMedication = false;
-            
-            // Check if patient is selected
-            if (!selectedPatientId) {
-                e.preventDefault();
-                showAlert('Please search and select a patient first.', 'error');
-                return false;
-            }
-            
-            // Check if at least one medication is added
-            medicationInputs.forEach(input => {
-                if (input.value.trim() !== '') {
-                    hasValidMedication = true;
+        function validateForm(e) {
+            try {
+                const selectedPatientId = document.getElementById('selectedPatientId').value;
+                const medicationInputs = document.querySelectorAll('input[name*="[medication_name]"]');
+                let hasValidMedication = false;
+                
+                // Check if patient is selected
+                if (!selectedPatientId) {
+                    e.preventDefault();
+                    showAlert('Please search and select a patient first.', 'error');
+                    return false;
                 }
-            });
-            
-            if (!hasValidMedication) {
+                
+                // Check if at least one medication is added
+                medicationInputs.forEach(input => {
+                    if (input.value.trim() !== '') {
+                        hasValidMedication = true;
+                    }
+                });
+                
+                if (!hasValidMedication) {
+                    e.preventDefault();
+                    showAlert('Please add at least one medication.', 'error');
+                    return false;
+                }
+                
+                console.log('Form validation passed');
+                return true;
+            } catch (error) {
+                console.error('Error in form validation:', error);
                 e.preventDefault();
-                showAlert('Please add at least one medication.', 'error');
+                showAlert('Form validation error: ' + error.message, 'error');
                 return false;
             }
-        });
+        }
 
-        // Initialize remove button visibility
+        // Initialize remove button visibility after DOM loads
         updateRemoveButtons();
 
         // Patient selection handling
