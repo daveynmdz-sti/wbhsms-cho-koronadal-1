@@ -1,24 +1,24 @@
 <?php
-// Ensure output buffering is active (but don't create unnecessary nested buffers)
-if (ob_get_level() === 0) {
+// Start output buffering if not already active
+if (!ob_get_level()) {
     ob_start();
 }
 
 /**
- * Get application base URL for consistent redirects
+ * Get the root path for relative URLs
  * @return string
  */
-if (!function_exists('getAppBase')) {
-    function getAppBase() {
-        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? 'https://' : 'http://';
-        $host = $_SERVER['HTTP_HOST'] ?? '';
+if (!function_exists('getEmployeeRootPath')) {
+    function getEmployeeRootPath() {
+        // Calculate relative path from current script to root
+        $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+        $depth = substr_count($scriptPath, '/') - 1;
         
-        // Determine base path prefix up to (but not including) /pages/
-        $requestUri = $_SERVER['REQUEST_URI'] ?? '/';
-        $pagesPos = strpos($requestUri, '/pages/');
-        $basePath = ($pagesPos !== false) ? substr($requestUri, 0, $pagesPos) : '';
+        if ($depth <= 0) {
+            return './';
+        }
         
-        return $protocol . $host . $basePath . '/';
+        return str_repeat('../', $depth);
     }
 }
 
@@ -100,10 +100,17 @@ function clear_employee_session() {
 function require_employee_login($login_url = null) {
     if (!is_employee_logged_in()) {
         if ($login_url === null) {
-            $login_url = getAppBase() . 'pages/management/auth/employee_login.php';
+            // Use relative path to management auth folder
+            $root_path = getEmployeeRootPath();
+            $login_url = $root_path . 'pages/management/auth/employee_login.php';
         }
-        ob_end_clean();
-        error_log('Redirecting to employee_login (via getAppBase) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
+        
+        // Clear any output buffer before redirect
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        error_log('Redirecting to employee login from ' . ($_SERVER['REQUEST_URI'] ?? 'unknown') . ' to: ' . $login_url);
         header('Location: ' . $login_url);
         exit();
     }
@@ -128,8 +135,18 @@ function check_employee_role($allowed_roles) {
  * @param array $allowed_roles
  * @param string $access_denied_url
  */
-function require_employee_role($allowed_roles, $access_denied_url = '/wbhsms-cho-koronadal-1/pages/management/access_denied.php') {
+function require_employee_role($allowed_roles, $access_denied_url = null) {
     if (!check_employee_role($allowed_roles)) {
+        if ($access_denied_url === null) {
+            $root_path = getEmployeeRootPath();
+            $access_denied_url = $root_path . 'pages/management/access_denied.php';
+        }
+        
+        // Clear any output buffer before redirect
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
         header('Location: ' . $access_denied_url);
         exit();
     }
@@ -181,5 +198,10 @@ if (is_employee_logged_in()) {
     header('Pragma: no-cache');
 }
 
-ob_end_flush(); // End output buffering
+// Only flush output buffer if we have content and headers haven't been sent
+if (ob_get_level() && ob_get_length() && !headers_sent()) {
+    ob_end_flush();
+} elseif (ob_get_level()) {
+    ob_end_clean();
+}
 ?>

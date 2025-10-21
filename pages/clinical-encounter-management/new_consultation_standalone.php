@@ -393,7 +393,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE consultation_id = ?
                 ");
                 $stmt->bind_param(
-                    'issssssi',
+                    'issssssii',
                     $vitals_id, $chief_complaint, $diagnosis, $treatment_plan,
                     $follow_up_date, $remarks, $consultation_status, $employee_id, 
                     $existing_consultation['consultation_id']
