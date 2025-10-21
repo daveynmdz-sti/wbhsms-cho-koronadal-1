@@ -42,7 +42,7 @@ try {
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         WHERE p.patient_id = ?
     ");
-    $stmt->bind_param("i", $patient_id);
+    $stmt->bind_param("s", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $patient_info = $result->fetch_assoc();
@@ -96,7 +96,7 @@ try {
     if (!$stmt) {
         throw new Exception("Prepare failed: " . $conn->error);
     }
-    $stmt->bind_param("i", $patient_id);
+    $stmt->bind_param("s", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $lab_orders = $result->fetch_all(MYSQLI_ASSOC);
@@ -138,7 +138,7 @@ try {
     if (!$stmt) {
         throw new Exception("Prepare failed: " . $conn->error);
     }
-    $stmt->bind_param("i", $patient_id);
+    $stmt->bind_param("s", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $lab_results = $result->fetch_all(MYSQLI_ASSOC);

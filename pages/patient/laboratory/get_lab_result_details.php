@@ -64,7 +64,7 @@ try {
         GROUP BY lo.lab_order_id
     ");
     
-    $stmt->bind_param("ii", $result_id, $patient_id);
+    $stmt->bind_param("is", $result_id, $patient_id);
     $stmt->execute();
     $result = $stmt->get_result()->fetch_assoc();
     
