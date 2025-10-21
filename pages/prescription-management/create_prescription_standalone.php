@@ -135,8 +135,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->commit();
             $_SESSION['success_message'] = "Prescription created successfully for " . $patient['first_name'] . " " . $patient['last_name'];
             
-            // Clean output buffer before redirect
-            ob_end_clean();
+            // Clean all output buffers before redirect to prevent header issues
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
             header("Location: prescription_management.php");
             exit();
             
