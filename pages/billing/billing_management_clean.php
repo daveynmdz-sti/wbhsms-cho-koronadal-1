@@ -1,0 +1,3 @@
+<?php
+// ...existing code from old location...
+?>

@@ -24,7 +24,10 @@ if (!function_exists('getEmployeeRootPath')) {
 
 // Employee session configuration - only if headers not sent
 if (!headers_sent()) {
-    session_name('EMPLOYEE_SESSID');
+    // Only set session name if no session is active
+    if (session_status() === PHP_SESSION_NONE) {
+        session_name('EMPLOYEE_SESSID');
+    }
     
     // Configure session settings
     ini_set('session.cookie_httponly', 1);

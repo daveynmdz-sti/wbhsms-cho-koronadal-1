@@ -581,6 +581,120 @@ try {
         .btn-close:hover {
             opacity: 1;
         }
+
+        /* PDF Viewer Modal Styles */
+        .pdf-viewer-modal .modal-content {
+            width: 90%;
+            max-width: 1200px;
+            height: 80vh;
+            max-height: 800px;
+        }
+
+        .pdf-modal-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pdf-modal-content .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #ddd;
+            flex-shrink: 0;
+        }
+
+        .pdf-toolbar {
+            display: flex;
+            gap: 8px;
+        }
+
+        .pdf-viewer-body {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
+        .pdf-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .pdf-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            font-size: 1.1em;
+            color: #666;
+        }
+
+        .pdf-loading i {
+            font-size: 2em;
+            margin-bottom: 10px;
+            color: #0077b6;
+        }
+
+        .pdf-error {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            color: #dc3545;
+        }
+
+        .pdf-error i {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .pdf-error p {
+            margin-bottom: 20px;
+            font-size: 1.1em;
+        }
+
+        /* Fullscreen styles */
+        .pdf-viewer-modal.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.95);
+        }
+
+        .pdf-viewer-modal.fullscreen .modal-content {
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            max-height: none;
+            margin: 0;
+            border-radius: 0;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .pdf-viewer-modal .modal-content {
+                width: 95%;
+                height: 70vh;
+            }
+
+            .pdf-toolbar {
+                flex-direction: column;
+                gap: 5px;
+            }
+
+            .pdf-toolbar .action-btn {
+                padding: 6px 10px;
+                font-size: 0.9em;
+            }
+        }
     </style>
 </head>
 
@@ -795,11 +909,14 @@ try {
                                 </td>
                                 <td>
                                     <?php if ($record['result_file']): ?>
-                                        <button class="action-btn btn-download" onclick="downloadResult(<?= $record['lab_order_item_id'] ?>)">
+                                        <button class="action-btn btn-view" onclick="viewResult(<?= $record['lab_order_item_id'] ?>)" title="View Result">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="action-btn btn-download" onclick="downloadResult(<?= $record['lab_order_item_id'] ?>)" title="Download Result">
                                             <i class="fas fa-download"></i>
                                         </button>
                                     <?php elseif ($canUploadResults && $record['status'] !== 'completed'): ?>
-                                        <button class="action-btn btn-upload" onclick="uploadResult(<?= $record['lab_order_item_id'] ?>)">
+                                        <button class="action-btn btn-upload" onclick="uploadResult(<?= $record['lab_order_item_id'] ?>)" title="Upload Result">
                                             <i class="fas fa-upload"></i>
                                         </button>
                                     <?php endif; ?>
@@ -848,6 +965,38 @@ try {
             </div>
             <div id="quickUploadBody">
                 <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF Viewer Modal -->
+    <div id="pdfViewerModal" class="modal pdf-viewer-modal">
+        <div class="modal-content pdf-modal-content">
+            <div class="modal-header">
+                <h3 id="pdfViewerTitle">Lab Result Viewer</h3>
+                <div class="pdf-toolbar">
+                    <button class="action-btn btn-download" onclick="downloadCurrentPdf()" title="Download PDF">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button class="action-btn btn-fullscreen" onclick="togglePdfFullscreen()" title="Toggle Fullscreen">
+                        <i class="fas fa-expand"></i> Fullscreen
+                    </button>
+                </div>
+                <button class="close-btn" onclick="closeModal('pdfViewerModal')">&times;</button>
+            </div>
+            <div class="pdf-viewer-body">
+                <div id="pdfLoadingSpinner" class="pdf-loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading PDF...</p>
+                </div>
+                <iframe id="pdfViewerFrame" class="pdf-iframe" style="display: none;"></iframe>
+                <div id="pdfErrorMessage" class="pdf-error" style="display: none;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Unable to load PDF. The file may be corrupted or not a valid PDF.</p>
+                    <button class="action-btn btn-download" onclick="downloadCurrentPdf()">
+                        <i class="fas fa-download"></i> Try Download Instead
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1068,6 +1217,27 @@ try {
         // Modal functions
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
+            
+            // Special handling for PDF viewer modal
+            if (modalId === 'pdfViewerModal') {
+                // Reset PDF viewer state
+                const iframe = document.getElementById('pdfViewerFrame');
+                iframe.src = 'about:blank';
+                document.getElementById('pdfLoadingSpinner').style.display = 'flex';
+                document.getElementById('pdfViewerFrame').style.display = 'none';
+                document.getElementById('pdfErrorMessage').style.display = 'none';
+                
+                // Remove fullscreen if active
+                const modal = document.getElementById('pdfViewerModal');
+                if (modal.classList.contains('fullscreen')) {
+                    modal.classList.remove('fullscreen');
+                    const fullscreenBtn = document.querySelector('.btn-fullscreen i');
+                    fullscreenBtn.className = 'fas fa-expand';
+                    document.querySelector('.btn-fullscreen').title = 'Enter Fullscreen';
+                }
+                
+                currentPdfItemId = null;
+            }
         }
 
         function viewOrderDetails(labOrderId) {
@@ -1137,6 +1307,78 @@ try {
         function downloadResult(itemId) {
             window.open(`api/download_lab_result.php?item_id=${itemId}`, '_blank');
         }
+
+        // PDF Viewer Functions
+        let currentPdfItemId = null;
+
+        function viewResult(itemId) {
+            currentPdfItemId = itemId;
+            
+            // Show modal and loading state
+            document.getElementById('pdfViewerModal').style.display = 'block';
+            document.getElementById('pdfLoadingSpinner').style.display = 'flex';
+            document.getElementById('pdfViewerFrame').style.display = 'none';
+            document.getElementById('pdfErrorMessage').style.display = 'none';
+            
+            // Update modal title
+            document.getElementById('pdfViewerTitle').textContent = `Lab Result Viewer - Item #${itemId}`;
+            
+            // Set iframe source to the view endpoint
+            const iframe = document.getElementById('pdfViewerFrame');
+            iframe.onload = function() {
+                // Hide loading spinner and show iframe when loaded
+                document.getElementById('pdfLoadingSpinner').style.display = 'none';
+                document.getElementById('pdfViewerFrame').style.display = 'block';
+            };
+            
+            iframe.onerror = function() {
+                // Show error message if loading fails
+                document.getElementById('pdfLoadingSpinner').style.display = 'none';
+                document.getElementById('pdfErrorMessage').style.display = 'flex';
+            };
+            
+            // Add timestamp to prevent caching issues
+            iframe.src = `api/view_lab_result.php?item_id=${itemId}&t=${Date.now()}`;
+            
+            // Set a timeout to show error if PDF doesn't load within 10 seconds
+            setTimeout(() => {
+                if (document.getElementById('pdfLoadingSpinner').style.display !== 'none') {
+                    document.getElementById('pdfLoadingSpinner').style.display = 'none';
+                    document.getElementById('pdfErrorMessage').style.display = 'flex';
+                }
+            }, 10000);
+        }
+
+        function downloadCurrentPdf() {
+            if (currentPdfItemId) {
+                downloadResult(currentPdfItemId);
+            }
+        }
+
+        function togglePdfFullscreen() {
+            const modal = document.getElementById('pdfViewerModal');
+            const fullscreenBtn = document.querySelector('.btn-fullscreen i');
+            
+            if (modal.classList.contains('fullscreen')) {
+                modal.classList.remove('fullscreen');
+                fullscreenBtn.className = 'fas fa-expand';
+                document.querySelector('.btn-fullscreen').title = 'Enter Fullscreen';
+            } else {
+                modal.classList.add('fullscreen');
+                fullscreenBtn.className = 'fas fa-compress';
+                document.querySelector('.btn-fullscreen').title = 'Exit Fullscreen';
+            }
+        }
+
+        // Close fullscreen when ESC is pressed
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const modal = document.getElementById('pdfViewerModal');
+                if (modal && modal.classList.contains('fullscreen')) {
+                    togglePdfFullscreen();
+                }
+            }
+        });
 
         function uploadItemResult(labOrderItemId) {
             // This function handles upload from the modal details view
@@ -1279,7 +1521,7 @@ try {
 
         // Close modals when clicking outside
         window.addEventListener('click', function(event) {
-            const modals = ['orderDetailsModal', 'uploadResultModal', 'quickUploadModal'];
+            const modals = ['orderDetailsModal', 'uploadResultModal', 'quickUploadModal', 'pdfViewerModal'];
             modals.forEach(modalId => {
                 const modal = document.getElementById(modalId);
                 if (event.target === modal) {

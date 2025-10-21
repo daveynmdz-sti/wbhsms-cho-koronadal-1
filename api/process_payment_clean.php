@@ -1,124 +1,124 @@
 <?php
-ob_start(); // Start output buffering to prevent header issues
-session_start();
+// Process Payment API - Uses existing billing and payments table structure
 
-$root_path = dirname(dirname(__DIR__));
+// Root path for includes
+$root_path = dirname(__DIR__);
+
+// Include database connection
 require_once $root_path . '/config/db.php';
-require_once $root_path . '/config/session/employee_session.php';
 
+// Set content type
 header('Content-Type: application/json');
 
-// Check if user is logged in and has appropriate role
-if (!is_employee_logged_in() || (get_employee_session('role') !== 'Cashier' && get_employee_session('role') !== 'Admin')) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Access denied']);
-    exit();
-}
-
+// Check request method
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed']);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed']);
     exit();
 }
 
-try {
-    // Get POST data
-    $invoice_id = $_POST['invoice_id'] ?? null;
-    $payment_amount = $_POST['payment_amount'] ?? null;
-    $payment_method = $_POST['payment_method'] ?? null;
-    $notes = $_POST['notes'] ?? '';
-    $cashier_id = $_POST['cashier_id'] ?? get_employee_session('employee_id');
+// Get JSON input
+$input = json_decode(file_get_contents('php://input'), true);
 
-    // Validate input
-    if (!$invoice_id || !$payment_amount || !$payment_method) {
-        throw new Exception('Invoice ID, payment amount, and payment method are required');
+// Validate required fields
+$required_fields = ['billing_id', 'amount_paid'];
+foreach ($required_fields as $field) {
+    if (!isset($input[$field])) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => "Missing required field: $field"]);
+        exit();
     }
+}
 
-    if (!is_numeric($payment_amount) || $payment_amount <= 0) {
+$billing_id = intval($input['billing_id']);
+$amount_paid = floatval($input['amount_paid']);
+$payment_method = $input['payment_method'] ?? 'cash';
+$notes = $input['notes'] ?? '';
+$cashier_id = $input['cashier_id'] ?? 1; // Default for testing
+
+try {
+    // Validate input
+    if ($amount_paid <= 0) {
         throw new Exception('Invalid payment amount');
     }
 
-    // Start transaction
+    // Begin transaction
     $pdo->beginTransaction();
 
-    // Get invoice details
-    $stmt = $pdo->prepare("
-        SELECT pi.*, CONCAT(p.first_name, ' ', p.last_name) as patient_name 
-        FROM patient_invoices pi 
-        JOIN patients p ON pi.patient_id = p.patient_id 
-        WHERE pi.invoice_id = ? AND pi.status = 'pending'
+    // Get billing details using existing billing table
+    $billing_stmt = $pdo->prepare("
+        SELECT b.*, CONCAT(p.first_name, ' ', p.last_name) as patient_name 
+        FROM billing b 
+        JOIN patients p ON b.patient_id = p.patient_id 
+        WHERE b.billing_id = ? AND b.payment_status = 'unpaid'
     ");
-    $stmt->execute([$invoice_id]);
-    $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
+    $billing_stmt->execute([$billing_id]);
+    $billing = $billing_stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$invoice) {
-        throw new Exception('Invoice not found or already paid');
+    if (!$billing) {
+        throw new Exception('Billing record not found or already paid');
     }
 
     // Check if payment amount is sufficient
-    if ($payment_amount < $invoice['total_amount']) {
+    if ($amount_paid < $billing['net_amount']) {
         throw new Exception('Payment amount is less than invoice total');
     }
 
-    $change_amount = $payment_amount - $invoice['total_amount'];
+    $change_amount = $amount_paid - $billing['net_amount'];
 
-    // Record payment
-    $stmt = $pdo->prepare("
-        INSERT INTO patient_payments (
-            invoice_id, payment_amount, payment_method, change_amount, 
-            cashier_id, notes, payment_date, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
+    // Generate receipt number
+    $receipt_number = 'RCP' . date('Ymd') . str_pad($billing_id, 6, '0', STR_PAD_LEFT);
+    
+    // Record payment using existing payments table
+    $payment_stmt = $pdo->prepare("
+        INSERT INTO payments (
+            billing_id, amount_paid, payment_method, paid_at, 
+            cashier_id, receipt_number, notes
+        ) VALUES (?, ?, ?, NOW(), ?, ?, ?)
     ");
-    $stmt->execute([
-        $invoice_id, 
-        $payment_amount, 
+    $payment_stmt->execute([
+        $billing_id, 
+        $amount_paid, 
         $payment_method, 
-        $change_amount, 
         $cashier_id, 
+        $receipt_number,
         $notes
     ]);
     $payment_id = $pdo->lastInsertId();
 
-    // Update invoice status
-    $stmt = $pdo->prepare("UPDATE patient_invoices SET status = 'paid', updated_at = NOW() WHERE invoice_id = ?");
-    $stmt->execute([$invoice_id]);
-
-    // Log the payment
-    $stmt = $pdo->prepare("
-        INSERT INTO billing_logs (invoice_id, action, performed_by, notes, created_at) 
-        VALUES (?, 'payment_processed', ?, ?, NOW())
+    // Update billing status to paid
+    $update_stmt = $pdo->prepare("
+        UPDATE billing 
+        SET payment_status = 'paid', paid_amount = ?, updated_at = NOW() 
+        WHERE billing_id = ?
     ");
-    $stmt->execute([
-        $invoice_id, 
-        $cashier_id, 
-        "Payment processed: ₱{$payment_amount} via {$payment_method}. Change: ₱{$change_amount}"
-    ]);
-
-    // Generate receipt number
-    $receipt_number = 'RCP-' . date('Ymd') . '-' . str_pad($payment_id, 6, '0', STR_PAD_LEFT);
-    
-    // Update payment with receipt number
-    $stmt = $pdo->prepare("UPDATE patient_payments SET receipt_number = ? WHERE payment_id = ?");
-    $stmt->execute([$receipt_number, $payment_id]);
+    $update_stmt->execute([$amount_paid, $billing_id]);
 
     $pdo->commit();
 
     echo json_encode([
         'success' => true,
-        'payment_id' => $payment_id,
-        'receipt_number' => $receipt_number,
-        'change_amount' => $change_amount,
-        'invoice_total' => $invoice['total_amount'],
-        'payment_amount' => $payment_amount,
-        'patient_name' => $invoice['patient_name'],
-        'message' => 'Payment processed successfully'
+        'message' => 'Payment processed successfully',
+        'data' => [
+            'payment_id' => $payment_id,
+            'billing_id' => $billing_id,
+            'receipt_number' => $receipt_number,
+            'amount_paid' => $amount_paid,
+            'change_amount' => $change_amount,
+            'total_amount' => $billing['net_amount'],
+            'patient_name' => $billing['patient_name'],
+            'payment_method' => $payment_method,
+            'payment_date' => date('Y-m-d H:i:s')
+        ]
     ]);
 
 } catch (Exception $e) {
     $pdo->rollBack();
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage()]);
+    error_log("Process Payment Error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Failed to process payment: ' . $e->getMessage()
+    ]);
 }
-
-ob_end_flush(); // End output buffering
 ?>

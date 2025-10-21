@@ -123,6 +123,15 @@ http://localhost/project/scripts/setup/testdb.php
 http://localhost/project/scripts/setup/setup_debug.php
 ```
 
+### Error Logging & Monitoring
+- **XAMPP Apache Error Log**: `C:\xampp\apache\logs\error.log` - Primary error log for Apache/PHP errors
+- **Application Error Logs**: `/logs/` directory within project root
+  - `consultation_errors.log` - Patient consultation system errors
+  - `consultation_details_errors.log` - Consultation details API errors  
+  - `print_consultation_errors.log` - Consultation print functionality errors
+- **PHP Error Settings**: Configure in `config/env.php` - `display_errors=0` for production, `log_errors=1` always
+- **Real-time monitoring**: `tail -f C:\xampp\apache\logs\error.log` (use PowerShell: `Get-Content C:\xampp\apache\logs\error.log -Wait -Tail 10`)
+
 ### Debugging Session Issues
 - **Redirect loops**: Often caused by session path restrictions - use `$cookiePath = '/'`
 - **Clear sessions**: Use `scripts/setup/setup_debug.php` "Clear Session" button

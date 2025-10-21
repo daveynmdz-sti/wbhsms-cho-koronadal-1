@@ -1,0 +1,3 @@
+<?php
+// ...existing code from api/billing/management/print_receipt.php ...
+?>

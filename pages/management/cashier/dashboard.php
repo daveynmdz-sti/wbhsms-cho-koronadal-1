@@ -294,9 +294,27 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CHO Koronadal — Cashier Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <!-- Use absolute paths for consistency -->
-    <link rel="stylesheet" href="<?= $root_path ?>/assets/css/dashboard.css">
-    <link rel="stylesheet" href="<?= $root_path ?>/assets/css/sidebar.css">
+    <!-- Use web-relative paths for CSS -->
+    <?php
+    // Generate web-relative base path
+    $request_uri = $_SERVER['REQUEST_URI'];
+    $script_name = $_SERVER['SCRIPT_NAME'];
+    
+    // Extract the base path (project folder) from the script name
+    if (preg_match('#^(.*?)/pages/#', $script_name, $matches)) {
+        $web_base_path = $matches[1];
+    } else {
+        // Fallback: try to extract from REQUEST_URI
+        $uri_parts = explode('/', trim($request_uri, '/'));
+        if (count($uri_parts) > 0 && $uri_parts[0] !== 'pages') {
+            $web_base_path = '/' . $uri_parts[0];
+        } else {
+            $web_base_path = '';
+        }
+    }
+    ?>
+    <link rel="stylesheet" href="<?= $web_base_path ?>/assets/css/dashboard.css">
+    <link rel="stylesheet" href="<?= $web_base_path ?>/assets/css/sidebar.css">
     <style>
         :root {
             --primary: #28a745;

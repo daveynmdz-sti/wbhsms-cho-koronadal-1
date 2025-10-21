@@ -118,17 +118,21 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'dashboard' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-home"></i> Dashboard
         </a>
-        <a href="<?= $nav_base ?>management/cashier/billing_management.php"
+        <a href="<?= $nav_base ?>billing/billing_management.php"
             class="<?= $activePage === 'billing_management' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-file-invoice-dollar"></i> Billing Management
+            <i class="fas fa-tachometer-alt"></i> Billing Dashboard
         </a>
-        <a href="<?= $nav_base ?>management/cashier/payments.php"
-            class="<?= $activePage === 'payments' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-credit-card"></i> Payments
+        <a href="<?= $nav_base ?>billing/create_invoice.php"
+            class="<?= $activePage === 'create_invoice' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-file-invoice"></i> Create Invoice
         </a>
-        <a href="<?= $nav_base ?>management/cashier/financial_reports.php"
-            class="<?= $activePage === 'financial_reports' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-chart-line"></i> Financial Reports
+        <a href="<?= $nav_base ?>billing/process_payment.php"
+            class="<?= $activePage === 'process_payment' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-credit-card"></i> Process Payment
+        </a>
+        <a href="<?= $nav_base ?>billing/billing_reports.php"
+            class="<?= $activePage === 'billing_reports' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-chart-line"></i> Billing Reports
         </a>
     </div>
 

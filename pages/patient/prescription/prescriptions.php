@@ -776,7 +776,7 @@ try {
                 <div class="filter-tab active" onclick="filterPrescriptions('all', this)">
                     <i class="fas fa-list"></i> All Prescriptions
                 </div>
-                <div class="filter-tab" onclick="filterPrescriptions('active', this)">
+                <!--<div class="filter-tab" onclick="filterPrescriptions('active', this)">
                     <i class="fas fa-check-circle"></i> Active
                 </div>
                 <div class="filter-tab" onclick="filterPrescriptions('dispensed', this)">
@@ -784,7 +784,7 @@ try {
                 </div>
                 <div class="filter-tab" onclick="filterPrescriptions('cancelled', this)">
                     <i class="fas fa-times-circle"></i> Cancelled
-                </div>
+                </div>-->
             </div>
 
             <!-- Prescriptions Table -->
@@ -885,7 +885,7 @@ try {
     <div id="prescriptionModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-prescription-bottle-alt"></i> Prescription Details</h2>
+                <h2 style="color:white;"><i class="fas fa-prescription-bottle-alt"></i> Prescription Details</h2>
                 <span class="close" onclick="closePrescriptionModal()">&times;</span>
             </div>
             <div class="modal-body" id="prescriptionModalBody">

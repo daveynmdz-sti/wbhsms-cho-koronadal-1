@@ -1,0 +1,3 @@
+<?php
+// ...existing code from api/billing/management/get_billing_reports.php ...
+?>

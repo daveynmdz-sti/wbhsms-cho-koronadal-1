@@ -1,7 +1,10 @@
 <?php
 // sidebar_patient.php
 // Expected (optional) from caller: $activePage, $defaults['name'], $defaults['patient_number'], $patient_id
-// This file does NOT open/close <html> or <body>.
+        <a href="<?= $nav_base ?>patient/billing/billing.php"
+            class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-file-invoice-dollar"></i> Billing
+        </a>his file does NOT open/close <html> or <body>.
 
 if (session_status() === PHP_SESSION_NONE) {
     // Include patient session configuration
@@ -127,15 +130,19 @@ $vendor_path = $base_path . '/vendor/photo_controller.php';
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-medical"></i> Medical Referrals
         </a>
+        <a href="<?= $nav_base ?>consultations/consultations.php"
+            class="<?= $activePage === 'consultations' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-stethoscope"></i> My Consultations
+        </a>
         <a href="<?= $nav_base ?>prescription/prescriptions.php"
             class="<?= $activePage === 'prescription' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-prescription-bottle-alt"></i> Prescription
         </a>
-        <a href="<?= $nav_base ?>laboratory/lab_test.php"
+        <a href="<?= $nav_base ?>laboratory/laboratory.php"
             class="<?= $activePage === 'laboratory' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-vials"></i> Laboratory
+            <i class="fas fa-flask"></i> Laboratory
         </a>
-        <a href="<?= $nav_base ?>billing/billing.php"
+    <a href="<?= $nav_base ?>billing/patient/billing.php"
             class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-invoice-dollar"></i> Billing
         </a>
@@ -177,7 +184,7 @@ $logoutUrl = '';
 if (strpos($_SERVER['PHP_SELF'], '/pages/patient/') !== false) {
     // Called from patient pages (most common case)
     if (strpos($_SERVER['PHP_SELF'], '/pages/patient/appointment/') !== false || 
-        strpos($_SERVER['PHP_SELF'], '/pages/patient/billing/') !== false ||
+            strpos($_SERVER['PHP_SELF'], '/pages/patient/billing/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/patient/laboratory/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/patient/prescription/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/patient/profile/') !== false ||
