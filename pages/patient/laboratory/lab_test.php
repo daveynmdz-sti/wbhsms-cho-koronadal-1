@@ -62,7 +62,7 @@ try {
 $lab_orders = [];
 $lab_results = [];
 try {
-    // Fetch pending/in-progress/cancelled lab orders - standalone support
+    // Fetch pending/in-progress/cancelled lab orders - using correct schema
     $stmt = $conn->prepare("
         SELECT lo.*,
                e.first_name as doctor_first_name, e.last_name as doctor_last_name,
@@ -74,15 +74,21 @@ try {
                    WHEN lo.appointment_id IS NOT NULL THEN a.scheduled_time
                    ELSE NULL
                END as scheduled_time,
-               -- Source information (simplified - no consultation support yet)
+               -- Source information for standalone support
                CASE 
                    WHEN lo.appointment_id IS NOT NULL THEN 'appointment'
+                   WHEN lo.consultation_id IS NOT NULL THEN 'consultation'
                    ELSE 'standalone'
-               END as order_source
+               END as order_source,
+               -- Get test types from lab_order_items
+               GROUP_CONCAT(loi.test_type SEPARATOR ', ') as test_types,
+               COUNT(loi.item_id) as test_count
         FROM lab_orders lo
         LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
         LEFT JOIN appointments a ON lo.appointment_id = a.appointment_id
+        LEFT JOIN lab_order_items loi ON lo.lab_order_id = loi.lab_order_id
         WHERE lo.patient_id = ? AND lo.status IN ('pending', 'in_progress', 'cancelled')
+        GROUP BY lo.lab_order_id
         ORDER BY lo.order_date DESC
         LIMIT 50
     ");
@@ -96,7 +102,7 @@ try {
     $lab_orders = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    // Fetch completed lab results - standalone support
+    // Fetch completed lab results - using correct schema with lab_order_items
     $stmt = $conn->prepare("
         SELECT lo.*,
                e.first_name as doctor_first_name, e.last_name as doctor_last_name,
@@ -108,16 +114,24 @@ try {
                    WHEN lo.appointment_id IS NOT NULL THEN a.scheduled_time
                    ELSE NULL
                END as scheduled_time,
-               -- Source information (simplified - no consultation support yet)
+               -- Source information for standalone support
                CASE 
                    WHEN lo.appointment_id IS NOT NULL THEN 'appointment'
+                   WHEN lo.consultation_id IS NOT NULL THEN 'consultation'
                    ELSE 'standalone'
-               END as order_source
+               END as order_source,
+               -- Get test types and result info from lab_order_items
+               GROUP_CONCAT(loi.test_type SEPARATOR ', ') as test_types,
+               COUNT(loi.item_id) as test_count,
+               MAX(loi.result_date) as latest_result_date,
+               COUNT(CASE WHEN loi.result_file IS NOT NULL THEN 1 END) as files_count
         FROM lab_orders lo
         LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
         LEFT JOIN appointments a ON lo.appointment_id = a.appointment_id
+        LEFT JOIN lab_order_items loi ON lo.lab_order_id = loi.lab_order_id
         WHERE lo.patient_id = ? AND lo.status = 'completed'
-        ORDER BY lo.result_date DESC
+        GROUP BY lo.lab_order_id
+        ORDER BY MAX(loi.result_date) DESC, lo.order_date DESC
         LIMIT 50
     ");
     
@@ -839,7 +853,7 @@ try {
                                     </td>
                                     <td>
                                         <div class="test-info">
-                                            <strong><?php echo htmlspecialchars($order['test_type']); ?></strong>
+                                            <strong><?php echo htmlspecialchars($order['test_types'] ?? 'No tests specified'); ?></strong>
                                             <?php if (!empty($order['remarks'])): ?>
                                                 <small><?php echo htmlspecialchars(substr($order['remarks'], 0, 50)) . (strlen($order['remarks']) > 50 ? '...' : ''); ?></small>
                                             <?php endif; ?>
@@ -953,16 +967,16 @@ try {
                             </tr>
                         <?php else: ?>
                             <?php foreach ($lab_results as $result): ?>
-                                <tr class="result-row" data-result-date="<?php echo htmlspecialchars($result['result_date']); ?>">
+                                <tr class="result-row" data-result-date="<?php echo htmlspecialchars($result['latest_result_date'] ?? $result['order_date']); ?>">
                                     <td>
                                         <div class="date-info">
-                                            <strong><?php echo date('M j, Y', strtotime($result['result_date'])); ?></strong>
-                                            <small><?php echo date('g:i A', strtotime($result['result_date'])); ?></small>
+                                            <strong><?php echo date('M j, Y', strtotime($result['latest_result_date'] ?? $result['order_date'])); ?></strong>
+                                            <small><?php echo date('g:i A', strtotime($result['latest_result_date'] ?? $result['order_date'])); ?></small>
                                         </div>
                                     </td>
                                     <td>
                                         <div class="test-info">
-                                            <strong><?php echo htmlspecialchars($result['test_type']); ?></strong>
+                                            <strong><?php echo htmlspecialchars($result['test_types'] ?? 'No tests specified'); ?></strong>
                                             <small>Order: <?php echo date('M j, Y', strtotime($result['order_date'])); ?></small>
                                         </div>
                                     </td>
@@ -1431,7 +1445,7 @@ try {
                         <div class="test-details">
                             <div class="detail-row">
                                 <span class="label">Test Type:</span>
-                                <span class="value">${order.test_type}</span>
+                                <span class="value">${order.test_types || 'No tests specified'}</span>
                             </div>
                             ${order.specimen_type ? `
                                 <div class="detail-row">
@@ -1470,7 +1484,7 @@ try {
                             <span class="status-badge status-completed">COMPLETED</span>
                         </div>
                         <div class="result-meta">
-                            <p><strong>Result Date:</strong> ${new Date(result.result_date).toLocaleDateString('en-US', { 
+                            <p><strong>Result Date:</strong> ${new Date(result.latest_result_date || result.order_date).toLocaleDateString('en-US', { 
                                 year: 'numeric', 
                                 month: 'long', 
                                 day: 'numeric',
@@ -1487,7 +1501,7 @@ try {
                         <div class="test-details">
                             <div class="detail-row">
                                 <span class="label">Test Type:</span>
-                                <span class="value">${result.test_type}</span>
+                                <span class="value">${result.test_types || 'No tests specified'}</span>
                             </div>
                         </div>
                     </div>

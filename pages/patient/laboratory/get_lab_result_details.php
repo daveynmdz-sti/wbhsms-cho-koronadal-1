@@ -30,28 +30,36 @@ if (!$result_id) {
 $patient_id = $_SESSION['patient_id'];
 
 try {
-    // Fetch lab result details with security check
+    // Fetch lab result details with correct schema and security check
     $stmt = $pdo->prepare("
         SELECT 
             lo.lab_order_id,
-            lo.test_type,
-            lo.specimen_type,
-            lo.test_description,
             lo.order_date,
-            lo.result_date,
-            lo.result,
             lo.status,
             lo.remarks,
             CONCAT(e.first_name, ' ', e.last_name) as doctor_name,
             c.consultation_date,
-            a.appointment_date
+            a.appointment_date,
+            -- Source information for standalone support
+            CASE 
+                WHEN lo.appointment_id IS NOT NULL THEN 'appointment'
+                WHEN lo.consultation_id IS NOT NULL THEN 'consultation'
+                ELSE 'standalone'
+            END as order_source,
+            -- Get test details and results from lab_order_items
+            GROUP_CONCAT(loi.test_type SEPARATOR ', ') as test_types,
+            COUNT(loi.item_id) as test_count,
+            MAX(loi.result_date) as latest_result_date,
+            COUNT(CASE WHEN loi.result_file IS NOT NULL THEN 1 END) as files_count
         FROM lab_orders lo
         LEFT JOIN consultations c ON lo.consultation_id = c.consultation_id
-        LEFT JOIN appointments a ON c.appointment_id = a.appointment_id
-        LEFT JOIN employees e ON c.employee_id = e.employee_id
+        LEFT JOIN appointments a ON lo.appointment_id = a.appointment_id
+        LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
+        LEFT JOIN lab_order_items loi ON lo.lab_order_id = loi.lab_order_id
         WHERE lo.lab_order_id = ? 
         AND lo.patient_id = ?
         AND lo.status = 'completed'
+        GROUP BY lo.lab_order_id
     ");
     
     $stmt->execute([$result_id, $patient_id]);

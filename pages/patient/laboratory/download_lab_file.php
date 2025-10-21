@@ -16,83 +16,69 @@ $root_path = dirname(dirname(dirname(__DIR__)));
 // Include database connection
 require_once $root_path . '/config/db.php';
 
-// Get file path and result ID from request
-$file_path = filter_input(INPUT_GET, 'file', FILTER_SANITIZE_STRING);
-$result_id = filter_input(INPUT_GET, 'id', FILTER_SANITIZE_NUMBER_INT);
+// Get item ID from request (changed from file path to item ID)
+$item_id = filter_input(INPUT_GET, 'item_id', FILTER_SANITIZE_NUMBER_INT);
 
-if (!$file_path || !$result_id) {
+if (!$item_id) {
     http_response_code(400);
-    die('Invalid parameters');
+    die('Invalid parameters - item ID required');
 }
 
 $patient_id = $_SESSION['patient_id'];
 
 try {
-    // Verify that this file belongs to this patient's lab result
+    // Verify that this file belongs to this patient's lab result - using correct schema
     $stmt = $pdo->prepare("
-        SELECT lo.result, lo.test_type 
-        FROM lab_orders lo
-        WHERE lo.lab_order_id = ? 
+        SELECT loi.result_file, loi.test_type, loi.result_date
+        FROM lab_order_items loi
+        JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
+        WHERE loi.item_id = ? 
         AND lo.patient_id = ?
         AND lo.status = 'completed'
-        AND lo.result = ?
+        AND loi.result_file IS NOT NULL
     ");
     
-    $stmt->execute([$result_id, $patient_id, $file_path]);
+    $stmt->execute([$item_id, $patient_id]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if (!$result) {
+    if (!$result || !$result['result_file']) {
         http_response_code(404);
         die('File not found or access denied');
     }
     
-    // Construct full file path
-    $full_file_path = $root_path . '/' . ltrim($file_path, '/');
+    // Get file data
+    $fileData = $result['result_file'];
+    $contentType = 'application/octet-stream'; // default
+    $extension = 'bin'; // default
     
-    // Check if file exists
-    if (!file_exists($full_file_path)) {
-        http_response_code(404);
-        die('File not found on server');
-    }
-    
-    // Get file info
-    $file_info = pathinfo($full_file_path);
-    $file_size = filesize($full_file_path);
-    $file_extension = strtolower($file_info['extension']);
-    
-    // Set appropriate headers based on file type
-    switch ($file_extension) {
-        case 'pdf':
-            $content_type = 'application/pdf';
-            break;
-        case 'jpg':
-        case 'jpeg':
-            $content_type = 'image/jpeg';
-            break;
-        case 'png':
-            $content_type = 'image/png';
-            break;
-        case 'gif':
-            $content_type = 'image/gif';
-            break;
-        case 'doc':
-            $content_type = 'application/msword';
-            break;
-        case 'docx':
-            $content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-            break;
-        default:
-            $content_type = 'application/octet-stream';
+    // Check file signature to determine type (same as management side)
+    if (substr($fileData, 0, 4) === '%PDF') {
+        $contentType = 'application/pdf';
+        $extension = 'pdf';
+    } elseif (substr($fileData, 0, 2) === 'PK') {
+        // ZIP-based formats (DOCX, XLSX, etc.)
+        $contentType = 'application/zip';
+        $extension = 'zip';
+    } elseif (substr($fileData, 0, 8) === "\x89PNG\r\n\x1a\n") {
+        $contentType = 'image/png';
+        $extension = 'png';
+    } elseif (substr($fileData, 0, 3) === "\xFF\xD8\xFF") {
+        $contentType = 'image/jpeg';
+        $extension = 'jpg';
+    } elseif (substr($fileData, 0, 6) === 'GIF87a' || substr($fileData, 0, 6) === 'GIF89a') {
+        $contentType = 'image/gif';
+        $extension = 'gif';
     }
     
     // Generate download filename
-    $download_filename = 'lab_result_' . $result['test_type'] . '_' . date('Y-m-d') . '.' . $file_extension;
-    $download_filename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $download_filename);
+    $test_type = preg_replace('/[^a-zA-Z0-9]/', '_', $result['test_type']);
+    $result_date = date('Y-m-d', strtotime($result['result_date']));
+    $download_filename = 'lab_result_' . $test_type . '_' . $result_date . '.' . $extension;
     
     // Set download headers
-    header('Content-Type: ' . $content_type);
+    header('Content-Type: ' . $contentType);
     header('Content-Disposition: attachment; filename="' . $download_filename . '"');
-    header('Content-Length: ' . $file_size);
+    header('Content-Length: ' . strlen($fileData));
     header('Cache-Control: private, must-revalidate');
     header('Pragma: private');
     header('Expires: 0');
@@ -102,18 +88,8 @@ try {
         ob_end_clean();
     }
     
-    // Read and output file
-    $handle = fopen($full_file_path, 'rb');
-    if ($handle) {
-        while (!feof($handle)) {
-            echo fread($handle, 8192);
-            flush();
-        }
-        fclose($handle);
-    } else {
-        http_response_code(500);
-        die('Error reading file');
-    }
+    // Output file data
+    echo $fileData;
     
 } catch (PDOException $e) {
     error_log("Database error in download_lab_file.php: " . $e->getMessage());
