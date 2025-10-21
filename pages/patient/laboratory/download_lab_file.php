@@ -22,7 +22,25 @@ if (!$item_id) {
     die('Invalid parameters - item ID required');
 }
 
-$patient_id = $_SESSION['patient_id'];
+$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+
+// Get the actual numeric patient_id from the username
+$patient_id = null;
+try {
+    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
+    $patientStmt->bind_param("s", $patient_username);
+    $patientStmt->execute();
+    $patientResult = $patientStmt->get_result()->fetch_assoc();
+    if (!$patientResult) {
+        http_response_code(404);
+        die('Patient not found');
+    }
+    $patient_id = $patientResult['patient_id'];
+    $patientStmt->close();
+} catch (Exception $e) {
+    http_response_code(500);
+    die('Database error');
+}
 
 try {
     // Verify that this file belongs to this patient's lab result - using correct schema

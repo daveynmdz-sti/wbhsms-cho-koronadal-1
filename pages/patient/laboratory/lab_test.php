@@ -15,12 +15,33 @@ require_once $root_path . '/config/db.php';
 // Include automatic status updater
 require_once $root_path . '/utils/automatic_status_updater.php';
 
-$patient_id = $_SESSION['patient_id'];
+$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+$patient_id = null;
 $message = '';
 $error = '';
 
-// Run automatic status updates when page loads
+// Get the actual numeric patient_id from the username
 try {
+    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
+    $patientStmt->bind_param("s", $patient_username);
+    $patientStmt->execute();
+    $patientResult = $patientStmt->get_result()->fetch_assoc();
+    if (!$patientResult) {
+        $error = "Patient not found. Please contact administrator.";
+    } else {
+        $patient_id = $patientResult['patient_id'];
+    }
+    $patientStmt->close();
+} catch (Exception $e) {
+    $error = "Database error occurred: " . $e->getMessage();
+}
+
+// Only proceed if we have a valid patient_id
+if (!$patient_id) {
+    // Don't run any queries if we don't have a valid patient_id
+} else {
+    // Run automatic status updates when page loads
+    try {
     $status_updater = new AutomaticStatusUpdater($conn);
     $update_result = $status_updater->runAllUpdates();
     
@@ -28,21 +49,23 @@ try {
     if ($update_result['success'] && $update_result['total_updates'] > 0) {
         $message = "Status updates applied: " . $update_result['total_updates'] . " records updated automatically.";
     }
-} catch (Exception $e) {
-    // Log error but don't show to user to avoid confusion
-    error_log("Failed to run automatic status updates: " . $e->getMessage());
+    } catch (Exception $e) {
+        // Log error but don't show to user to avoid confusion
+        error_log("Failed to run automatic status updates: " . $e->getMessage());
+    }
 }
 
 // Fetch patient information
 $patient_info = null;
-try {
-    $stmt = $conn->prepare("
-        SELECT p.*, b.barangay_name
-        FROM patients p
-        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
-        WHERE p.patient_id = ?
-    ");
-    $stmt->bind_param("s", $patient_id);
+if ($patient_id) {
+    try {
+        $stmt = $conn->prepare("
+            SELECT p.*, b.barangay_name
+            FROM patients p
+            LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+            WHERE p.patient_id = ?
+        ");
+        $stmt->bind_param("i", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $patient_info = $result->fetch_assoc();
@@ -53,15 +76,17 @@ try {
         $patient_info['priority_description'] = ($patient_info['priority_level'] == 1) ? 'Priority Patient' : 'Regular Patient';
     }
 
-    $stmt->close();
-} catch (Exception $e) {
-    $error = "Failed to fetch patient information: " . $e->getMessage();
+        $stmt->close();
+    } catch (Exception $e) {
+        $error = "Failed to fetch patient information: " . $e->getMessage();
+    }
 }
 
 // Fetch lab orders (limit to recent 50 for better overview)
 $lab_orders = [];
 $lab_results = [];
-try {
+if ($patient_id) {
+    try {
     // Fetch pending/in-progress/cancelled lab orders - using correct schema
     $stmt = $conn->prepare("
         SELECT lo.*,
@@ -96,7 +121,7 @@ try {
     if (!$stmt) {
         throw new Exception("Prepare failed: " . $conn->error);
     }
-    $stmt->bind_param("s", $patient_id);
+    $stmt->bind_param("i", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $lab_orders = $result->fetch_all(MYSQLI_ASSOC);
@@ -138,13 +163,14 @@ try {
     if (!$stmt) {
         throw new Exception("Prepare failed: " . $conn->error);
     }
-    $stmt->bind_param("s", $patient_id);
+    $stmt->bind_param("i", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $lab_results = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-} catch (Exception $e) {
-    $error = "Failed to fetch lab orders: " . $e->getMessage();
+    } catch (Exception $e) {
+        $error = "Failed to fetch lab orders: " . $e->getMessage();
+    }
 }
 ?>
 <!DOCTYPE html>

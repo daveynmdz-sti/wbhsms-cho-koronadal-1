@@ -28,14 +28,14 @@ if ($conn) {
 
 // If we have a patient_id, let's test everything
 if (isset($_SESSION['patient_id'])) {
-    $patient_id = $_SESSION['patient_id'];
-    echo "<p><strong>Testing with Patient ID:</strong> " . $patient_id . "</p>";
+    $patient_username = $_SESSION['patient_id'];
+    echo "<p><strong>Testing with Patient Username:</strong> " . $patient_username . "</p>";
     
     // Test 1: Check if patient exists
     echo "<h2>3. Patient Verification</h2>";
     try {
-        $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE patient_id = ?");
-        $stmt->bind_param("s", $patient_id);
+        $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE username = ?");
+        $stmt->bind_param("s", $patient_username);
         $stmt->execute();
         $patient = $stmt->get_result()->fetch_assoc();
         
@@ -47,10 +47,13 @@ if (isset($_SESSION['patient_id'])) {
             echo "<li><strong>Username:</strong> " . $patient['username'] . "</li>";
             echo "</ul>";
         } else {
-            echo "<p>❌ Patient NOT found in database with ID: " . $patient_id . "</p>";
+            echo "<p>❌ Patient NOT found in database with username: " . $patient_username . "</p>";
             echo "<p><strong>This is likely the problem!</strong></p>";
         }
         $stmt->close();
+        
+        // Get the numeric patient_id for further tests
+        $patient_id = $patient ? $patient['patient_id'] : null;
     } catch (Exception $e) {
         echo "<p>❌ Error checking patient: " . $e->getMessage() . "</p>";
     }
@@ -171,7 +174,7 @@ if (isset($_SESSION['patient_id'])) {
             LIMIT 10
         ");
         
-        $stmt->bind_param("s", $patient_id);
+        $stmt->bind_param("i", $patient_id);
         $stmt->execute();
         $result = $stmt->get_result();
         $lab_orders = $result->fetch_all(MYSQLI_ASSOC);
@@ -237,7 +240,7 @@ if (isset($_SESSION['patient_id'])) {
             LIMIT 10
         ");
         
-        $stmt->bind_param("s", $patient_id);
+        $stmt->bind_param("i", $patient_id);
         $stmt->execute();
         $result = $stmt->get_result();
         $lab_results = $result->fetch_all(MYSQLI_ASSOC);

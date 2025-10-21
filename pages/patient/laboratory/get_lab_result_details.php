@@ -25,7 +25,25 @@ if (!$result_id) {
     exit;
 }
 
-$patient_id = $_SESSION['patient_id'];
+$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+
+// Get the actual numeric patient_id from the username
+$patient_id = null;
+try {
+    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
+    $patientStmt->bind_param("s", $patient_username);
+    $patientStmt->execute();
+    $patientResult = $patientStmt->get_result()->fetch_assoc();
+    if (!$patientResult) {
+        echo json_encode(['success' => false, 'message' => 'Patient not found']);
+        exit;
+    }
+    $patient_id = $patientResult['patient_id'];
+    $patientStmt->close();
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => 'Database error']);
+    exit;
+}
 
 try {
     // Fetch lab result details with correct schema and security check
@@ -40,7 +58,8 @@ try {
             lo.visit_id,
             CONCAT(e.first_name, ' ', e.last_name) as doctor_name,
             c.consultation_date,
-            a.appointment_date,
+            a.scheduled_date as appointment_date,
+            a.scheduled_time as appointment_time,
             -- Source information for standalone support
             CASE 
                 WHEN lo.appointment_id IS NOT NULL THEN 'appointment'
@@ -64,7 +83,7 @@ try {
         GROUP BY lo.lab_order_id
     ");
     
-    $stmt->bind_param("is", $result_id, $patient_id);
+    $stmt->bind_param("ii", $result_id, $patient_id);
     $stmt->execute();
     $result = $stmt->get_result()->fetch_assoc();
     
@@ -79,15 +98,12 @@ try {
             loi.item_id as lab_order_item_id,
             loi.test_type,
             loi.status,
-            loi.result,
             loi.result_file,
             loi.result_date,
             loi.remarks,
             loi.created_at,
-            loi.updated_at,
-            CONCAT(uploader.first_name, ' ', uploader.last_name) as uploaded_by
+            loi.updated_at
         FROM lab_order_items loi
-        LEFT JOIN employees uploader ON loi.uploaded_by_employee_id = uploader.employee_id
         WHERE loi.lab_order_id = ?
         AND loi.status = 'completed'
         ORDER BY loi.result_date DESC

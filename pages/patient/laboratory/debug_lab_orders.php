@@ -14,11 +14,11 @@ echo "<pre>" . print_r($_SESSION, true) . "</pre>";
 
 // Check if patient exists and get their info
 if (isset($_SESSION['patient_id'])) {
-    $patient_id = $_SESSION['patient_id'];
+    $patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
     
     echo "<h2>2. Patient Information</h2>";
-    $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE patient_id = ?");
-    $stmt->bind_param("s", $patient_id);
+    $stmt = $conn->prepare("SELECT patient_id, first_name, last_name, username FROM patients WHERE username = ?");
+    $stmt->bind_param("s", $patient_username);
     $stmt->execute();
     $patient = $stmt->get_result()->fetch_assoc();
     
@@ -76,8 +76,9 @@ if ($result && $result->num_rows > 0) {
 }
 
 // Check lab orders for current patient specifically
-if (isset($_SESSION['patient_id'])) {
-    echo "<h2>4. Lab Orders for Current Patient (ID: {$patient_id})</h2>";
+if (isset($_SESSION['patient_id']) && isset($patient)) {
+    $actual_patient_id = $patient['patient_id'];
+    echo "<h2>4. Lab Orders for Current Patient (Username: {$patient_username}, ID: {$actual_patient_id})</h2>";
     
     $stmt = $conn->prepare("
         SELECT 
@@ -93,7 +94,7 @@ if (isset($_SESSION['patient_id'])) {
         ORDER BY lo.order_date DESC
     ");
     
-    $stmt->bind_param("s", $patient_id);
+    $stmt->bind_param("i", $actual_patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     

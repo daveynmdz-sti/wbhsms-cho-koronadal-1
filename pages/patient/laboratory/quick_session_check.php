@@ -12,11 +12,11 @@ echo "<pre>" . print_r($_SESSION, true) . "</pre>";
 require_once $root_path . '/config/db.php';
 
 if (isset($_SESSION['patient_id'])) {
-    $patient_id = $_SESSION['patient_id'];
+    $patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
     
     // Check if this patient exists
-    $stmt = $conn->prepare("SELECT * FROM patients WHERE patient_id = ?");
-    $stmt->bind_param("s", $patient_id);
+    $stmt = $conn->prepare("SELECT * FROM patients WHERE username = ?");
+    $stmt->bind_param("s", $patient_username);
     $stmt->execute();
     $patient = $stmt->get_result()->fetch_assoc();
     
@@ -25,9 +25,12 @@ if (isset($_SESSION['patient_id'])) {
         echo "<p><strong>Name:</strong> " . $patient['first_name'] . " " . $patient['last_name'] . "</p>";
         echo "<p><strong>Username:</strong> " . $patient['username'] . "</p>";
         
+        // Get the numeric patient_id
+        $patient_id = $patient['patient_id'];
+        
         // Check lab orders for this patient
         $stmt2 = $conn->prepare("SELECT COUNT(*) as total FROM lab_orders WHERE patient_id = ?");
-        $stmt2->bind_param("s", $patient_id);
+        $stmt2->bind_param("i", $patient_id);
         $stmt2->execute();
         $count = $stmt2->get_result()->fetch_assoc()['total'];
         

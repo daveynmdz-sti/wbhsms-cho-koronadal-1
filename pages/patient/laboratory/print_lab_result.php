@@ -23,43 +23,63 @@ if (!$result_id) {
     die('Invalid result ID');
 }
 
-$patient_id = $_SESSION['patient_id'];
+$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+
+// Get the actual numeric patient_id from the username
+$patient_id = null;
+try {
+    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
+    $patientStmt->bind_param("s", $patient_username);
+    $patientStmt->execute();
+    $patientResult = $patientStmt->get_result()->fetch_assoc();
+    if (!$patientResult) {
+        die('Patient not found');
+    }
+    $patient_id = $patientResult['patient_id'];
+    $patientStmt->close();
+} catch (Exception $e) {
+    die('Database error');
+}
 
 try {
-    // Fetch lab result for printing with security check
-    $stmt = $pdo->prepare("
+    // Fetch lab result for printing with security check using correct schema
+    $stmt = $conn->prepare("
         SELECT 
             lo.lab_order_id,
-            lo.test_type,
-            lo.specimen_type,
-            lo.test_description,
             lo.order_date,
-            lo.result_date,
-            lo.result,
             lo.status,
             lo.remarks,
             CONCAT(e.first_name, ' ', e.last_name) as doctor_name,
             CONCAT(p.first_name, ' ', p.last_name) as patient_name,
             p.date_of_birth,
-            p.gender,
-            c.consultation_date
+            p.sex as gender,
+            c.consultation_date,
+            GROUP_CONCAT(DISTINCT loi.test_type SEPARATOR ', ') as test_types,
+            MAX(loi.result_date) as latest_result_date,
+            COUNT(loi.item_id) as test_count
         FROM lab_orders lo
         LEFT JOIN consultations c ON lo.consultation_id = c.consultation_id
-        LEFT JOIN employees e ON c.employee_id = e.employee_id
+        LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
         LEFT JOIN patients p ON lo.patient_id = p.patient_id
+        LEFT JOIN lab_order_items loi ON lo.lab_order_id = loi.lab_order_id
         WHERE lo.lab_order_id = ? 
         AND lo.patient_id = ?
         AND lo.status = 'completed'
+        GROUP BY lo.lab_order_id
     ");
     
-    $stmt->execute([$result_id, $patient_id]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->bind_param("ii", $result_id, $patient_id);
+    $stmt->execute();
+    $result_query = $stmt->get_result();
+    $result = $result_query->fetch_assoc();
     
     if (!$result) {
         die('Lab result not found');
     }
     
-} catch (PDOException $e) {
+    $stmt->close();
+    
+} catch (Exception $e) {
     error_log("Database error in print_lab_result.php: " . $e->getMessage());
     die('Database error occurred');
 }
@@ -218,16 +238,20 @@ try {
         <div class="info-section">
             <h3>Test Information</h3>
             <div class="info-row">
-                <span class="info-label">Test Type:</span>
-                <span class="info-value"><?php echo htmlspecialchars($result['test_type']); ?></span>
+                <span class="info-label">Test Types:</span>
+                <span class="info-value"><?php echo htmlspecialchars($result['test_types'] ?: 'No tests specified'); ?></span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Test Count:</span>
+                <span class="info-value"><?php echo $result['test_count']; ?> test(s)</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Order Date:</span>
                 <span class="info-value"><?php echo date('F j, Y', strtotime($result['order_date'])); ?></span>
             </div>
             <div class="info-row">
-                <span class="info-label">Result Date:</span>
-                <span class="info-value"><?php echo date('F j, Y', strtotime($result['result_date'])); ?></span>
+                <span class="info-label">Latest Result Date:</span>
+                <span class="info-value"><?php echo $result['latest_result_date'] ? date('F j, Y', strtotime($result['latest_result_date'])) : 'Pending'; ?></span>
             </div>
             <?php if (!empty($result['doctor_name'])): ?>
             <div class="info-row">
@@ -238,17 +262,13 @@ try {
         </div>
     </div>
     
-    <?php if (!empty($result['specimen_type'])): ?>
-    <div class="info-row">
-        <span class="info-label">Specimen Type:</span>
-        <span class="info-value"><?php echo htmlspecialchars($result['specimen_type']); ?></span>
-    </div>
-    <?php endif; ?>
-    
     <div class="result-content">
-        <h3>Test Results</h3>
+        <h3>Lab Order Summary</h3>
         <div class="result-text">
-            <?php echo nl2br(htmlspecialchars($result['result'] ?: 'No result available')); ?>
+            <p><strong>Order ID:</strong> <?php echo $result['lab_order_id']; ?></p>
+            <p><strong>Status:</strong> <?php echo ucfirst(str_replace('_', ' ', $result['status'])); ?></p>
+            <p><strong>Test Types:</strong> <?php echo htmlspecialchars($result['test_types'] ?: 'No tests specified'); ?></p>
+            <p>For detailed test results and files, please access the patient portal or contact the laboratory.</p>
         </div>
     </div>
     

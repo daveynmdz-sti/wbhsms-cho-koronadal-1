@@ -16,46 +16,69 @@ $root_path = dirname(dirname(dirname(__DIR__)));
 // Include database connection
 require_once $root_path . '/config/db.php';
 
-$patient_id = $_SESSION['patient_id'];
+$patient_username = $_SESSION['patient_id']; // This is actually the username like "P000007"
+
+// Get the actual numeric patient_id from the username
+$patient_id = null;
+try {
+    $patientStmt = $conn->prepare("SELECT patient_id FROM patients WHERE username = ?");
+    $patientStmt->bind_param("s", $patient_username);
+    $patientStmt->execute();
+    $patientResult = $patientStmt->get_result()->fetch_assoc();
+    if (!$patientResult) {
+        die('Patient not found');
+    }
+    $patient_id = $patientResult['patient_id'];
+    $patientStmt->close();
+} catch (Exception $e) {
+    die('Database error');
+}
 
 try {
-    // Fetch all lab orders and results for this patient
-    $stmt = $pdo->prepare("
+    // Fetch all lab orders and results for this patient using correct schema
+    $stmt = $conn->prepare("
         SELECT 
             lo.lab_order_id,
-            lo.test_type,
-            lo.specimen_type,
             lo.order_date,
-            lo.result_date,
             lo.status,
             lo.remarks,
             CONCAT(e.first_name, ' ', e.last_name) as doctor_name,
-            CONCAT(p.first_name, ' ', p.last_name) as patient_name
+            CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+            GROUP_CONCAT(DISTINCT loi.test_type SEPARATOR ', ') as test_types,
+            MAX(loi.result_date) as latest_result_date,
+            COUNT(loi.item_id) as test_count
         FROM lab_orders lo
         LEFT JOIN consultations c ON lo.consultation_id = c.consultation_id
-        LEFT JOIN employees e ON c.employee_id = e.employee_id
+        LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
         LEFT JOIN patients p ON lo.patient_id = p.patient_id
+        LEFT JOIN lab_order_items loi ON lo.lab_order_id = loi.lab_order_id
         WHERE lo.patient_id = ?
+        GROUP BY lo.lab_order_id
         ORDER BY lo.order_date DESC
     ");
     
-    $stmt->execute([$patient_id]);
-    $lab_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->bind_param("i", $patient_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $lab_history = $result->fetch_all(MYSQLI_ASSOC);
     
     if (empty($lab_history)) {
         die('No lab history found');
     }
     
     // Get patient info
-    $patient_stmt = $pdo->prepare("
-        SELECT first_name, last_name, date_of_birth, gender, phone_number 
+    $patient_stmt = $conn->prepare("
+        SELECT first_name, last_name, date_of_birth, sex as gender, contact_number as phone_number 
         FROM patients 
         WHERE patient_id = ?
     ");
-    $patient_stmt->execute([$patient_id]);
-    $patient_info = $patient_stmt->fetch(PDO::FETCH_ASSOC);
+    $patient_stmt->bind_param("i", $patient_id);
+    $patient_stmt->execute();
+    $patient_result = $patient_stmt->get_result();
+    $patient_info = $patient_result->fetch_assoc();
+    $patient_stmt->close();
     
-} catch (PDOException $e) {
+} catch (Exception $e) {
     error_log("Database error in download_lab_history.php: " . $e->getMessage());
     die('Database error occurred');
 }
@@ -97,10 +120,10 @@ fputcsv($output, []);
 // Lab history headers
 fputcsv($output, [
     'Order ID',
-    'Test Type',
-    'Specimen Type',
+    'Test Types',
+    'Test Count',
     'Order Date',
-    'Result Date',
+    'Latest Result Date',
     'Status',
     'Ordered By',
     'Remarks'
@@ -110,10 +133,10 @@ fputcsv($output, [
 foreach ($lab_history as $record) {
     fputcsv($output, [
         $record['lab_order_id'],
-        $record['test_type'],
-        $record['specimen_type'] ?: 'N/A',
+        $record['test_types'] ?: 'No tests specified',
+        $record['test_count'] ?: '0',
         date('F j, Y', strtotime($record['order_date'])),
-        $record['result_date'] ? date('F j, Y', strtotime($record['result_date'])) : 'Pending',
+        $record['latest_result_date'] ? date('F j, Y', strtotime($record['latest_result_date'])) : 'Pending',
         ucfirst(str_replace('_', ' ', $record['status'])),
         $record['doctor_name'] ? 'Dr. ' . $record['doctor_name'] : 'Lab Direct',
         $record['remarks'] ?: 'N/A'

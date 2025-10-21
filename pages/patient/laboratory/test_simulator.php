@@ -39,12 +39,24 @@ if ($result && $result->num_rows > 0) {
 if (isset($_GET['simulate_patient'])) {
     $simulate_patient_id = $_GET['simulate_patient'];
     
-    // Set session to this patient
-    $_SESSION['patient_id'] = $simulate_patient_id;
+    // Get the username for this patient_id to set in session
+    $userStmt = $conn->prepare("SELECT username FROM patients WHERE patient_id = ?");
+    $userStmt->bind_param("i", $simulate_patient_id);
+    $userStmt->execute();
+    $userResult = $userStmt->get_result()->fetch_assoc();
+    $userStmt->close();
+    
+    if ($userResult) {
+        // Set session to the username (this is what patient sessions expect)
+        $_SESSION['patient_id'] = $userResult['username'];
+    } else {
+        echo "<p>❌ Patient not found!</p>";
+        exit;
+    }
     
     echo "<div style='background: #e8f5e8; padding: 1rem; border: 1px solid #4caf50; border-radius: 8px; margin: 1rem 0;'>";
     echo "<h3 style='color: #2e7d32; margin: 0 0 0.5rem 0;'>✅ Simulation Active</h3>";
-    echo "<p style='margin: 0;'><strong>Now simulating patient ID:</strong> " . $simulate_patient_id . "</p>";
+    echo "<p style='margin: 0;'><strong>Now simulating patient:</strong> {$userResult['username']} (ID: {$simulate_patient_id})</p>";
     echo "<p style='margin: 0.5rem 0 0 0;'><a href='lab_test.php' style='background: #4caf50; color: white; padding: 0.5rem 1rem; text-decoration: none; border-radius: 4px;'>🧪 Test Lab Interface</a></p>";
     echo "</div>";
     
@@ -59,7 +71,7 @@ if (isset($_GET['simulate_patient'])) {
         ORDER BY lo.order_date DESC
     ");
     
-    $stmt->bind_param("s", $simulate_patient_id);
+    $stmt->bind_param("i", $simulate_patient_id);
     $stmt->execute();
     $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     
