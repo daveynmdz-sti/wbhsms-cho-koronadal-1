@@ -104,20 +104,8 @@ try {
             throw new Exception('Failed to update prescription status');
         }
         
-        // Log the status change if auto_update
-        if ($auto_update) {
-            $logSql = "INSERT INTO prescription_status_logs (prescription_id, employee_id, action, details, created_at) 
-                       VALUES (?, ?, 'status_auto_update', ?, NOW())";
-            $logStmt = $conn->prepare($logSql);
-            $action_details = json_encode([
-                'old_status' => $prescription['status'],
-                'new_status' => $overall_status,
-                'remarks' => $remarks,
-                'auto_updated' => true
-            ]);
-            $logStmt->bind_param("iis", $prescription_id, $_SESSION['employee_id'], $action_details);
-            $logStmt->execute(); // Don't fail if logging fails
-        }
+        // Note: Prescription status logging removed as prescription_status_logs table is not needed
+        // Status updates are tracked through the prescription's updated_at timestamp
         
         // Commit transaction
         $conn->commit();

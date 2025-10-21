@@ -21,7 +21,7 @@ if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
 }
 
 // Check if role is authorized for clinical encounters
-$authorized_roles = ['doctor', 'nurse', 'admin', 'records_officer', 'bhw', 'dho'];
+$authorized_roles = ['doctor', 'nurse', 'admin', 'records_officer', 'bhw', 'dho', 'pharmacist'];
 if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
     header('Location: ../dashboard.php');
     exit();
@@ -83,12 +83,13 @@ switch ($employee_role) {
     case 'nurse':
         // Doctor/Nurse: Show consultations assigned to them or where they were involved
         if (empty($search_query) && empty($doctor_filter)) {
-            $where_conditions[] = "(c.attending_employee_id = ? OR EXISTS (
-                SELECT 1 FROM vitals vt WHERE vt.visit_id = c.visit_id AND vt.taken_by = ?
+            $where_conditions[] = "(c.consulted_by = ? OR c.attending_employee_id = ? OR EXISTS (
+                SELECT 1 FROM vitals vt WHERE vt.vitals_id = c.vitals_id AND vt.recorded_by = ?
             ))";
             $params[] = $employee_id;
             $params[] = $employee_id;
-            $param_types .= 'ii';
+            $params[] = $employee_id;
+            $param_types .= 'iii';
         }
         break;
         
@@ -156,7 +157,7 @@ if (!empty($date_to)) {
 }
 
 if (!empty($doctor_filter)) {
-    $where_conditions[] = "c.attending_employee_id = ?";
+    $where_conditions[] = "c.consulted_by = ?";
     $params[] = $doctor_filter;
     $param_types .= 'i';
 }
@@ -175,13 +176,13 @@ if (!empty($district_filter)) {
 
 $where_clause = implode(' AND ', $where_conditions);
 
-// Get total count for pagination
+// Get total count for pagination - Updated for standalone consultations
 $count_sql = "
     SELECT COUNT(*) as total
     FROM consultations c
     JOIN patients p ON c.patient_id = p.patient_id
-    JOIN visits v ON c.visit_id = v.visit_id
-    LEFT JOIN employees d ON c.attending_employee_id = d.employee_id
+    LEFT JOIN vitals v ON c.vitals_id = v.vitals_id
+    LEFT JOIN employees d ON c.consulted_by = d.employee_id
     LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
     LEFT JOIN districts dist ON b.district_id = dist.district_id
     WHERE $where_clause
@@ -207,22 +208,26 @@ if (!empty($params)) {
 
 $total_pages = ceil($total_records / $records_per_page);
 
-// Get clinical encounters with pagination
+// Get clinical encounters with pagination - Updated for standalone consultations
 $sql = "
-    SELECT c.consultation_id as encounter_id, c.patient_id, c.visit_id, c.chief_complaint, 
-           c.diagnosis, c.consultation_status as status, c.consultation_date, c.created_at, c.updated_at,
+    SELECT c.consultation_id as encounter_id, c.patient_id, c.vitals_id, c.chief_complaint, 
+           c.diagnosis, c.consultation_status as status, 
+           c.consultation_date, c.created_at, c.updated_at,
            p.first_name, p.last_name, p.username as patient_id_display,
            TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age, p.sex,
            d.first_name as doctor_first_name, d.last_name as doctor_last_name,
            b.barangay_name, dist.district_name,
-           v.visit_type, v.visit_purpose,
+           'consultation' as visit_type, 'clinical_consultation' as visit_purpose,
            (SELECT COUNT(*) FROM prescriptions WHERE consultation_id = c.consultation_id) as prescription_count,
            (SELECT COUNT(*) FROM lab_orders WHERE consultation_id = c.consultation_id) as lab_test_count,
-           (SELECT COUNT(*) FROM referrals WHERE consultation_id = c.consultation_id) as referral_count
+           (SELECT COUNT(*) FROM referrals WHERE consultation_id = c.consultation_id) as referral_count,
+           -- Get vitals information if linked
+           CONCAT(v.systolic_bp, '/', v.diastolic_bp) as blood_pressure, 
+           v.heart_rate, v.temperature, v.weight, v.height
     FROM consultations c
     JOIN patients p ON c.patient_id = p.patient_id
-    JOIN visits v ON c.visit_id = v.visit_id
-    LEFT JOIN employees d ON c.attending_employee_id = d.employee_id
+    LEFT JOIN vitals v ON c.vitals_id = v.vitals_id
+    LEFT JOIN employees d ON c.consulted_by = d.employee_id
     LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
     LEFT JOIN districts dist ON b.district_id = dist.district_id
     WHERE $where_clause
@@ -319,7 +324,7 @@ $stats_param_types = '';
 switch ($employee_role) {
     case 'doctor':
     case 'nurse':
-        $stats_where[] = "c.attending_employee_id = ?";
+        $stats_where[] = "c.consulted_by = ?";
         $stats_params[] = $employee_id;
         $stats_param_types .= 'i';
         break;
@@ -1041,9 +1046,9 @@ try {
         <div class="page-header">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                 <h1><i class="fas fa-stethoscope"></i> Clinical Encounter Management</h1>
-                <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse'])): ?>
+                <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse', 'pharmacist'])): ?>
                 <div class="header-actions">
-                    <a href="new_consultation.php" class="btn btn-primary" style="background: #28a745; border-color: #28a745;">
+                    <a href="new_consultation_standalone.php" class="btn btn-primary" style="background: #28a745; border-color: #28a745;">
                         <i class="fas fa-plus-circle"></i> New Consultation
                     </a>
                 </div>
@@ -1079,15 +1084,48 @@ try {
                     <?php endif; ?>
 
                     <?php
+                    // Handle success messages
+                    if (isset($_GET['success'])) {
+                        $success_message = '';
+                        switch ($_GET['success']) {
+                            case 'consultation_created':
+                                $success_message = 'Consultation created successfully!';
+                                break;
+                            case 'consultation_updated':
+                                $success_message = 'Consultation updated successfully!';
+                                break;
+                            default:
+                                $success_message = 'Action completed successfully!';
+                        }
+                        ?>
+                        <div class="alert alert-success" id="successAlert">
+                            <i class="fas fa-check-circle"></i>
+                            <span><?= htmlspecialchars($success_message) ?></span>
+                            <button type="button" class="alert-close" onclick="this.parentElement.remove();">&times;</button>
+                        </div>
+                        <script>
+                            // Auto-dismiss success after 5 seconds
+                            setTimeout(function() {
+                                const successAlert = document.getElementById('successAlert');
+                                if (successAlert) {
+                                    successAlert.style.opacity = '0';
+                                    successAlert.style.transform = 'translateY(-20px)';
+                                    setTimeout(() => successAlert.remove(), 300);
+                                }
+                            }, 5000);
+                        </script>
+                    <?php } ?>
+
+                    <?php
                     // Handle error messages
                     if (isset($_GET['error'])) {
                         $error_message = '';
                         switch ($_GET['error']) {
-                            case 'visit_required':
-                                $error_message = 'A patient visit is required to create a consultation. Please use the "New Consultation" button for proper guidance.';
+                            case 'database_error':
+                                $error_message = 'Database error occurred. Please try again or contact administrator.';
                                 break;
-                            case 'invalid_visit':
-                                $error_message = 'Invalid or missing visit ID. Please select a valid patient visit to create a consultation.';
+                            case 'invalid_consultation':
+                                $error_message = 'Invalid consultation ID. Please select a valid consultation.';
                                 break;
                             default:
                                 $error_message = 'An error occurred. Please try again.';
@@ -1108,13 +1146,6 @@ try {
                                     setTimeout(() => errorAlert.remove(), 300);
                                 }
                             }, 8000);
-
-                            // Show the modal automatically if visit_required error
-                            <?php if ($_GET['error'] === 'visit_required'): ?>
-                            setTimeout(function() {
-                                showNewConsultationModal();
-                            }, 1000);
-                            <?php endif; ?>
                         </script>
                     <?php } ?>
                 </div>
@@ -1258,9 +1289,9 @@ try {
                         <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
                             <i class="fas fa-stethoscope"></i> Clinical Encounters
                         </h4>
-                        <button onclick="showNewConsultationModal()" class="btn btn-primary">
+                        <a href="new_consultation_standalone.php" class="btn btn-primary">
                             <i class="fas fa-plus"></i> New Consultation
-                        </button>
+                        </a>
                     </div>
 
                     <div class="table-container">
@@ -1273,8 +1304,9 @@ try {
                                         <th>Patient Name</th>
                                         <th>Doctor Name</th>
                                         <th>Chief Complaint</th>
-                                        <th>Diagnosis</th>
+                                        <th>Assessment/Diagnosis</th>
                                         <th>Status</th>
+                                        <th>Vitals</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -1286,11 +1318,12 @@ try {
                                                 <div style="font-size: 0.8rem; color: #6c757d;">
                                                     <?= date('g:i A', strtotime($encounter['consultation_date'])) ?>
                                                 </div>
-                                                <?php if ($encounter['visit_type']): ?>
-                                                    <div style="font-size: 0.75rem; color: #6c757d; margin-top: 0.25rem;">
-                                                        <?= htmlspecialchars(ucwords($encounter['visit_type'])) ?>
-                                                    </div>
-                                                <?php endif; ?>
+                                                <div style="font-size: 0.75rem; color: #6c757d; margin-top: 0.25rem;">
+                                                    <i class="fas fa-stethoscope"></i> Consultation ID: <?= $encounter['encounter_id'] ?>
+                                                    <?php if ($encounter['vitals_id']): ?>
+                                                        <br><i class="fas fa-heartbeat"></i> Vitals: <?= $encounter['vitals_id'] ?>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
                                             <td>
                                                 <div class="patient-info">
@@ -1325,7 +1358,7 @@ try {
                                                 </div>
                                             </td>
                                             <td>
-                                                <div title="<?= htmlspecialchars($encounter['diagnosis'] ?? 'No diagnosis yet') ?>">
+                                                <div title="<?= htmlspecialchars($encounter['diagnosis'] ?? 'No assessment yet') ?>">
                                                     <?= $encounter['diagnosis'] ? htmlspecialchars(substr($encounter['diagnosis'], 0, 40)) : '<em>Pending</em>' ?>
                                                     <?= ($encounter['diagnosis'] && strlen($encounter['diagnosis']) > 40) ? '...' : '' ?>
                                                 </div>
@@ -1358,6 +1391,24 @@ try {
                                                 <?php endif; ?>
                                             </td>
                                             <td>
+                                                <?php if ($encounter['vitals_id']): ?>
+                                                    <div style="font-size: 0.85rem;">
+                                                        <div><strong>ID: <?= $encounter['vitals_id'] ?></strong></div>
+                                                        <?php if ($encounter['blood_pressure']): ?>
+                                                            <div><i class="fas fa-heart"></i> <?= htmlspecialchars($encounter['blood_pressure']) ?></div>
+                                                        <?php endif; ?>
+                                                        <?php if ($encounter['temperature']): ?>
+                                                            <div><i class="fas fa-thermometer-half"></i> <?= htmlspecialchars($encounter['temperature']) ?>°C</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($encounter['heart_rate']): ?>
+                                                            <div><i class="fas fa-heartbeat"></i> <?= htmlspecialchars($encounter['heart_rate']) ?> bpm</div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <em style="color: #6c757d;">No vitals</em>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
                                                 <div class="encounter-actions">
                                                     <a href="view_consultation.php?id=<?= $encounter['encounter_id'] ?>" 
                                                        class="action-btn btn-view" title="View Details">
@@ -1381,9 +1432,9 @@ try {
                                     <i class="fas fa-stethoscope"></i>
                                     <h3>No Clinical Encounters Found</h3>
                                     <p>No consultations match your current filters.</p>
-                                    <button onclick="showNewConsultationModal()" class="btn btn-primary">
+                                    <a href="new_consultation_standalone.php" class="btn btn-primary">
                                         <i class="fas fa-plus"></i> Create New Consultation
-                                    </button>
+                                    </a>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -1418,249 +1469,51 @@ try {
         </div>
     </section>
 
-    <!-- New Consultation Modal -->
-    <div id="newConsultationModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-info-circle"></i> Create New Consultation</h3>
-                <span class="close" onclick="closeNewConsultationModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="info-box">
-                    <i class="fas fa-stethoscope info-icon"></i>
-                    <h4>Patient Visit Required</h4>
-                    <p>To create a new consultation, you need to start with a patient visit first.</p>
-                </div>
-                
-                <div class="workflow-steps">
-                    <h5>Correct Workflow:</h5>
-                    <ol>
-                        <li><strong>Patient Registration:</strong> Ensure patient is registered in the system</li>
-                        <li><strong>Create Visit:</strong> Start a new patient visit (walk-in, appointment, etc.)</li>
-                        <li><strong>Begin Consultation:</strong> Create consultation for the active visit</li>
-                    </ol>
-                </div>
-                
-                <div class="action-options">
-                    <h5>What would you like to do?</h5>
-                    <div class="option-buttons">
-                        <a href="../management/admin/patient-records/patient_records_management.php" class="btn btn-primary">
-                            <i class="fas fa-users"></i> Manage Patients
-                        </a>
-                        <a href="../appointment/" class="btn btn-secondary">
-                            <i class="fas fa-calendar-plus"></i> Schedule Appointment
-                        </a>
-                        <button onclick="closeNewConsultationModal()" class="btn btn-outline">
-                            <i class="fas fa-times"></i> Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function showNewConsultationModal() {
-            document.getElementById('newConsultationModal').style.display = 'flex';
-        }
-
-        function closeNewConsultationModal() {
-            document.getElementById('newConsultationModal').style.display = 'none';
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('newConsultationModal');
-            if (event.target === modal) {
-                closeNewConsultationModal();
-            }
-        }
-
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                closeNewConsultationModal();
-            }
-        });
-    </script>
-
     <style>
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            justify-content: center;
-            align-items: center;
-        }
-
-        .modal-content {
-            background-color: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            max-width: 600px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        .modal-header {
-            padding: 1.5rem 2rem 1rem;
-            border-bottom: 2px solid #f0f0f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-header h3 {
-            margin: 0;
-            color: #0077b6;
+        /* Alert Styles */
+        .alert {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-        }
-
-        .close {
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: #999;
-            transition: color 0.3s ease;
-        }
-
-        .close:hover {
-            color: #333;
-        }
-
-        .modal-body {
-            padding: 1.5rem 2rem 2rem;
-        }
-
-        .info-box {
-            background: linear-gradient(135deg, #e3f2fd, #f0f8ff);
-            border: 2px solid #0077b6;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            text-align: center;
-        }
-
-        .info-icon {
-            font-size: 2rem;
-            color: #0077b6;
-            margin-bottom: 0.5rem;
-        }
-
-        .info-box h4 {
-            margin: 0 0 0.5rem 0;
-            color: #0077b6;
-        }
-
-        .info-box p {
-            margin: 0;
-            color: #333;
-        }
-
-        .workflow-steps {
-            margin-bottom: 1.5rem;
-        }
-
-        .workflow-steps h5 {
-            color: #333;
-            margin-bottom: 0.75rem;
-        }
-
-        .workflow-steps ol {
-            color: #666;
-            padding-left: 1.5rem;
-        }
-
-        .workflow-steps li {
-            margin-bottom: 0.5rem;
-        }
-
-        .action-options h5 {
-            color: #333;
-            margin-bottom: 1rem;
-        }
-
-        .option-buttons {
-            display: flex;
             gap: 0.75rem;
-            flex-wrap: wrap;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-size: 0.95rem;
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+            position: relative;
         }
 
-        .option-buttons .btn {
-            flex: 1;
-            min-width: 150px;
-            text-align: center;
-            text-decoration: none;
-            padding: 0.75rem 1rem;
-            border-radius: 6px;
-            font-weight: 500;
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border-left-color: #28a745;
+        }
+
+        .alert-warning {
+            background: #fff8e1;
+            color: #f57c00;
+            border-left-color: #ff9800;
+        }
+
+        .alert-close {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            opacity: 0.7;
+            color: inherit;
+            padding: 0;
+            margin-left: auto;
+            width: 24px;
+            height: 24px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            transition: all 0.3s ease;
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #0077b6, #023e8a);
-            color: white;
-            border: none;
-        }
-
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-            border: none;
-        }
-
-        .btn-outline {
-            background: transparent;
-            color: #6c757d;
-            border: 2px solid #dee2e6;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-        }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #023e8a, #001d3d);
-        }
-
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
-
-        .btn-outline:hover {
-            background: #f8f9fa;
-            border-color: #6c757d;
-        }
-
-        @media (max-width: 768px) {
-            .modal-content {
-                width: 95%;
-                margin: 1rem;
-            }
-
-            .modal-header,
-            .modal-body {
-                padding: 1rem 1.5rem;
-            }
-
-            .option-buttons {
-                flex-direction: column;
-            }
-
-            .option-buttons .btn {
-                min-width: auto;
-            }
+        .alert-close:hover {
+            opacity: 1;
         }
     </style>
 </body>

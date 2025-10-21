@@ -62,17 +62,17 @@ if (isset($_GET['action'])) {
                         p.date_of_birth,
                         p.sex,
                         p.contact_number,
-                        p.barangay,
+                        COALESCE(b.barangay_name, 'Not Specified') as barangay,
                         a.scheduled_date,
                         a.scheduled_time,
-                        COALESCE(s.service_name, 'General Consultation') as service_name,
+                        COALESCE(s.name, 'General Consultation') as service_name,
                         a.status as appointment_status,
                         -- Check if consultation already exists
                         c.consultation_id,
                         c.consultation_status,
                         c.consultation_date,
                         -- Latest vitals from this visit
-                        vt.vital_id,
+                        vt.vitals_id,
                         vt.systolic_bp,
                         vt.diastolic_bp,
                         vt.heart_rate,
@@ -82,13 +82,14 @@ if (isset($_GET['action'])) {
                         vt.height,
                         vt.bmi,
                         vt.recorded_by,
-                        vt.created_at as vitals_date
+                        vt.recorded_at as vitals_date
                     FROM visits v
                     INNER JOIN patients p ON v.patient_id = p.patient_id
                     INNER JOIN appointments a ON v.appointment_id = a.appointment_id
+                    LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
                     LEFT JOIN services s ON a.service_id = s.service_id
                     LEFT JOIN consultations c ON v.visit_id = c.visit_id
-                    LEFT JOIN vitals vt ON v.visit_id = vt.visit_id
+                    LEFT JOIN vitals vt ON v.vitals_id = vt.vitals_id
                     WHERE a.status IN ('checked_in', 'in_progress')
                     AND v.visit_status IN ('checked_in', 'active', 'in_progress')
                     AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? 
@@ -207,56 +208,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insert/update vitals if provided
             $vitals_id = null;
             if ($systolic_bp || $diastolic_bp || $heart_rate || $respiratory_rate || $temperature || $weight || $height) {
-                // Check if vitals already exist for this visit
-                $stmt = $conn->prepare("SELECT vital_id FROM vitals WHERE visit_id = ? ORDER BY created_at DESC LIMIT 1");
+                // Get patient_id for this visit
+                $stmt = $conn->prepare("SELECT patient_id, vitals_id FROM visits WHERE visit_id = ?");
                 if (!$stmt) {
-                    throw new Exception('Failed to prepare vitals check query: ' . $conn->error);
+                    throw new Exception('Failed to prepare visit query: ' . $conn->error);
                 }
                 $stmt->bind_param('i', $visit_id);
                 $stmt->execute();
-                $existing_vitals = $stmt->get_result()->fetch_assoc();
+                $visit_data = $stmt->get_result()->fetch_assoc();
                 
-                if ($existing_vitals) {
+                if (!$visit_data) {
+                    throw new Exception('Visit not found.');
+                }
+                
+                $patient_id = $visit_data['patient_id'];
+                $existing_vitals_id = $visit_data['vitals_id'];
+                
+                if ($existing_vitals_id) {
                     // Update existing vitals
                     $stmt = $conn->prepare("
                         UPDATE vitals SET
                             systolic_bp = ?, diastolic_bp = ?, heart_rate = ?, 
                             respiratory_rate = ?, temperature = ?, weight = ?, height = ?, bmi = ?, 
-                            recorded_by = ?, remarks = ?, updated_at = NOW()
-                        WHERE vital_id = ?
+                            recorded_by = ?, remarks = ?
+                        WHERE vitals_id = ?
                     ");
                     if (!$stmt) {
                         throw new Exception('Failed to prepare vitals update query: ' . $conn->error);
                     }
                     $stmt->bind_param(
-                        'iiiiddddiisi', 
+                        'iiiiddddisi', 
                         $systolic_bp, $diastolic_bp, $heart_rate, 
                         $respiratory_rate, $temperature, $weight, $height, $bmi, 
-                        $employee_id, $vitals_remarks, $existing_vitals['vital_id']
+                        $employee_id, $vitals_remarks, $existing_vitals_id
                     );
-                    $vitals_id = $existing_vitals['vital_id'];
+                    $vitals_id = $existing_vitals_id;
                 } else {
                     // Insert new vitals
                     $stmt = $conn->prepare("
                         INSERT INTO vitals (
-                            visit_id, systolic_bp, diastolic_bp, heart_rate, 
+                            patient_id, systolic_bp, diastolic_bp, heart_rate, 
                             respiratory_rate, temperature, weight, height, bmi, 
-                            recorded_by, remarks
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            recorded_by, remarks, recorded_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     ");
                     if (!$stmt) {
                         throw new Exception('Failed to prepare vitals insert query: ' . $conn->error);
                     }
                     $stmt->bind_param(
-                        'iiiiddddiis', 
-                        $visit_id, $systolic_bp, $diastolic_bp, $heart_rate, 
+                        'iiiiddddiss', 
+                        $patient_id, $systolic_bp, $diastolic_bp, $heart_rate, 
                         $respiratory_rate, $temperature, $weight, $height, $bmi, 
                         $employee_id, $vitals_remarks
                     );
-                }
-                $stmt->execute();
-                if (!$vitals_id) {
+                    $stmt->execute();
                     $vitals_id = $conn->insert_id;
+                    
+                    // Link the vitals to the visit
+                    $stmt = $conn->prepare("UPDATE visits SET vitals_id = ? WHERE visit_id = ?");
+                    if (!$stmt) {
+                        throw new Exception('Failed to prepare visit update query: ' . $conn->error);
+                    }
+                    $stmt->bind_param('ii', $vitals_id, $visit_id);
+                    $stmt->execute();
                 }
             }
             
@@ -334,17 +348,19 @@ try {
         SELECT DISTINCT
             v.visit_id, v.patient_id, v.appointment_id, v.visit_date, v.visit_status,
             p.first_name, p.last_name, p.middle_name, p.username as patient_code,
-            p.date_of_birth, p.sex, p.contact_number, p.barangay,
+            p.date_of_birth, p.sex, p.contact_number, 
+            COALESCE(b.barangay_name, 'Not Specified') as barangay,
             a.scheduled_date, a.scheduled_time,
-            COALESCE(s.service_name, 'General Consultation') as service_name,
+            COALESCE(s.name, 'General Consultation') as service_name,
             c.consultation_id, c.consultation_status,
-            vt.vital_id, vt.systolic_bp, vt.diastolic_bp
+            vt.vitals_id, vt.systolic_bp, vt.diastolic_bp
         FROM visits v
         INNER JOIN patients p ON v.patient_id = p.patient_id
         INNER JOIN appointments a ON v.appointment_id = a.appointment_id
+        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN services s ON a.service_id = s.service_id
         LEFT JOIN consultations c ON v.visit_id = c.visit_id
-        LEFT JOIN vitals vt ON v.visit_id = vt.visit_id
+        LEFT JOIN vitals vt ON v.vitals_id = vt.vitals_id
         WHERE a.status IN ('checked_in', 'in_progress')
         AND v.visit_status IN ('checked_in', 'active', 'in_progress')
         ORDER BY v.visit_date DESC, a.scheduled_time ASC
@@ -934,7 +950,7 @@ try {
                                             <td><?= $patient['contact_number'] ?? '-' ?></td>
                                             <td><?= htmlspecialchars($patient['service_name']) ?></td>
                                             <td>
-                                                <?php if ($patient['vital_id']): ?>
+                                                <?php if ($patient['vitals_id']): ?>
                                                     <span class="patient-status status-completed">
                                                         <i class="fas fa-check"></i> Recorded
                                                     </span>
@@ -1284,7 +1300,7 @@ try {
                     <td>${patient.contact_number || '-'}</td>
                     <td>${patient.service_name}</td>
                     <td>
-                        ${patient.vital_id ? 
+                        ${patient.vitals_id ? 
                           '<span class="patient-status status-completed"><i class="fas fa-check"></i> Recorded</span>' : 
                           '<span class="patient-status status-not-started"><i class="fas fa-times"></i> Pending</span>'}
                     </td>
