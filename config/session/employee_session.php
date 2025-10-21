@@ -99,21 +99,41 @@ function clear_employee_session() {
  */
 function require_employee_login($login_url = null) {
     if (!is_employee_logged_in()) {
-        if ($login_url === null) {
-            // Use relative path to management auth folder
-            $root_path = getEmployeeRootPath();
-            $login_url = $root_path . 'pages/management/auth/employee_login.php';
-        }
-        
-        // Clear any output buffer before redirect
-        if (ob_get_level()) {
-            ob_end_clean();
-        }
-        
-        error_log('Redirecting to employee login from ' . ($_SERVER['REQUEST_URI'] ?? 'unknown') . ' to: ' . $login_url);
-        header('Location: ' . $login_url);
-        exit();
+        redirect_to_employee_login($login_url);
     }
+}
+
+/**
+ * Redirect to employee login page with proper path resolution
+ * @param string $login_url Optional custom login URL
+ * @param string $reason Optional reason for redirect (timeout, unauthorized, etc.)
+ */
+function redirect_to_employee_login($login_url = null, $reason = 'auth') {
+    // Don't redirect if headers already sent or if this IS the login page
+    if (headers_sent() || strpos($_SERVER['REQUEST_URI'] ?? '', 'employee_login.php') !== false) {
+        return;
+    }
+    
+    if ($login_url === null) {
+        // Calculate proper path to login page
+        $root_path = getEmployeeRootPath();
+        $login_url = $root_path . 'pages/management/auth/employee_login.php';
+        
+        // Add reason parameter if specified
+        if ($reason) {
+            $separator = strpos($login_url, '?') === false ? '?' : '&';
+            $login_url .= $separator . 'reason=' . urlencode($reason);
+        }
+    }
+    
+    // Clear any output buffer before redirect
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    error_log('[Employee Session] Redirecting to login (' . $reason . ') from: ' . ($_SERVER['REQUEST_URI'] ?? 'unknown') . ' to: ' . $login_url);
+    header('Location: ' . $login_url);
+    exit();
 }
 
 /**
@@ -188,6 +208,25 @@ if (is_employee_logged_in()) {
     // Check for timeout (default 30 minutes)
     if (check_employee_timeout()) {
         clear_employee_session();
+        
+        // Auto-redirect to login if session expired (not for AJAX or login page)
+        $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+                   strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+        $is_login_page = strpos($_SERVER['REQUEST_URI'] ?? '', 'employee_login.php') !== false;
+        
+        if (!$is_ajax && !$is_login_page && !headers_sent()) {
+            $root_path = getEmployeeRootPath();
+            $login_url = $root_path . 'pages/management/auth/employee_login.php?timeout=1';
+            
+            // Clear any output buffer before redirect
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            error_log('[Employee Session] Session timeout - redirecting to login from: ' . ($_SERVER['REQUEST_URI'] ?? 'unknown'));
+            header('Location: ' . $login_url);
+            exit();
+        }
     }
 }
 

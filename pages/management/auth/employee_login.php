@@ -97,6 +97,30 @@ if (isset($_GET['expired'])) {
     exit;
 }
 
+// Handle timeout and other redirect reasons
+if (isset($_GET['timeout']) || isset($_GET['reason'])) {
+    $reason = $_GET['reason'] ?? 'timeout';
+    
+    switch ($reason) {
+        case 'timeout':
+            $_SESSION['flash'] = array('type' => 'warning', 'msg' => 'Your session has timed out due to inactivity. Please log in again.');
+            break;
+        case 'auth':
+            $_SESSION['flash'] = array('type' => 'error', 'msg' => 'Please log in to access this page.');
+            break;
+        default:
+            $_SESSION['flash'] = array('type' => 'info', 'msg' => 'Please log in to continue.');
+    }
+    
+    // Clean redirect to avoid showing parameters in URL
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header('Location: employee_login.php');
+    exit;
+}
+
 // CSRF token generation and validation
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -348,8 +372,10 @@ $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? ['type' => 'error', 'msg' => $error] : null);
 
-// End output buffering and flush content
-ob_end_flush();
+// End output buffering and flush content safely
+if (ob_get_level()) {
+    ob_end_flush();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
