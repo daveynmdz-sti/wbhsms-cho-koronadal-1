@@ -1,8 +1,9 @@
 <?php
-// Prevent direct access
-if (session_status() == PHP_SESSION_NONE) {
-    session_start();
-}
+// Get the root path
+$root_path = dirname(dirname(dirname(__DIR__)));
+
+// Include patient session configuration FIRST
+require_once $root_path . '/config/session/patient_session.php';
 
 // Check if patient is logged in
 if (!isset($_SESSION['patient_id'])) {
@@ -10,9 +11,6 @@ if (!isset($_SESSION['patient_id'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
     exit;
 }
-
-// Get the root path
-$root_path = dirname(dirname(dirname(__DIR__)));
 
 // Include database connection
 require_once $root_path . '/config/db.php';
@@ -31,12 +29,15 @@ $patient_id = $_SESSION['patient_id'];
 
 try {
     // Fetch lab result details with correct schema and security check
-    $stmt = $pdo->prepare("
+    $stmt = $conn->prepare("
         SELECT 
             lo.lab_order_id,
             lo.order_date,
             lo.status,
             lo.remarks,
+            lo.appointment_id,
+            lo.consultation_id,
+            lo.visit_id,
             CONCAT(e.first_name, ' ', e.last_name) as doctor_name,
             c.consultation_date,
             a.appointment_date,
@@ -50,7 +51,8 @@ try {
             GROUP_CONCAT(loi.test_type SEPARATOR ', ') as test_types,
             COUNT(loi.item_id) as test_count,
             MAX(loi.result_date) as latest_result_date,
-            COUNT(CASE WHEN loi.result_file IS NOT NULL THEN 1 END) as files_count
+            COUNT(CASE WHEN loi.result_file IS NOT NULL THEN 1 END) as files_count,
+            COUNT(CASE WHEN loi.status = 'completed' THEN 1 END) as completed_tests
         FROM lab_orders lo
         LEFT JOIN consultations c ON lo.consultation_id = c.consultation_id
         LEFT JOIN appointments a ON lo.appointment_id = a.appointment_id
@@ -62,20 +64,47 @@ try {
         GROUP BY lo.lab_order_id
     ");
     
-    $stmt->execute([$result_id, $patient_id]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->bind_param("ii", $result_id, $patient_id);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
     
     if (!$result) {
         echo json_encode(['success' => false, 'message' => 'Lab result not found']);
         exit;
     }
     
+    // Fetch individual result items for detailed view
+    $itemsStmt = $conn->prepare("
+        SELECT 
+            loi.item_id as lab_order_item_id,
+            loi.test_type,
+            loi.status,
+            loi.result,
+            loi.result_file,
+            loi.result_date,
+            loi.remarks,
+            loi.created_at,
+            loi.updated_at,
+            CONCAT(uploader.first_name, ' ', uploader.last_name) as uploaded_by
+        FROM lab_order_items loi
+        LEFT JOIN employees uploader ON loi.uploaded_by_employee_id = uploader.employee_id
+        WHERE loi.lab_order_id = ?
+        AND loi.status = 'completed'
+        ORDER BY loi.result_date DESC
+    ");
+    
+    $itemsStmt->bind_param("i", $result_id);
+    $itemsStmt->execute();
+    $itemsResult = $itemsStmt->get_result();
+    $items = $itemsResult->fetch_all(MYSQLI_ASSOC);
+    
     echo json_encode([
         'success' => true, 
-        'result' => $result
+        'result' => $result,
+        'items' => $items
     ]);
     
-} catch (PDOException $e) {
+} catch (Exception $e) {
     error_log("Database error in get_lab_result_details.php: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Database error occurred']);
 }

@@ -1,17 +1,15 @@
 <?php
-// Prevent direct access
-if (session_status() == PHP_SESSION_NONE) {
-    session_start();
-}
+// Get the root path
+$root_path = dirname(dirname(dirname(__DIR__)));
+
+// Include patient session configuration FIRST
+require_once $root_path . '/config/session/patient_session.php';
 
 // Check if patient is logged in
 if (!isset($_SESSION['patient_id'])) {
     http_response_code(401);
     die('Unauthorized access');
 }
-
-// Get the root path
-$root_path = dirname(dirname(dirname(__DIR__)));
 
 // Include database connection
 require_once $root_path . '/config/db.php';
@@ -28,7 +26,7 @@ $patient_id = $_SESSION['patient_id'];
 
 try {
     // Verify that this file belongs to this patient's lab result - using correct schema
-    $stmt = $pdo->prepare("
+    $stmt = $conn->prepare("
         SELECT loi.result_file, loi.test_type, loi.result_date
         FROM lab_order_items loi
         JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
@@ -38,8 +36,9 @@ try {
         AND loi.result_file IS NOT NULL
     ");
     
-    $stmt->execute([$item_id, $patient_id]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->bind_param("ii", $item_id, $patient_id);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
     
     if (!$result || !$result['result_file']) {
         http_response_code(404);
@@ -91,7 +90,7 @@ try {
     // Output file data
     echo $fileData;
     
-} catch (PDOException $e) {
+} catch (Exception $e) {
     error_log("Database error in download_lab_file.php: " . $e->getMessage());
     http_response_code(500);
     die('Database error occurred');

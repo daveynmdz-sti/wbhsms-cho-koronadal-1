@@ -1413,11 +1413,16 @@ try {
         }
 
         // Display lab order details in modal
-        function displayOrderDetails(order) {
+        function displayOrderDetails(data) {
+            const order = data.order;
+            const items = data.items || [];
             const modalBody = document.getElementById('orderModalBody');
             
             const statusClass = order.status.replace('_', '-');
             const statusText = order.status.toUpperCase().replace('_', ' ');
+            
+            // Create progress indicator
+            const progressPercent = order.test_count > 0 ? Math.round((order.completed_tests / order.test_count) * 100) : 0;
             
             modalBody.innerHTML = `
                 <div class="order-details">
@@ -1437,34 +1442,55 @@ try {
                             <p><strong>Ordered by:</strong> ${order.doctor_name || 'Lab Direct Order'}</p>
                             ${order.consultation_date ? `<p><strong>Consultation:</strong> ${new Date(order.consultation_date).toLocaleDateString()}</p>` : ''}
                             ${order.appointment_date ? `<p><strong>Appointment:</strong> ${new Date(order.appointment_date).toLocaleDateString()}</p>` : ''}
+                            <p><strong>Source:</strong> <span class="source-badge source-${order.order_source}">${order.order_source}</span></p>
                         </div>
                     </div>
                     
-                    <div class="test-section">
-                        <h4><i class="fas fa-vial"></i> Test Information</h4>
-                        <div class="test-details">
-                            <div class="detail-row">
-                                <span class="label">Test Type:</span>
-                                <span class="value">${order.test_types || 'No tests specified'}</span>
-                            </div>
-                            ${order.specimen_type ? `
-                                <div class="detail-row">
-                                    <span class="label">Specimen Type:</span>
-                                    <span class="value">${order.specimen_type}</span>
-                                </div>
-                            ` : ''}
-                            ${order.test_description ? `
-                                <div class="detail-row">
-                                    <span class="label">Description:</span>
-                                    <span class="value">${order.test_description}</span>
-                                </div>
-                            ` : ''}
+                    <div class="progress-section">
+                        <h4><i class="fas fa-chart-line"></i> Progress</h4>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progressPercent}%"></div>
                         </div>
+                        <p>${order.completed_tests || 0} of ${order.test_count || 0} tests completed (${progressPercent}%)</p>
+                    </div>
+                    
+                    <div class="test-section">
+                        <h4><i class="fas fa-vial"></i> Test Items</h4>
+                        ${items.length > 0 ? `
+                            <div class="items-table-container">
+                                <table class="items-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Test Type</th>
+                                            <th>Status</th>
+                                            <th>Ordered</th>
+                                            <th>Updated</th>
+                                            <th>Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${items.map(item => `
+                                            <tr>
+                                                <td><strong>${item.test_type}</strong></td>
+                                                <td><span class="status-badge status-${item.status.replace('_', '-')}">${item.status.toUpperCase().replace('_', ' ')}</span></td>
+                                                <td>${new Date(item.created_at).toLocaleDateString()}</td>
+                                                <td>${item.updated_at ? new Date(item.updated_at).toLocaleDateString() : '-'}</td>
+                                                <td>${item.remarks || '-'}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : `
+                            <div class="no-tests">
+                                <p>No test items found for this order.</p>
+                            </div>
+                        `}
                     </div>
                     
                     ${order.remarks ? `
                         <div class="order-remarks">
-                            <h4><i class="fas fa-notes-medical"></i> Remarks</h4>
+                            <h4><i class="fas fa-notes-medical"></i> Order Remarks</h4>
                             <p>${order.remarks}</p>
                         </div>
                     ` : ''}
@@ -1473,7 +1499,9 @@ try {
         }
 
         // Display lab result details in modal
-        function displayResultDetails(result) {
+        function displayResultDetails(data) {
+            const result = data.result;
+            const items = data.items || [];
             const modalBody = document.getElementById('resultModalBody');
             
             modalBody.innerHTML = `
@@ -1493,39 +1521,63 @@ try {
                             })}</p>
                             <p><strong>Order Date:</strong> ${new Date(result.order_date).toLocaleDateString()}</p>
                             <p><strong>Ordered by:</strong> ${result.doctor_name || 'Lab Direct Order'}</p>
+                            <p><strong>Source:</strong> <span class="source-badge source-${result.order_source}">${result.order_source}</span></p>
                         </div>
                     </div>
                     
                     <div class="test-section">
-                        <h4><i class="fas fa-vial"></i> Test Information</h4>
-                        <div class="test-details">
-                            <div class="detail-row">
-                                <span class="label">Test Type:</span>
-                                <span class="value">${result.test_types || 'No tests specified'}</span>
-                            </div>
-                        </div>
+                        <h4><i class="fas fa-vial"></i> Test Results Summary</h4>
+                        <p><strong>Total Tests:</strong> ${result.test_count || 0} | <strong>Completed:</strong> ${result.completed_tests || 0} | <strong>Files Available:</strong> ${result.files_count || 0}</p>
                     </div>
                     
-                    <div class="result-section">
-                        <h4><i class="fas fa-file-medical-alt"></i> Test Results</h4>
-                        <div class="result-content">
-                            ${result.result ? `<pre>${result.result}</pre>` : '<p>No result text available.</p>'}
-                        </div>
-                        ${result.result && (result.result.includes('.pdf') || result.result.includes('.jpg') || result.result.includes('.png') || result.result.includes('.jpeg') || result.result.includes('uploads/')) ? `
-                            <div class="file-actions" style="margin-top: 15px; text-align: center;">
-                                <button type="button" class="btn btn-outline-primary" onclick="viewResultFile('${result.result}')">
-                                    <i class="fas fa-eye"></i> View File
-                                </button>
-                                <button type="button" class="btn btn-outline-success" onclick="downloadResultFile('${result.result}', ${result.lab_order_id})" style="margin-left: 10px;">
-                                    <i class="fas fa-download"></i> Download File
-                                </button>
+                    <div class="results-section">
+                        <h4><i class="fas fa-file-medical-alt"></i> Individual Test Results</h4>
+                        ${items.length > 0 ? `
+                            <div class="results-table-container">
+                                <table class="items-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Test Type</th>
+                                            <th>Result Date</th>
+                                            <th>Result</th>
+                                            <th>File</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${items.map(item => `
+                                            <tr>
+                                                <td><strong>${item.test_type}</strong></td>
+                                                <td>${item.result_date ? new Date(item.result_date).toLocaleDateString() : '-'}</td>
+                                                <td>${item.result ? `<div class="result-preview">${item.result.length > 100 ? item.result.substring(0, 100) + '...' : item.result}</div>` : 'No text result'}</td>
+                                                <td>${item.result_file ? `<span class="result-type-badge file"><i class="fas fa-file"></i> Available</span>` : '<span class="result-type-badge text"><i class="fas fa-text"></i> Text Only</span>'}</td>
+                                                <td>
+                                                    ${item.result_file ? `
+                                                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="viewResultFile('${item.result_file}')">
+                                                            <i class="fas fa-eye"></i> View
+                                                        </button>
+                                                        <button type="button" class="btn btn-outline-success btn-sm" onclick="downloadResultFile('${item.result_file}', ${item.lab_order_item_id})">
+                                                            <i class="fas fa-download"></i> Download
+                                                        </button>
+                                                    ` : `
+                                                        <span class="text-muted">No file</span>
+                                                    `}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
                             </div>
-                        ` : ''}
+                        ` : `
+                            <div class="no-results">
+                                <p>No individual test results found.</p>
+                            </div>
+                        `}
                     </div>
                     
                     ${result.remarks ? `
                         <div class="result-remarks">
-                            <h4><i class="fas fa-notes-medical"></i> Remarks</h4>
+                            <h4><i class="fas fa-notes-medical"></i> Order Remarks</h4>
                             <p>${result.remarks}</p>
                         </div>
                     ` : ''}
@@ -1881,6 +1933,113 @@ try {
 
             .action-buttons-cell {
                 flex-direction: column;
+            }
+        }
+
+        /* Progress Bar Styles */
+        .progress-section {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 8px;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Items Table Styles */
+        .items-table-container,
+        .results-table-container {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .items-table th {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .items-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: top;
+        }
+
+        .items-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* Result Preview Styles */
+        .result-preview {
+            max-width: 200px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 3px solid #007bff;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* No Data States */
+        .no-tests,
+        .no-results {
+            text-align: center;
+            padding: 2rem;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        /* Mobile responsiveness for new elements */
+        @media (max-width: 768px) {
+            .items-table-container,
+            .results-table-container {
+                max-height: 200px;
+            }
+
+            .items-table th,
+            .items-table td {
+                padding: 0.5rem 0.25rem;
+                font-size: 0.8rem;
+            }
+
+            .result-preview {
+                max-width: 150px;
+                font-size: 0.7rem;
             }
         }
     </style>
