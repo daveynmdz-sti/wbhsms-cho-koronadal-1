@@ -49,7 +49,6 @@ if (!$consultation_id) {
 // Initialize variables
 $consultation_data = null;
 $patient_data = null;
-$visit_data = null;
 $vitals_data = null;
 $attending_doctor = null;
 $lab_orders = [];
@@ -62,20 +61,25 @@ $can_edit_consultation = in_array($employee_role, ['doctor', 'admin']);
 
 // Load consultation data with related information
 try {
-    // Get consultation with patient, visit, and doctor information
+    // Get consultation with patient and doctor information (standalone system)
     $consultation_stmt = $conn->prepare("
         SELECT c.*, p.first_name, p.last_name, p.username, p.date_of_birth, p.sex, p.contact_number,
                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
                b.barangay_name, d.district_name,
-               v.visit_type, v.visit_purpose, v.created_at as visit_date,
                doc.first_name as doctor_first_name, doc.last_name as doctor_last_name,
-               doc.specialization as doctor_specialization
+               doc.specialization as doctor_specialization,
+               -- Get linked vitals information
+               v.vitals_id, v.systolic_bp, v.diastolic_bp, v.heart_rate, v.respiratory_rate,
+               v.temperature, v.weight, v.height, v.bmi, v.remarks as vitals_remarks,
+               v.recorded_at as vitals_recorded_at,
+               ve.first_name as vitals_recorded_by_first_name, ve.last_name as vitals_recorded_by_last_name
         FROM consultations c
-        JOIN visits v ON c.visit_id = v.visit_id
         JOIN patients p ON c.patient_id = p.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN districts d ON b.district_id = d.district_id
-        LEFT JOIN employees doc ON c.attending_employee_id = doc.employee_id
+        LEFT JOIN employees doc ON c.consulted_by = doc.employee_id
+        LEFT JOIN vitals v ON c.vitals_id = v.vitals_id
+        LEFT JOIN employees ve ON v.recorded_by = ve.employee_id
         WHERE c.consultation_id = ?
     ");
     if ($consultation_stmt) {
@@ -109,34 +113,37 @@ try {
     }
     
     $patient_data = $consultation_data;
-    $visit_data = $consultation_data;
     
-    // Get vitals data
-    $vitals_stmt = $conn->prepare("
-        SELECT v.*, e.first_name as taken_by_first_name, e.last_name as taken_by_last_name
-        FROM vitals v
-        LEFT JOIN employees e ON v.taken_by = e.employee_id
-        WHERE v.visit_id = ?
-    ");
-    if ($vitals_stmt) {
-        $vitals_stmt->bind_param("i", $consultation_data['visit_id']);
-        $vitals_stmt->execute();
-        $vitals_result = $vitals_stmt->get_result();
-        $vitals_data = $vitals_result->fetch_assoc();
-    } else {
-        $vitals_data = null;
+    // Vitals data is now included in the main query
+    $vitals_data = null;
+    if ($consultation_data['vitals_id']) {
+        $vitals_data = [
+            'vitals_id' => $consultation_data['vitals_id'],
+            'systolic_bp' => $consultation_data['systolic_bp'],
+            'diastolic_bp' => $consultation_data['diastolic_bp'],
+            'heart_rate' => $consultation_data['heart_rate'],
+            'respiratory_rate' => $consultation_data['respiratory_rate'],
+            'temperature' => $consultation_data['temperature'],
+            'weight' => $consultation_data['weight'],
+            'height' => $consultation_data['height'],
+            'bmi' => $consultation_data['bmi'],
+            'remarks' => $consultation_data['vitals_remarks'],
+            'recorded_at' => $consultation_data['vitals_recorded_at'],
+            'taken_by_first_name' => $consultation_data['vitals_recorded_by_first_name'],
+            'taken_by_last_name' => $consultation_data['vitals_recorded_by_last_name']
+        ];
     }
     
-    // Get lab orders
+    // Get lab orders (updated for standalone consultations)
     $lab_stmt = $conn->prepare("
         SELECT l.*, e.first_name as ordered_by_first_name, e.last_name as ordered_by_last_name
         FROM lab_orders l
         LEFT JOIN employees e ON l.ordered_by = e.employee_id
-        WHERE l.visit_id = ? OR l.consultation_id = ?
+        WHERE l.consultation_id = ?
         ORDER BY l.created_at DESC
     ");
     if ($lab_stmt) {
-        $lab_stmt->bind_param("ii", $consultation_data['visit_id'], $consultation_id);
+        $lab_stmt->bind_param("i", $consultation_id);
         $lab_stmt->execute();
         $lab_result = $lab_stmt->get_result();
         $lab_orders = $lab_result->fetch_all(MYSQLI_ASSOC);
@@ -144,16 +151,16 @@ try {
         $lab_orders = [];
     }
     
-    // Get prescriptions
+    // Get prescriptions (updated for standalone consultations)
     $prescription_stmt = $conn->prepare("
         SELECT p.*, e.first_name as prescribed_by_first_name, e.last_name as prescribed_by_last_name
         FROM prescriptions p
         LEFT JOIN employees e ON p.prescribed_by = e.employee_id
-        WHERE p.visit_id = ? OR p.consultation_id = ?
+        WHERE p.consultation_id = ?
         ORDER BY p.created_at DESC
     ");
     if ($prescription_stmt) {
-        $prescription_stmt->bind_param("ii", $consultation_data['visit_id'], $consultation_id);
+        $prescription_stmt->bind_param("i", $consultation_id);
         $prescription_stmt->execute();
         $prescription_result = $prescription_stmt->get_result();
         $prescriptions = $prescription_result->fetch_all(MYSQLI_ASSOC);
@@ -538,28 +545,28 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                     </div>
                 </div>
 
-                <!-- Visit Information -->
+                <!-- Consultation Information -->
                 <div class="section-card">
                     <h3 class="section-title">
-                        <i class="fas fa-calendar"></i> Visit Information
+                        <i class="fas fa-stethoscope"></i> Consultation Information
                     </h3>
 
                     <div class="info-grid">
                         <div class="info-item">
-                            <div class="info-label">Visit ID</div>
-                            <div class="info-value">#<?= htmlspecialchars($visit_data['visit_id']) ?></div>
+                            <div class="info-label">Consultation ID</div>
+                            <div class="info-value">#<?= htmlspecialchars($consultation_data['consultation_id']) ?></div>
                         </div>
                         <div class="info-item">
-                            <div class="info-label">Visit Date</div>
-                            <div class="info-value"><?= date('M j, Y g:i A', strtotime($visit_data['visit_date'])) ?></div>
+                            <div class="info-label">Consultation Date</div>
+                            <div class="info-value"><?= date('M j, Y g:i A', strtotime($consultation_data['consultation_date'])) ?></div>
                         </div>
                         <div class="info-item">
-                            <div class="info-label">Visit Type</div>
-                            <div class="info-value"><?= htmlspecialchars($visit_data['visit_type'] ?: 'Regular Visit') ?></div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-label">Visit Purpose</div>
-                            <div class="info-value"><?= htmlspecialchars($visit_data['visit_purpose'] ?: 'General Consultation') ?></div>
+                            <div class="info-label">Consultation Status</div>
+                            <div class="info-value">
+                                <span class="status-badge status-<?= str_replace(' ', '-', strtolower($consultation_data['consultation_status'])) ?>">
+                                    <?= htmlspecialchars(ucwords($consultation_data['consultation_status'])) ?>
+                                </span>
+                            </div>
                         </div>
                         <div class="info-item">
                             <div class="info-label">Attending Physician</div>
@@ -574,14 +581,23 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                                 <?php endif; ?>
                             </div>
                         </div>
+                        <?php if ($consultation_data['vitals_id']): ?>
                         <div class="info-item">
-                            <div class="info-label">Consultation Status</div>
+                            <div class="info-label">Linked Vitals</div>
                             <div class="info-value">
-                                <span class="status-badge status-<?= str_replace(' ', '-', strtolower($consultation_data['consultation_status'])) ?>">
-                                    <?= htmlspecialchars(ucwords($consultation_data['consultation_status'])) ?>
-                                </span>
+                                <span style="color: #28a745;"><i class="fas fa-link"></i> Vitals ID: <?= htmlspecialchars($consultation_data['vitals_id']) ?></span>
+                                <br><small style="color: #6c757d;">Recorded: <?= date('M j, Y g:i A', strtotime($consultation_data['vitals_recorded_at'])) ?></small>
                             </div>
                         </div>
+                        <?php endif; ?>
+                        <?php if ($consultation_data['follow_up_date']): ?>
+                        <div class="info-item">
+                            <div class="info-label">Follow-up Date</div>
+                            <div class="info-value">
+                                <span style="color: #007bff;"><i class="fas fa-calendar-check"></i> <?= date('M j, Y', strtotime($consultation_data['follow_up_date'])) ?></span>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 

@@ -49,7 +49,6 @@ if (!$consultation_id) {
 // Initialize variables
 $consultation_data = null;
 $patient_data = null;
-$visit_data = null;
 $success_message = '';
 $error_message = '';
 
@@ -60,6 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_consultation']
     $treatment_plan = trim($_POST['treatment_plan'] ?? '');
     $remarks = trim($_POST['remarks'] ?? '');
     $consultation_status = $_POST['consultation_status'] ?? 'pending';
+    $follow_up_date = null;
+    
+    // Handle follow-up date
+    if (isset($_POST['has_followup']) && $_POST['has_followup'] === '1' && !empty($_POST['follow_up_date'])) {
+        $follow_up_date = $_POST['follow_up_date'];
+    }
     
     // Validation
     if (empty($chief_complaint) || empty($diagnosis)) {
@@ -70,11 +75,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_consultation']
             $update_stmt = $conn->prepare("
                 UPDATE consultations 
                 SET chief_complaint = ?, diagnosis = ?, treatment_plan = ?, remarks = ?, 
-                    consultation_status = ?, updated_at = NOW()
+                    consultation_status = ?, follow_up_date = ?, updated_at = NOW()
                 WHERE consultation_id = ?
             ");
             if ($update_stmt) {
-                $update_stmt->bind_param("sssssi", $chief_complaint, $diagnosis, $treatment_plan, $remarks, $consultation_status, $consultation_id);
+                $update_stmt->bind_param("ssssssi", $chief_complaint, $diagnosis, $treatment_plan, $remarks, $consultation_status, $follow_up_date, $consultation_id);
                 
                 if ($update_stmt->execute()) {
                 $success_message = "Consultation updated successfully.";
@@ -97,19 +102,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_consultation']
 
 // Load consultation data
 try {
-    // Get consultation with patient and visit information
+    // Get consultation with patient information (updated for standalone consultations)
     $consultation_stmt = $conn->prepare("
         SELECT c.*, p.first_name, p.last_name, p.username, p.date_of_birth, p.sex, p.contact_number,
                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
                b.barangay_name, d.district_name,
-               v.visit_type, v.visit_purpose, v.created_at as visit_date,
-               doc.first_name as doctor_first_name, doc.last_name as doctor_last_name
+               doc.first_name as doctor_first_name, doc.last_name as doctor_last_name,
+               v.recorded_at as vitals_recorded_at, v.systolic_bp, v.diastolic_bp, v.heart_rate, 
+               v.temperature, v.respiratory_rate, v.weight, v.height, v.bmi,
+               emp_vitals.first_name as vitals_taken_by_first_name, emp_vitals.last_name as vitals_taken_by_last_name
         FROM consultations c
-        JOIN visits v ON c.visit_id = v.visit_id
         JOIN patients p ON c.patient_id = p.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN districts d ON b.district_id = d.district_id
         LEFT JOIN employees doc ON c.attending_employee_id = doc.employee_id
+        LEFT JOIN vitals v ON c.vitals_id = v.vitals_id
+        LEFT JOIN employees emp_vitals ON v.recorded_by = emp_vitals.employee_id
         WHERE c.consultation_id = ?
     ");
     if ($consultation_stmt) {
@@ -133,7 +141,6 @@ try {
     }
     
     $patient_data = $consultation_data;
-    $visit_data = $consultation_data;
     
 } catch (Exception $e) {
     $error_message = "Error loading consultation data: " . $e->getMessage();
@@ -451,13 +458,22 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                             <div class="info-value"><?= htmlspecialchars($patient_data['age']) ?> years / <?= htmlspecialchars($patient_data['sex']) ?></div>
                         </div>
                         <div class="info-item">
-                            <div class="info-label">Visit Date</div>
-                            <div class="info-value"><?= date('M j, Y g:i A', strtotime($visit_data['visit_date'])) ?></div>
-                        </div>
-                        <div class="info-item">
                             <div class="info-label">Consultation Date</div>
                             <div class="info-value"><?= date('M j, Y g:i A', strtotime($consultation_data['consultation_date'])) ?></div>
                         </div>
+                        <div class="info-item">
+                            <div class="info-label">Consultation ID</div>
+                            <div class="info-value">#<?= htmlspecialchars($consultation_data['consultation_id']) ?></div>
+                        </div>
+                        <?php if ($consultation_data['vitals_id']): ?>
+                        <div class="info-item">
+                            <div class="info-label">Linked Vitals</div>
+                            <div class="info-value">
+                                <span style="color: #28a745;"><i class="fas fa-link"></i> Vitals ID: <?= htmlspecialchars($consultation_data['vitals_id']) ?></span>
+                                <br><small style="color: #6c757d;">Recorded: <?= date('M j, Y g:i A', strtotime($consultation_data['vitals_recorded_at'])) ?></small>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -518,6 +534,26 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                                     <span id="remarks-count"><?= strlen($consultation_data['remarks'] ?? '') ?></span>/1000 characters
                                 </div>
                                 <div class="form-help">Include any additional observations, follow-up instructions, or notes relevant to the case.</div>
+                            </div>
+
+                            <div class="form-group">
+                                <div class="checkbox-wrapper">
+                                    <input type="checkbox" 
+                                           id="has_followup" 
+                                           name="has_followup" 
+                                           value="1" 
+                                           <?= !empty($consultation_data['follow_up_date']) ? 'checked' : '' ?>
+                                           onchange="toggleFollowUpDate()">
+                                    <label for="has_followup">Schedule Follow-up Appointment</label>
+                                </div>
+                                <div id="followup_date_wrapper" style="<?= empty($consultation_data['follow_up_date']) ? 'display: none;' : '' ?> margin-top: 0.5rem;">
+                                    <input type="date" 
+                                           id="follow_up_date" 
+                                           name="follow_up_date" 
+                                           value="<?= htmlspecialchars($consultation_data['follow_up_date'] ?? '') ?>"
+                                           min="<?= date('Y-m-d', strtotime('+1 day')) ?>">
+                                    <div class="form-help">Select the date for the next follow-up appointment.</div>
+                                </div>
                             </div>
 
                             <div class="form-group">
@@ -639,6 +675,22 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                 }
             });
         });
+
+        // Follow-up date toggle function
+        function toggleFollowUpDate() {
+            const checkbox = document.getElementById('has_followup');
+            const wrapper = document.getElementById('followup_date_wrapper');
+            const dateInput = document.getElementById('follow_up_date');
+            
+            if (checkbox.checked) {
+                wrapper.style.display = 'block';
+                dateInput.required = true;
+            } else {
+                wrapper.style.display = 'none';
+                dateInput.required = false;
+                dateInput.value = '';
+            }
+        }
     </script>
 </body>
 
