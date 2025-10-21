@@ -66,30 +66,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->begin_transaction();
         
         try {
-            // Create prescription record without appointment_id (standalone prescription)
-            // We'll exclude appointment_id from the INSERT to avoid foreign key constraint issues
+            // Create prescription record - standalone (consultation_id, appointment_id, visit_id can be NULL)
             $prescription_stmt = $conn->prepare("
                 INSERT INTO prescriptions (
                     patient_id, 
+                    consultation_id,
+                    appointment_id,
+                    visit_id,
                     prescribed_by_employee_id, 
                     prescription_date, 
                     status, 
                     overall_status,
                     remarks,
                     created_at
-                ) VALUES (?, ?, NOW(), 'issued', 'issued', ?, NOW())
+                ) VALUES (?, NULL, NULL, NULL, ?, NOW(), 'issued', 'issued', ?, NOW())
             ");
             
             $prescription_stmt->bind_param("iis", $patient_id, $_SESSION['employee_id'], $remarks);
             
             if (!$prescription_stmt->execute()) {
-                // If we still get foreign key constraint error, the schema needs modification
-                $error_msg = $conn->error;
-                if (strpos($error_msg, 'fk_prescriptions_appointment') !== false) {
-                    throw new Exception('Database schema error: The prescriptions table requires database modification to support standalone prescriptions. Please contact system administrator to make appointment_id nullable or remove the foreign key constraint.');
-                } else {
-                    throw new Exception('Failed to create prescription: ' . $error_msg);
-                }
+                throw new Exception('Failed to create prescription: ' . $conn->error);
             }
             
             $prescription_id = $conn->insert_id;
@@ -496,6 +492,12 @@ if ($search_query || $first_name || $last_name) {
             border: 1px solid #f1b2b7;
         }
 
+        .alert-info {
+            background-color: #cce7ff;
+            color: #004085;
+            border: 1px solid #b3d9ff;
+        }
+
         .btn-close {
             background: none;
             border: none;
@@ -784,7 +786,11 @@ if ($search_query || $first_name || $last_name) {
                 <form class="prescription-form" id="prescriptionForm" method="post">
                     <input type="hidden" name="patient_id" id="selectedPatientId">
                     
-                    <h3><i class="fas fa-prescription-bottle-alt"></i> Create Prescription</h3>
+                    <h3><i class="fas fa-prescription-bottle-alt"></i> Create Standalone Prescription</h3>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Standalone Prescription:</strong> This prescription is created independently without requiring an appointment or consultation. It can be created directly for any patient and will be tracked as a standalone prescription.
+                    </div>
                     <div id="selectedPatientInfo" class="selected-patient-info" style="display:none;">
                         <p><strong>Selected Patient:</strong> <span id="selectedPatientName"></span></p>
                     </div>

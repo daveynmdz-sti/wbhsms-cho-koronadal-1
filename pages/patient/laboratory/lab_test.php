@@ -62,40 +62,68 @@ try {
 $lab_orders = [];
 $lab_results = [];
 try {
-    // Fetch pending/in-progress/cancelled lab orders
+    // Fetch pending/in-progress/cancelled lab orders - standalone support
     $stmt = $conn->prepare("
         SELECT lo.*,
                e.first_name as doctor_first_name, e.last_name as doctor_last_name,
-               a.scheduled_date, a.scheduled_time,
-               c.consultation_date
+               CASE 
+                   WHEN lo.appointment_id IS NOT NULL THEN a.scheduled_date
+                   ELSE NULL
+               END as scheduled_date,
+               CASE 
+                   WHEN lo.appointment_id IS NOT NULL THEN a.scheduled_time
+                   ELSE NULL
+               END as scheduled_time,
+               -- Source information (simplified - no consultation support yet)
+               CASE 
+                   WHEN lo.appointment_id IS NOT NULL THEN 'appointment'
+                   ELSE 'standalone'
+               END as order_source
         FROM lab_orders lo
         LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
         LEFT JOIN appointments a ON lo.appointment_id = a.appointment_id
-        LEFT JOIN consultations c ON lo.consultation_id = c.consultation_id
         WHERE lo.patient_id = ? AND lo.status IN ('pending', 'in_progress', 'cancelled')
         ORDER BY lo.order_date DESC
         LIMIT 50
     ");
+    
+    if (!$stmt) {
+        throw new Exception("Prepare failed: " . $conn->error);
+    }
     $stmt->bind_param("i", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $lab_orders = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    // Fetch completed lab results
+    // Fetch completed lab results - standalone support
     $stmt = $conn->prepare("
         SELECT lo.*,
                e.first_name as doctor_first_name, e.last_name as doctor_last_name,
-               a.scheduled_date, a.scheduled_time,
-               c.consultation_date
+               CASE 
+                   WHEN lo.appointment_id IS NOT NULL THEN a.scheduled_date
+                   ELSE NULL
+               END as scheduled_date,
+               CASE 
+                   WHEN lo.appointment_id IS NOT NULL THEN a.scheduled_time
+                   ELSE NULL
+               END as scheduled_time,
+               -- Source information (simplified - no consultation support yet)
+               CASE 
+                   WHEN lo.appointment_id IS NOT NULL THEN 'appointment'
+                   ELSE 'standalone'
+               END as order_source
         FROM lab_orders lo
         LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
         LEFT JOIN appointments a ON lo.appointment_id = a.appointment_id
-        LEFT JOIN consultations c ON lo.consultation_id = c.consultation_id
         WHERE lo.patient_id = ? AND lo.status = 'completed'
         ORDER BY lo.result_date DESC
         LIMIT 50
     ");
+    
+    if (!$stmt) {
+        throw new Exception("Prepare failed: " . $conn->error);
+    }
     $stmt->bind_param("i", $patient_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -525,6 +553,35 @@ try {
             color: #721c24;
         }
 
+        /* Source badges */
+        .source-badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 15px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            margin-left: 0.5rem;
+            display: inline-block;
+        }
+
+        .source-appointment {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #bbdefb;
+        }
+
+        .source-consultation {
+            background: #f3e5f5;
+            color: #7b1fa2;
+            border: 1px solid #ce93d8;
+        }
+
+        .source-standalone {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+
         /* Result type badges */
         .result-type-badge {
             padding: 3px 8px;
@@ -795,10 +852,19 @@ try {
                                             <?php else: ?>
                                                 <span class="text-muted">Lab Direct Order</span>
                                             <?php endif; ?>
-                                            <?php if (!empty($order['consultation_date'])): ?>
-                                                <small>Consultation: <?php echo date('M j, Y', strtotime($order['consultation_date'])); ?></small>
-                                            <?php elseif (!empty($order['appointment_date'])): ?>
-                                                <small>Appointment: <?php echo date('M j, Y', strtotime($order['appointment_date'])); ?></small>
+                                            <!-- Source Badge -->
+                                            <span class="source-badge source-<?php echo htmlspecialchars($order['order_source']); ?>">
+                                                <?php 
+                                                    switch($order['order_source']) {
+                                                        case 'appointment': echo 'Appointment'; break;
+                                                        case 'consultation': echo 'Consultation'; break;
+                                                        case 'standalone': echo 'Standalone'; break;
+                                                        default: echo 'Unknown'; break;
+                                                    }
+                                                ?>
+                                            </span>
+                                            <?php if (!empty($order['scheduled_date'])): ?>
+                                                <small>Appointment: <?php echo date('M j, Y', strtotime($order['scheduled_date'])); ?></small>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -907,6 +973,17 @@ try {
                                             <?php else: ?>
                                                 <span class="text-muted">Lab Direct Order</span>
                                             <?php endif; ?>
+                                            <!-- Source Badge -->
+                                            <span class="source-badge source-<?php echo htmlspecialchars($result['order_source']); ?>">
+                                                <?php 
+                                                    switch($result['order_source']) {
+                                                        case 'appointment': echo 'Appointment'; break;
+                                                        case 'consultation': echo 'Consultation'; break;
+                                                        case 'standalone': echo 'Standalone'; break;
+                                                        default: echo 'Unknown'; break;
+                                                    }
+                                                ?>
+                                            </span>
                                         </div>
                                     </td>
                                     <td>

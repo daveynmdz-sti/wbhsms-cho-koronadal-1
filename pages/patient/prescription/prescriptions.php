@@ -77,20 +77,54 @@ try {
     $error = "Failed to fetch patient information: " . $e->getMessage();
 }
 
-// Fetch prescriptions (limit to recent 50 for better overview)
+// Fetch prescriptions (standalone - no appointment/visit dependency, limit to recent 50)
 $prescriptions = [];
 try {
     $stmt = $conn->prepare("
-        SELECT p.*,
-               e.first_name as doctor_first_name, e.last_name as doctor_last_name,
-               a.scheduled_date, a.scheduled_time,
+        SELECT p.prescription_id,
+               p.patient_id,
+               p.consultation_id,
+               p.appointment_id,
+               p.visit_id,
+               p.prescription_date,
+               p.status,
+               p.remarks,
+               p.created_at,
+               p.updated_at,
+               e.first_name as doctor_first_name, 
+               e.last_name as doctor_last_name,
+               e.license_number as doctor_license,
+               CASE 
+                   WHEN p.appointment_id IS NOT NULL THEN a.scheduled_date
+                   ELSE NULL
+               END as scheduled_date,
+               CASE 
+                   WHEN p.appointment_id IS NOT NULL THEN a.scheduled_time
+                   ELSE NULL
+               END as scheduled_time,
+               a.status as appointment_status,
+               CASE 
+                   WHEN p.consultation_id IS NOT NULL THEN c.consultation_date
+                   ELSE NULL
+               END as consultation_date,
+               -- Source type for display
+               CASE 
+                   WHEN p.consultation_id IS NOT NULL THEN 'consultation'
+                   WHEN p.appointment_id IS NOT NULL THEN 'appointment'
+                   ELSE 'standalone'
+               END as prescription_source,
                COUNT(pm.prescribed_medication_id) as medication_count
         FROM prescriptions p
         LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
         LEFT JOIN appointments a ON p.appointment_id = a.appointment_id
+        LEFT JOIN consultations c ON p.consultation_id = c.consultation_id
         LEFT JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id
         WHERE p.patient_id = ?
-        GROUP BY p.prescription_id
+        GROUP BY p.prescription_id, p.patient_id, p.consultation_id, p.appointment_id, p.visit_id, 
+                 p.prescription_date, p.status, p.remarks, p.created_at, p.updated_at,
+                 e.first_name, e.last_name, e.license_number, 
+                 a.scheduled_date, a.scheduled_time, a.status,
+                 c.consultation_date
         ORDER BY p.prescription_date DESC
         LIMIT 50
     ");
@@ -99,6 +133,13 @@ try {
     $result = $stmt->get_result();
     $prescriptions = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+    
+    // Debug: Log what prescriptions were found
+    error_log("prescriptions.php: Found " . count($prescriptions) . " prescriptions for patient $patient_id");
+    if (!empty($prescriptions)) {
+        $prescription_ids = array_column($prescriptions, 'prescription_id');
+        error_log("prescriptions.php: Prescription IDs: " . implode(', ', $prescription_ids));
+    }
 } catch (Exception $e) {
     $error = "Failed to fetch prescriptions: " . $e->getMessage();
 }
@@ -518,6 +559,42 @@ try {
             color: #721c24;
         }
 
+        .source-badge {
+            padding: 0.25rem 0.6rem;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .source-consultation {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .source-appointment {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .source-standalone {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+
+        .source-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .source-info small {
+            color: #6c757d;
+            font-size: 0.75rem;
+        }
+
         .btn-sm {
             padding: 0.4rem 0.8rem;
             font-size: 0.8rem;
@@ -717,6 +794,7 @@ try {
                         <tr>
                             <th>Prescription Date</th>
                             <th>Prescribed By</th>
+                            <th>Source</th>
                             <th>Medications</th>
                             <th>Status</th>
                             <th>Actions</th>
@@ -725,7 +803,7 @@ try {
                     <tbody id="prescriptions-tbody">
                         <?php if (empty($prescriptions)): ?>
                             <tr class="empty-row">
-                                <td colspan="5" class="empty-state">
+                                <td colspan="6" class="empty-state">
                                     <i class="fas fa-prescription-bottle-alt"></i>
                                     <h3>No Prescriptions Found</h3>
                                     <p>You don't have any prescriptions yet. Prescriptions will appear here when doctors prescribe medications for you.</p>
@@ -745,10 +823,29 @@ try {
                                             <?php if (!empty($prescription['doctor_first_name'])): ?>
                                                 <strong>Dr. <?php echo htmlspecialchars($prescription['doctor_first_name'] . ' ' . $prescription['doctor_last_name']); ?></strong>
                                             <?php else: ?>
-                                                <span class="text-muted">Unknown Doctor</span>
+                                                <span class="text-muted">System Generated</span>
                                             <?php endif; ?>
-                                            <?php if (!empty($prescription['appointment_date'])): ?>
-                                                <small>Appointment: <?php echo date('M j, Y', strtotime($prescription['appointment_date'])); ?></small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="source-info">
+                                            <?php 
+                                            $source = $prescription['prescription_source'] ?? 'standalone';
+                                            $sourceDisplay = [
+                                                'consultation' => ['label' => 'Consultation', 'icon' => 'fa-stethoscope', 'class' => 'source-consultation'],
+                                                'appointment' => ['label' => 'Appointment', 'icon' => 'fa-calendar-check', 'class' => 'source-appointment'],
+                                                'standalone' => ['label' => 'Standalone', 'icon' => 'fa-prescription-bottle-alt', 'class' => 'source-standalone']
+                                            ];
+                                            $current = $sourceDisplay[$source];
+                                            ?>
+                                            <span class="source-badge <?php echo $current['class']; ?>">
+                                                <i class="fas <?php echo $current['icon']; ?>"></i>
+                                                <?php echo $current['label']; ?>
+                                            </span>
+                                            <?php if ($source === 'appointment' && !empty($prescription['scheduled_date'])): ?>
+                                                <small>Date: <?php echo date('M j, Y', strtotime($prescription['scheduled_date'])); ?></small>
+                                            <?php elseif ($source === 'consultation' && !empty($prescription['consultation_date'])): ?>
+                                                <small>Date: <?php echo date('M j, Y', strtotime($prescription['consultation_date'])); ?></small>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -950,7 +1047,7 @@ try {
             const noResultsRow = document.createElement('tr');
             noResultsRow.className = 'no-results-row';
             noResultsRow.innerHTML = `
-                <td colspan="5" class="empty-state">
+                <td colspan="6" class="empty-state">
                     <i class="fas fa-${type === 'search' ? 'search' : 'filter'}"></i>
                     <h3>No matching prescriptions found</h3>
                     <p>${type === 'search' ? 'No prescriptions match your search criteria. Try adjusting your filters.' : 'No prescriptions match the selected filter. Try selecting a different status.'}</p>
@@ -995,7 +1092,11 @@ try {
             fetch(`get_prescription_details.php?id=${prescriptionId}`)
                 .then(response => {
                     console.log('Response status:', response.status);
-                    if (!response.ok) {
+                    if (response.status === 404) {
+                        return response.json().then(data => {
+                            throw new Error(data.message || 'Prescription not found');
+                        });
+                    } else if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     return response.json();
@@ -1020,16 +1121,10 @@ try {
                         <div class="error-state">
                             <i class="fas fa-exclamation-triangle"></i>
                             <h3>Error Loading Prescription</h3>
-                            <p>Network error: ${error.message}</p>
-                        </div>
-                    `;
-                });
-        }
-                    modalBody.innerHTML = `
-                        <div class="error-state">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <h3>Error Loading Prescription</h3>
-                            <p>Failed to load prescription details. Please try again.</p>
+                            <p>${error.message.includes('Prescription') ? error.message : 'Network error: ' + error.message}</p>
+                            <button type="button" class="btn btn-outline-secondary" onclick="closePrescriptionModal()">
+                                <i class="fas fa-times"></i> Close
+                            </button>
                         </div>
                     `;
                 });
@@ -1065,8 +1160,13 @@ try {
                                 hour: '2-digit',
                                 minute: '2-digit'
                             })}</p>
-                            <p><strong>Prescribed by:</strong> ${prescription.doctor_name || 'Unknown Doctor'}</p>
-                            ${prescription.appointment_date ? `<p><strong>Appointment:</strong> ${new Date(prescription.appointment_date).toLocaleDateString()}</p>` : ''}
+                            <p><strong>Prescribed by:</strong> ${prescription.doctor_name || 'System Generated'}</p>
+                            ${prescription.prescription_source === 'appointment' && prescription.appointment_date ? 
+                                `<p><strong>Appointment:</strong> ${new Date(prescription.appointment_date).toLocaleDateString()}</p>` : ''}
+                            ${prescription.prescription_source === 'consultation' && prescription.consultation_date ? 
+                                `<p><strong>Consultation:</strong> ${new Date(prescription.consultation_date).toLocaleDateString()}</p>` : ''}
+                            ${prescription.prescription_source === 'standalone' ? 
+                                `<p><strong>Type:</strong> <span class="badge badge-info">Standalone Prescription</span></p>` : ''}
                         </div>
                     </div>
                     
@@ -1078,18 +1178,18 @@ try {
                     ` : ''}
                     
                     <div class="medications-section">
-                        <h4><i class="fas fa-pills"></i> Prescribed Medications</h4>
+                        <h4><i class="fas fa-pills"></i> Prescribed Medications (${medications.length})</h4>
                         <div class="medications-list">
-                            ${medications.map(med => `
+                            ${medications.length > 0 ? medications.map(med => `
                                 <div class="medication-item">
                                     <div class="medication-header">
-                                        <h5>${med.medication_name}</h5>
-                                        <span class="medication-status status-${med.status}">${med.status.toUpperCase()}</span>
+                                        <h5>${med.medication_name || 'Unknown Medication'}</h5>
+                                        <span class="medication-status status-${med.status || 'pending'}">${(med.status || 'PENDING').toUpperCase()}</span>
                                     </div>
                                     <div class="medication-details">
                                         <div class="detail-row">
                                             <span class="label">Dosage:</span>
-                                            <span class="value">${med.dosage}</span>
+                                            <span class="value">${med.dosage || 'Not specified'}</span>
                                         </div>
                                         ${med.frequency ? `
                                             <div class="detail-row">
@@ -1111,7 +1211,13 @@ try {
                                         ` : ''}
                                     </div>
                                 </div>
-                            `).join('')}
+                            `).join('') : `
+                                <div class="empty-state">
+                                    <i class="fas fa-pills"></i>
+                                    <h4>No Medications Prescribed</h4>
+                                    <p>No medications have been added to this prescription yet.</p>
+                                </div>
+                            `}
                         </div>
                     </div>
                 </div>

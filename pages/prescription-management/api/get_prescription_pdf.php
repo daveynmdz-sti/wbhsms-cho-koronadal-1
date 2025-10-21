@@ -416,10 +416,9 @@ try {
                 <i class="fas fa-info-circle"></i> How to Save this Prescription
             </h4>
             <p style="margin: 0; font-size: 14px;">
-                <strong>Option 1:</strong> Click "Direct Download" for instant PDF download (easiest)
-                <br><strong>Option 2:</strong> Click "Save as PDF" button to use print dialog
-                <br><strong>Option 3:</strong> Use keyboard shortcut Ctrl+S
-                <br><strong>Option 4:</strong> Click "Print" then select "Save as PDF" as destination
+                <strong>Option 1:</strong> Click "Download PDF" for instant PDF download (easiest)
+                <br><strong>Option 2:</strong> Click "Print" then select "Save as PDF" as destination
+                <br><strong>Option 3:</strong> Use keyboard shortcut Ctrl+P
                 <br>• Choose your preferred settings in the print dialog
                 <br>• Click "Save" to download the PDF file
             </p>
@@ -429,7 +428,7 @@ try {
             <i class="fas fa-print"></i> Print
         </button>
         <button class="btn" onclick="downloadPrescription()" style="font-size: 16px; padding: 12px 24px; background: #17a2b8;">
-            <i class="fas fa-file-download"></i> Direct Download
+            <i class="fas fa-file-pdf"></i> Download PDF
         </button>
         <button class="btn" onclick="window.close()" style="background: #6c757d;">
             <i class="fas fa-times"></i> Close
@@ -440,80 +439,49 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <script>
-        // Direct download function - creates a downloadable HTML file
+        // Direct download function - downloads PDF file
         function downloadPrescription() {
             try {
-                // Get the prescription content without buttons
-                const prescriptionContent = document.querySelector('.prescription-container').innerHTML;
-                const prescriptionId = <?= json_encode(sprintf("%06d", $prescription["prescription_id"])) ?>;
-                const patientName = <?= json_encode($patientName) ?>;
+                const prescriptionId = <?= json_encode($prescription['prescription_id']) ?>;
                 
-                // Create a clean HTML document for download
-                const htmlContent = '<!DOCTYPE html>' +
-                    '<html lang="en">' +
-                    '<head>' +
-                    '<meta charset="UTF-8">' +
-                    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-                    '<title>Prescription - RX-' + prescriptionId + '</title>' +
-                    '<style>' +
-                    '@page { size: A4; margin: 1in; }' +
-                    '@media print { body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }' +
-                    'body { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; margin: 0; padding: 20px; color: #000; background: white; }' +
-                    '.prescription-container { max-width: 800px; margin: 0 auto; background: white; border: 2px solid #000; padding: 20px; }' +
-                    '.header-section { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 15px; }' +
-                    '.print-logo { max-height: 80px; margin-bottom: 10px; }' +
-                    '.clinic-name { font-size: 24px; font-weight: bold; color: #003366; margin-bottom: 5px; }' +
-                    '.clinic-subtitle { font-size: 16px; color: #666; margin-bottom: 10px; }' +
-                    '.prescription-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; }' +
-                    '.patient-section, .doctor-section { margin-bottom: 25px; }' +
-                    '.section-title { font-weight: bold; font-size: 14px; color: #003366; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }' +
-                    '.patient-info, .doctor-info { margin-left: 20px; }' +
-                    '.info-row { margin-bottom: 5px; }' +
-                    '.medications-section { margin-bottom: 30px; }' +
-                    '.medications-table { width: 100%; border-collapse: collapse; margin-top: 10px; }' +
-                    '.medications-table th, .medications-table td { border: 1px solid #000; padding: 8px; text-align: left; font-size: 11px; }' +
-                    '.medications-table th { background-color: #f5f5f5; font-weight: bold; }' +
-                    '.clinical-info-print { margin-bottom: 25px; border: 1px solid #000; padding: 10px; }' +
-                    '.signatures-section { margin-top: 40px; display: flex; justify-content: space-between; }' +
-                    '.signature-block { text-align: center; width: 45%; }' +
-                    '.signature-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 5px; font-size: 10px; }' +
-                    '.rx-number { font-size: 18px; font-weight: bold; color: #d32f2f; }' +
-                    '</style>' +
-                    '</head>' +
-                    '<body>' +
-                    '<div class="prescription-container">' +
-                    prescriptionContent +
-                    '</div>' +
-                    '</body>' +
-                    '</html>';
-
-                // Create downloadable file
-                const blob = new Blob([htmlContent], { type: 'text/html' });
-                const url = URL.createObjectURL(blob);
+                // Show loading message
+                showDownloadStatus('Generating PDF...', 'info');
+                
+                // Use management-specific PDF endpoint
+                const downloadUrl = '../../../api/generate_prescription_pdf_management.php?prescription_id=' + prescriptionId;
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = 'Prescription_RX-' + prescriptionId + '_' + patientName.replace(/[^a-zA-Z0-9]/g, '_') + '.html';
+                a.href = downloadUrl;
+                a.style.display = 'none';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
-                URL.revokeObjectURL(url);
                 
-                // Show success message
-                showDownloadSuccess();
+                // Show success message after a short delay
+                setTimeout(function() {
+                    showDownloadStatus('PDF downloaded successfully!', 'success');
+                }, 1000);
+                
             } catch (error) {
                 console.error('Download error:', error);
-                alert('Error downloading prescription. Please try again.');
+                showDownloadStatus('Download failed. Please try the Print button instead.', 'error');
             }
         }
         
-        // Show download success notification
-        function showDownloadSuccess() {
+        // Show download status notification
+        function showDownloadStatus(message, type) {
             const notification = document.createElement('div');
-            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; background: #28a745; color: white; padding: 15px 20px; border-radius: 5px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); font-weight: bold; max-width: 300px;';
-            notification.innerHTML = '<i class="fas fa-check-circle"></i> Prescription downloaded successfully!<br><small>The file will auto-print when opened.</small>';
+            const colors = {
+                'info': '#007cba',
+                'success': '#28a745',
+                'error': '#dc3545'
+            };
+            
+            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; background: ' + colors[type] + '; color: white; padding: 15px 20px; border-radius: 5px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); font-weight: bold; max-width: 300px;';
+            notification.innerHTML = '<i class="fas fa-' + (type === 'info' ? 'spinner fa-spin' : type === 'success' ? 'check-circle' : 'exclamation-circle') + '"></i> ' + message;
             document.body.appendChild(notification);
             
-            // Remove after 4 seconds
+            // Remove after 4 seconds (or 2 seconds for info)
+            const timeout = type === 'info' ? 2000 : 4000;
             setTimeout(function() {
                 notification.style.opacity = '0';
                 notification.style.transition = 'opacity 0.3s';
@@ -522,7 +490,12 @@ try {
                         document.body.removeChild(notification); 
                     }
                 }, 300);
-            }, 4000);
+            }, timeout);
+        }
+        
+        // Show download success notification (legacy function)
+        function showDownloadSuccess() {
+            showDownloadStatus('PDF downloaded successfully!', 'success');
         }
         
         // Save as PDF function (using print dialog)
