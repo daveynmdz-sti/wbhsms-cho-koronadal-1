@@ -404,4 +404,519 @@ function validateReceiptData($receipt_data) {
     
     return true;
 }
+
+/**
+ * Generate HTML invoice for display/printing
+ */
+function generatePrintableInvoice($invoice_data) {
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Invoice #<?php echo htmlspecialchars($invoice_data['invoice']['number']); ?></title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #f5f5f5;
+                line-height: 1.4;
+            }
+            
+            .invoice-container {
+                background: white;
+                padding: 30px;
+                border-radius: 8px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                margin-bottom: 20px;
+            }
+            
+            .invoice-header {
+                text-align: center;
+                border-bottom: 3px solid #0077b6;
+                padding-bottom: 20px;
+                margin-bottom: 30px;
+            }
+            
+            .facility-name {
+                font-size: 26px;
+                font-weight: bold;
+                color: #0077b6;
+                margin-bottom: 5px;
+            }
+            
+            .facility-details {
+                color: #666;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+            
+            .invoice-title {
+                font-size: 24px;
+                font-weight: bold;
+                margin: 20px 0 10px 0;
+                color: #333;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+            }
+            
+            .invoice-number {
+                font-size: 18px;
+                color: #0077b6;
+                font-weight: bold;
+                font-family: 'Courier New', monospace;
+            }
+            
+            .invoice-meta {
+                display: flex;
+                justify-content: space-between;
+                margin: 25px 0;
+            }
+            
+            .meta-group h4 {
+                margin: 0 0 8px 0;
+                color: #0077b6;
+                font-size: 14px;
+                font-weight: bold;
+                text-transform: uppercase;
+                border-bottom: 1px solid #e0e0e0;
+                padding-bottom: 3px;
+            }
+            
+            .meta-group p {
+                margin: 3px 0;
+                font-size: 14px;
+                color: #333;
+            }
+            
+            .invoice-status {
+                display: inline-block;
+                padding: 8px 15px;
+                border-radius: 20px;
+                font-weight: bold;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                margin: 10px 0;
+            }
+            
+            .status-paid {
+                background: #d4edda;
+                color: #0f5132;
+                border: 2px solid #28a745;
+            }
+            
+            .status-partial {
+                background: #fff3cd;
+                color: #664d03;
+                border: 2px solid #ffc107;
+            }
+            
+            .status-unpaid {
+                background: #f8d7da;
+                color: #721c24;
+                border: 2px solid #dc3545;
+            }
+            
+            .services-section {
+                margin: 25px 0;
+            }
+            
+            .services-header {
+                background: linear-gradient(135deg, #0077b6, #023e8a);
+                color: white;
+                padding: 15px;
+                margin-bottom: 0;
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            
+            .services-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 0;
+                border: 1px solid #dee2e6;
+            }
+            
+            .services-table th {
+                background: #f8f9fa;
+                color: #495057;
+                padding: 12px;
+                text-align: left;
+                font-weight: 600;
+                border-bottom: 2px solid #dee2e6;
+            }
+            
+            .services-table td {
+                padding: 12px;
+                border-bottom: 1px solid #dee2e6;
+                vertical-align: top;
+            }
+            
+            .services-table tbody tr:hover {
+                background: #f8f9fa;
+            }
+            
+            .service-name {
+                font-weight: 600;
+                color: #333;
+            }
+            
+            .service-description {
+                font-size: 12px;
+                color: #666;
+                font-style: italic;
+                margin-top: 2px;
+            }
+            
+            .service-category {
+                font-size: 11px;
+                color: #0077b6;
+                font-weight: 500;
+                text-transform: uppercase;
+            }
+            
+            .text-right {
+                text-align: right;
+            }
+            
+            .text-center {
+                text-align: center;
+            }
+            
+            .financial-summary {
+                background: #f8f9fa;
+                padding: 20px;
+                border-radius: 8px;
+                border-left: 4px solid #0077b6;
+                margin-top: 25px;
+            }
+            
+            .summary-row {
+                display: flex;
+                justify-content: space-between;
+                margin: 8px 0;
+                font-size: 15px;
+            }
+            
+            .summary-row.total {
+                font-size: 18px;
+                font-weight: bold;
+                color: #0077b6;
+                border-top: 2px solid #0077b6;
+                padding-top: 10px;
+                margin-top: 15px;
+            }
+            
+            .summary-row.outstanding {
+                font-size: 16px;
+                font-weight: bold;
+                color: #dc3545;
+                background: #f8d7da;
+                padding: 10px 15px;
+                margin: 15px -15px 0 -15px;
+                border-radius: 5px;
+            }
+            
+            .payments-section {
+                margin: 25px 0;
+            }
+            
+            .payments-header {
+                background: linear-gradient(135deg, #28a745, #20c997);
+                color: white;
+                padding: 15px;
+                margin-bottom: 0;
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            
+            .payments-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 0;
+                border: 1px solid #dee2e6;
+            }
+            
+            .payments-table th {
+                background: #f8f9fa;
+                color: #495057;
+                padding: 10px;
+                text-align: left;
+                font-weight: 600;
+                border-bottom: 2px solid #dee2e6;
+                font-size: 13px;
+            }
+            
+            .payments-table td {
+                padding: 10px;
+                border-bottom: 1px solid #dee2e6;
+                font-size: 13px;
+            }
+            
+            .footer-section {
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 2px solid #e0e0e0;
+                text-align: center;
+                color: #666;
+                font-size: 13px;
+            }
+            
+            .print-controls {
+                text-align: center;
+                margin: 20px 0;
+                page-break-inside: avoid;
+            }
+            
+            .print-btn {
+                background: #0077b6;
+                color: white;
+                padding: 12px 25px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 600;
+                margin: 0 10px;
+                text-decoration: none;
+                display: inline-block;
+            }
+            
+            .print-btn:hover {
+                background: #023e8a;
+            }
+            
+            @media print {
+                body {
+                    background: white;
+                    padding: 0;
+                }
+                
+                .invoice-container {
+                    box-shadow: none;
+                    border-radius: 0;
+                    padding: 0;
+                }
+                
+                .print-controls {
+                    display: none;
+                }
+            }
+            
+            @media (max-width: 768px) {
+                .invoice-meta {
+                    flex-direction: column;
+                    gap: 20px;
+                }
+                
+                .services-table, .payments-table {
+                    font-size: 12px;
+                }
+                
+                .services-table th, .services-table td,
+                .payments-table th, .payments-table td {
+                    padding: 8px 6px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="invoice-container">
+            <!-- Invoice Header -->
+            <div class="invoice-header">
+                <div class="facility-name">CITY HEALTH OFFICE KORONADAL</div>
+                <div class="facility-details">
+                    Zone III, Koronadal City, South Cotabato<br>
+                    Phone: (083) 228-8331 | Email: cho.koronadal@gmail.com
+                </div>
+                <div class="invoice-title">Medical Invoice</div>
+                <div class="invoice-number"><?php echo htmlspecialchars($invoice_data['invoice']['number']); ?></div>
+                <div class="invoice-status status-<?php echo strtolower($invoice_data['invoice']['status']); ?>">
+                    <?php echo htmlspecialchars($invoice_data['invoice']['status']); ?>
+                </div>
+            </div>
+
+            <!-- Invoice Meta Information -->
+            <div class="invoice-meta">
+                <div class="meta-group">
+                    <h4>Patient Information</h4>
+                    <p><strong><?php echo htmlspecialchars($invoice_data['patient']['name']); ?></strong></p>
+                    <p>ID: <?php echo htmlspecialchars($invoice_data['patient']['number']); ?></p>
+                    <p>Age: <?php echo htmlspecialchars($invoice_data['patient']['age']); ?> | Sex: <?php echo htmlspecialchars($invoice_data['patient']['sex']); ?></p>
+                    <?php if (!empty($invoice_data['patient']['contact'])): ?>
+                    <p>Contact: <?php echo htmlspecialchars($invoice_data['patient']['contact']); ?></p>
+                    <?php endif; ?>
+                    <?php if (!empty($invoice_data['patient']['barangay'])): ?>
+                    <p>Barangay: <?php echo htmlspecialchars($invoice_data['patient']['barangay']); ?></p>
+                    <?php endif; ?>
+                </div>
+                <div class="meta-group">
+                    <h4>Invoice Details</h4>
+                    <p>Date: <?php echo date('M d, Y', strtotime($invoice_data['invoice']['date'])); ?></p>
+                    <?php if (!empty($invoice_data['invoice']['visit_date'])): ?>
+                    <p>Visit Date: <?php echo date('M d, Y', strtotime($invoice_data['invoice']['visit_date'])); ?></p>
+                    <?php endif; ?>
+                    <?php if (!empty($invoice_data['invoice']['visit_purpose'])): ?>
+                    <p>Purpose: <?php echo htmlspecialchars($invoice_data['invoice']['visit_purpose']); ?></p>
+                    <?php endif; ?>
+                    <?php if (!empty($invoice_data['staff']['created_by'])): ?>
+                    <p>Prepared by: <?php echo htmlspecialchars($invoice_data['staff']['created_by']); ?></p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Services Section -->
+            <div class="services-section">
+                <div class="services-header">
+                    <i class="fas fa-list-ul"></i> Medical Services & Items
+                </div>
+                <table class="services-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Service/Item</th>
+                            <th style="width: 15%;" class="text-center">Qty</th>
+                            <th style="width: 15%;" class="text-right">Unit Price</th>
+                            <th style="width: 20%;" class="text-right">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($invoice_data['items'] as $item): ?>
+                        <tr>
+                            <td>
+                                <div class="service-name"><?php echo htmlspecialchars($item['name']); ?></div>
+                                <?php if (!empty($item['description'])): ?>
+                                <div class="service-description"><?php echo htmlspecialchars($item['description']); ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($item['category'])): ?>
+                                <div class="service-category"><?php echo htmlspecialchars($item['category']); ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-center">
+                                <?php echo htmlspecialchars($item['quantity']); ?>
+                                <?php if (!empty($item['unit'])): ?>
+                                <small>(<?php echo htmlspecialchars($item['unit']); ?>)</small>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-right">₱<?php echo number_format($item['price'], 2); ?></td>
+                            <td class="text-right">₱<?php echo number_format($item['subtotal'], 2); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Financial Summary -->
+            <div class="financial-summary">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span>₱<?php echo number_format($invoice_data['financial']['subtotal'], 2); ?></span>
+                </div>
+                
+                <?php if ($invoice_data['financial']['discount_amount'] > 0): ?>
+                <div class="summary-row">
+                    <span>Discount (<?php echo ucfirst($invoice_data['financial']['discount_type']); ?>):</span>
+                    <span>-₱<?php echo number_format($invoice_data['financial']['discount_amount'], 2); ?></span>
+                </div>
+                <?php endif; ?>
+                
+                <div class="summary-row total">
+                    <span>Total Amount Due:</span>
+                    <span>₱<?php echo number_format($invoice_data['financial']['net_amount'], 2); ?></span>
+                </div>
+                
+                <?php if ($invoice_data['financial']['paid_amount'] > 0): ?>
+                <div class="summary-row">
+                    <span>Amount Paid:</span>
+                    <span>₱<?php echo number_format($invoice_data['financial']['paid_amount'], 2); ?></span>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ($invoice_data['financial']['outstanding_balance'] > 0): ?>
+                <div class="summary-row outstanding">
+                    <span>Outstanding Balance:</span>
+                    <span>₱<?php echo number_format($invoice_data['financial']['outstanding_balance'], 2); ?></span>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Payment History (if any payments exist) -->
+            <?php if (!empty($invoice_data['payments'])): ?>
+            <div class="payments-section">
+                <div class="payments-header">
+                    <i class="fas fa-receipt"></i> Payment History
+                </div>
+                <table class="payments-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Method</th>
+                            <th>Receipt #</th>
+                            <th class="text-right">Amount</th>
+                            <?php if (isset($invoice_data['payments'][0]['cashier'])): ?>
+                            <th>Cashier</th>
+                            <?php endif; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($invoice_data['payments'] as $payment): ?>
+                        <tr>
+                            <td><?php echo date('M d, Y g:i A', strtotime($payment['date'])); ?></td>
+                            <td><?php echo htmlspecialchars($payment['method']); ?></td>
+                            <td><?php echo htmlspecialchars($payment['receipt_number']); ?></td>
+                            <td class="text-right">₱<?php echo number_format($payment['amount'], 2); ?></td>
+                            <?php if (isset($payment['cashier'])): ?>
+                            <td><?php echo htmlspecialchars($payment['cashier']); ?></td>
+                            <?php endif; ?>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+
+            <!-- Additional Notes -->
+            <?php if (!empty($invoice_data['invoice']['notes'])): ?>
+            <div style="margin: 25px 0; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 5px;">
+                <h4 style="margin: 0 0 10px 0; color: #664d03;">Notes:</h4>
+                <p style="margin: 0; color: #664d03;"><?php echo nl2br(htmlspecialchars($invoice_data['invoice']['notes'])); ?></p>
+            </div>
+            <?php endif; ?>
+
+            <!-- Footer -->
+            <div class="footer-section">
+                <p><strong>City Health Office Koronadal</strong></p>
+                <p>For inquiries, please visit our office or call (083) 228-8331</p>
+                <p><em>This is a computer-generated invoice. Please keep this for your records.</em></p>
+                <p style="margin-top: 15px; font-size: 11px;">Generated on: <?php echo date('F d, Y g:i A'); ?></p>
+            </div>
+        </div>
+
+        <!-- Print Controls -->
+        <div class="print-controls">
+            <button onclick="window.print()" class="print-btn">
+                <i class="fas fa-print"></i> Print Invoice
+            </button>
+            <button onclick="window.close()" class="print-btn" style="background: #6c757d;">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+
+        <script>
+            // Auto-focus print dialog for better UX
+            window.addEventListener('load', function() {
+                // Add any additional JavaScript functionality here
+            });
+        </script>
+    </body>
+    </html>
+    <?php
+}
+
+
 ?>

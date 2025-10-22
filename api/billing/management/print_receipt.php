@@ -68,16 +68,22 @@ try {
             r.notes,
             p.first_name,
             p.last_name,
-            p.patient_number,
-            p.phone_number,
-            p.address,
+            p.username as patient_number,
+            p.contact_number,
+            p.date_of_birth,
             p.email,
+            bg.barangay_name,
+            bg.city,
+            bg.province,
+            bg.zip_code,
             e.first_name as cashier_first_name,
             e.last_name as cashier_last_name,
-            e.employee_number
+            e.employee_number,
+            TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
         FROM billing b
         JOIN receipts r ON b.receipt_id = r.receipt_id
         JOIN patients p ON b.patient_id = p.patient_id
+        LEFT JOIN barangay bg ON p.barangay_id = bg.barangay_id
         LEFT JOIN employees e ON r.processed_by = e.employee_id
         WHERE $condition AND b.payment_status IN ('paid', 'partial')
     ";
@@ -132,8 +138,8 @@ try {
         'patient' => [
             'name' => $receipt['first_name'] . ' ' . $receipt['last_name'],
             'patient_number' => $receipt['patient_number'],
-            'phone' => $receipt['phone_number'],
-            'address' => $receipt['address'],
+            'phone' => $receipt['contact_number'],
+            'address' => $receipt['barangay_name'] . ', ' . $receipt['city'] . ', ' . $receipt['province'] . ' ' . $receipt['zip_code'],
             'email' => $receipt['email']
         ],
         'services' => array_map(function($item) {

@@ -1,10 +1,7 @@
 <?php
 // sidebar_patient.php
 // Expected (optional) from caller: $activePage, $defaults['name'], $defaults['patient_number'], $patient_id
-        <a href="<?= $nav_base ?>patient/billing/billing.php"
-            class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-file-invoice-dollar"></i> Billing
-        </a>his file does NOT open/close <html> or <body>.
+// This file does NOT open/close <html> or <body>.
 
 if (session_status() === PHP_SESSION_NONE) {
     // Include patient session configuration

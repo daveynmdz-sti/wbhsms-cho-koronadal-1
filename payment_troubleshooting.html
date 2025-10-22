@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment Processing Troubleshooting Guide</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 20px; border-radius: 8px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .success { color: #28a745; font-weight: bold; }
+        .error { color: #dc3545; font-weight: bold; }
+        .warning { color: #ffc107; font-weight: bold; }
+        .info { color: #17a2b8; font-weight: bold; }
+        .step { background: #f8f9fa; padding: 15px; margin: 10px 0; border-left: 4px solid #0077b6; }
+        code { background: #f8f9fa; padding: 2px 5px; border-radius: 3px; }
+        .troubleshoot { background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Payment Processing Troubleshooting</h1>
+    <p><strong>Issue:</strong> Payment form submits but no payment is recorded</p>
+    
+    <div class="container">
+        <h2>🎯 Quick Test Steps</h2>
+        
+        <div class="step">
+            <h3>Step 1: Test with Direct Submit Button</h3>
+            <p>1. Navigate to: <code>http://localhost/wbhsms-cho-koronadal-1/pages/billing/process_payment.php?billing_id=1</code></p>
+            <p>2. Enter amount: <code>100.00</code></p>
+            <p>3. Click <strong>"Direct Submit (Debug)"</strong> button (yellow button)</p>
+            <p>4. Check if payment processes successfully</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Alternative Simple Test</h3>
+            <p>1. Navigate to: <code>http://localhost/wbhsms-cho-koronadal-1/test_simple_payment.php</code></p>
+            <p>2. Use the simple form to test payment processing</p>
+            <p>3. Check if this works (rules out JavaScript issues)</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Check Browser Console</h3>
+            <p>1. Press F12 to open Developer Tools</p>
+            <p>2. Go to Console tab</p>
+            <p>3. Try the normal "Process Cash Payment" button</p>
+            <p>4. Look for JavaScript errors or console logs</p>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Check Database Changes</h3>
+            <p>After any payment attempt, check if records were created:</p>
+            <p><strong>Check Payments Table:</strong></p>
+            <code>SELECT * FROM payments ORDER BY paid_at DESC LIMIT 5;</code>
+            <p><strong>Check Billing Updates:</strong></p>
+            <code>SELECT billing_id, net_amount, paid_amount, payment_status FROM billing WHERE billing_id = 1;</code>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🔍 Debugging Information Added</h2>
+        
+        <div class="troubleshoot">
+            <h3>JavaScript Console Logs</h3>
+            <p>The following console logs have been added to track the process:</p>
+            <ul>
+                <li><code>confirmPayment called</code> - When confirmation button clicked</li>
+                <li><code>Form found, submitting...</code> - When form submission starts</li>
+                <li><code>Showing payment confirmation modal</code> - When modal appears</li>
+                <li><code>submitPayment called</code> - When final submit happens</li>
+            </ul>
+        </div>
+
+        <div class="troubleshoot">
+            <h3>PHP Error Logs</h3>
+            <p>The following server-side logs have been added:</p>
+            <ul>
+                <li>POST data received and parsed</li>
+                <li>Payment processing success/failure</li>
+                <li>Exception details and stack traces</li>
+            </ul>
+            <p><strong>Check Apache Error Log:</strong> <code>C:\xampp\apache\logs\error.log</code></p>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🚨 Common Issues & Solutions</h2>
+        
+        <div class="step">
+            <h3>Issue A: JavaScript Modal Problems</h3>
+            <p><span class="warning">Symptom:</span> Direct submit works, but normal button doesn't</p>
+            <p><span class="success">Solution:</span> The modal confirmation is broken - use direct submit or fix JavaScript</p>
+        </div>
+
+        <div class="step">
+            <h3>Issue B: Session/Authentication Problems</h3>
+            <p><span class="warning">Symptom:</span> Both buttons fail, no error messages</p>
+            <p><span class="success">Solution:</span> Check if you're logged in as cashier/admin role</p>
+        </div>
+
+        <div class="step">
+            <h3>Issue C: Form Data Not Posted</h3>
+            <p><span class="warning">Symptom:</span> Page refreshes, no processing happens</p>
+            <p><span class="success">Solution:</span> Check browser network tab for POST requests</p>
+        </div>
+
+        <div class="step">
+            <h3>Issue D: Database Constraint Errors</h3>
+            <p><span class="warning">Symptom:</span> Error message appears about database</p>
+            <p><span class="success">Solution:</span> Check Apache error log for SQL errors</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Expected Behavior</h2>
+        
+        <div class="step">
+            <h3>✅ Successful Payment Processing</h3>
+            <ol>
+                <li>Enter payment amount</li>
+                <li>Click "Process Cash Payment" or "Direct Submit"</li>
+                <li>See success message: "Payment processed successfully!"</li>
+                <li>See receipt modal with payment details</li>
+                <li>Database records updated in both tables</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🛠️ Test Database Queries</h2>
+        
+        <div class="step">
+            <h3>Before Payment (Current State)</h3>
+            <code>SELECT * FROM billing WHERE billing_id = 1;</code><br>
+            <strong>Expected:</strong> paid_amount = 300.00, payment_status = 'partial'
+        </div>
+
+        <div class="step">
+            <h3>After Payment (Check Changes)</h3>
+            <code>SELECT * FROM payments WHERE billing_id = 1 ORDER BY paid_at DESC;</code><br>
+            <code>SELECT paid_amount, payment_status FROM billing WHERE billing_id = 1;</code><br>
+            <strong>Expected:</strong> New payment record + updated billing amounts
+        </div>
+    </div>
+
+    <p style="text-align: center; margin-top: 30px;">
+        <a href="pages/billing/process_payment.php?billing_id=1" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            🧪 Start Payment Test
+        </a>
+        &nbsp;&nbsp;
+        <a href="test_simple_payment.php" style="background: #17a2b8; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            🔧 Simple Test Form
+        </a>
+    </p>
+
+</body>
+</html>

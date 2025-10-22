@@ -81,9 +81,14 @@ $defaults = [
     'billing_alerts' => []
 ];
 
-// Get cashier info from employees table
+// Get cashier info from employees table with role lookup
 try {
-    $stmt = $pdo->prepare('SELECT first_name, middle_name, last_name, employee_number, role FROM employees WHERE employee_id = ?');
+    $stmt = $pdo->prepare('
+        SELECT e.first_name, e.middle_name, e.last_name, e.employee_number, r.role_name 
+        FROM employees e 
+        JOIN roles r ON e.role_id = r.role_id 
+        WHERE e.employee_id = ?
+    ');
     $stmt->execute([$employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
@@ -92,7 +97,7 @@ try {
         $full_name .= ' ' . $row['last_name'];
         $defaults['name'] = trim($full_name);
         $defaults['employee_number'] = $row['employee_number'];
-        $defaults['role'] = $row['role'];
+        $defaults['role'] = ucfirst($row['role_name']); // Capitalize role name for display
     }
 } catch (PDOException $e) {
     error_log("Cashier dashboard error: " . $e->getMessage());
@@ -916,11 +921,11 @@ try {
             </div>
             
             <div class="dashboard-actions">
-                <a href="../billing/process_payment.php" class="btn btn-primary">
+                <a href="../../billing/process_payment.php" class="btn btn-primary">
                     <i class="fas fa-cash-register"></i> Process Payment
                 </a>
-                <a href="../billing/generate_invoice.php" class="btn btn-secondary">
-                    <i class="fas fa-file-invoice"></i> Generate Invoice
+                <a href="../../billing/create_invoice.php" class="btn btn-secondary">
+                    <i class="fas fa-file-invoice"></i> Create Invoice
                 </a>
                 <a href="../auth/employee_logout.php" class="btn btn-outline">
                     <i class="fas fa-sign-out-alt"></i> Logout

@@ -1,37 +1,56 @@
 <?php
 /**
- * Billing Reports Page
- * Purpose: Generate reports for monthly collections, most availed services, transaction summaries
- * UI Pattern: Sidebar only (list/management page)
+ * Billing Reports Dashboard
+ * Purpose: Generate comprehensive billing analytics and financial reports
+ * UI Pattern: Sidebar only (list/management page) - Matches billing management structure
  */
 
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-header('Pragma: no-cache');
-header('Expires: 0');
+// Ensure output buffering is active (but don't create unnecessary nested buffers)
+if (ob_get_level() === 0) {
+    ob_start();
+}
 
 // Include employee session configuration
+// Use absolute path resolution
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
-require_once $root_path . '/config/db.php';
+include $root_path . '/config/db.php';
 
-// Check if user is logged in and authorized
-if (!is_employee_logged_in()) {
-    header('Location: ../management/auth/employee_login.php');
+// Use relative path for assets - more reliable than absolute URLs
+$assets_path = '../../assets';
+
+// Check if user is logged in
+if (!isset($_SESSION['employee_id'])) {
+    header("Location: ../auth/employee_login.php");
     exit();
 }
 
-$employee_id = get_employee_session('employee_id');
-$employee_role = get_employee_session('role');
-
-// Check if role is authorized for billing operations
-$allowed_roles = ['Cashier', 'Admin'];
-if (!in_array($employee_role, $allowed_roles)) {
-    header('Location: ../management/' . strtolower($employee_role) . '/dashboard.php');
-    exit();
-}
-
-// Set active page for sidebar
+// Set active page for sidebar highlighting
 $activePage = 'billing_reports';
+
+// Define role-based permissions for billing reports using role_id
+$canViewReports = in_array($_SESSION['role_id'], [1, 8]); // admin, cashier
+$canExportReports = in_array($_SESSION['role_id'], [1, 8]); // admin, cashier
+$canViewCashierPerformance = in_array($_SESSION['role_id'], [1]); // admin only
+
+if (!$canViewReports) {
+    $role_id = $_SESSION['role_id'];
+    // Map role_id to role name for redirect
+    $roleMap = [
+        1 => 'admin',
+        2 => 'doctor', 
+        3 => 'nurse',
+        4 => 'pharmacist',
+        5 => 'dho',
+        6 => 'bhw',
+        7 => 'records_officer',
+        8 => 'cashier',
+        9 => 'laboratory_tech'
+    ];
+    $role = $roleMap[$role_id] ?? 'employee';
+    header("Location: ../management/$role/dashboard.php");
+    exit();
+}
 
 // Get report parameters
 $report_type = $_GET['report_type'] ?? 'monthly';
@@ -136,7 +155,7 @@ try {
     
     // Cashier Performance (if admin)
     $cashier_performance = [];
-    if ($employee_role === 'Admin') {
+    if ($canViewCashierPerformance) {
         $cashier_query = "SELECT 
                             e.first_name,
                             e.last_name,
@@ -168,14 +187,111 @@ try {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Billing Reports - CHO Koronadal</title>
-    <link rel="stylesheet" href="<?= $root_path ?>/assets/css/sidebar.css">
-    <link rel="stylesheet" href="<?= $root_path ?>/assets/css/dashboard.css">
+    <title>Billing Reports - WBHSMS</title>
+    <link rel="stylesheet" href="<?= $assets_path ?>/css/sidebar.css">
+    <link rel="stylesheet" href="<?= $assets_path ?>/css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Content wrapper and page layout - matches billing_management */
+        .content-wrapper {
+            margin-left: 300px;
+            padding: 20px;
+            min-height: 100vh;
+            transition: margin-left 0.3s;
+        }
+
+        @media (max-width: 768px) {
+            .content-wrapper {
+                margin-left: 0;
+            }
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .page-header h1 {
+            margin: 0;
+            color: #03045e;
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #0066cc;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0052a3;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        /* Form elements styling to match billing management */
+        select, input[type="text"], input[type="date"], input[type="month"] {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            width: 100%;
+        }
+
+        select:focus, input:focus {
+            border-color: #007bff;
+            outline: none;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+        
         .report-filters {
             background: white;
             padding: 1.5rem;
@@ -288,17 +404,20 @@ try {
         }
         
         @media print {
-            .sidebar, .report-filters, .print-section {
+            .sidebar, .report-filters, .print-section, .breadcrumb, .page-header .btn {
                 display: none;
             }
             
-            .main-content {
+            .content-wrapper {
                 margin-left: 0;
+                padding: 10px;
             }
             
             .report-section {
                 break-inside: avoid;
                 margin-bottom: 1rem;
+                box-shadow: none;
+                border: 1px solid #ddd;
             }
         }
         
@@ -330,18 +449,68 @@ try {
         .tab-content.active {
             display: block;
         }
+
+        /* Status badge styling to match billing management */
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status-unpaid {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-partial {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-paid {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .text-muted {
+            color: #6c757d !important;
+        }
     </style>
 </head>
+
 <body>
-    <div class="homepage">
-        <!-- Include Sidebar -->
-        <?php include $root_path . '/includes/sidebar_' . strtolower($employee_role) . '.php'; ?>
-        
-        <div class="main-content">
-            <div class="content-header">
+    <!-- Set active page for sidebar highlighting -->
+    <?php $activePage = 'billing_reports'; ?>
+
+    <!-- Include role-based sidebar -->
+    <?php
+    require_once $root_path . '/includes/dynamic_sidebar_helper.php';
+    includeDynamicSidebar($activePage, $root_path);
+    ?>
+
+    <section class="content-wrapper">
+        <!-- Breadcrumb Navigation -->
+        <div class="breadcrumb" style="margin-top: 50px;">
+            <a href="<?= getRoleDashboardUrl() ?>"><i class="fas fa-home"></i> Dashboard</a>
+            <i class="fas fa-chevron-right"></i>
+            <a href="billing_management.php"><i class="fas fa-file-invoice-dollar"></i> Billing Management</a>
+            <i class="fas fa-chevron-right"></i>
+            <span>Billing Reports</span>
+        </div>
+
+        <div class="page-header">
+            <div>
                 <h1><i class="fas fa-chart-bar"></i> Billing Reports</h1>
-                <p>Comprehensive billing analytics and financial reports</p>
+                <p style="margin: 0.5rem 0 0 0; color: #666;">Comprehensive billing analytics and financial reports</p>
             </div>
+            <div>
+                <a href="billing_management.php" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Billing
+                </a>
+            </div>
+        </div>
 
             <!-- Report Filters -->
             <div class="report-filters">
@@ -375,9 +544,11 @@ try {
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-chart-line"></i> Generate Report
                             </button>
+                            <?php if ($canExportReports): ?>
                             <button type="button" class="btn btn-secondary" onclick="exportReport()">
                                 <i class="fas fa-download"></i> Export
                             </button>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </form>
@@ -553,7 +724,7 @@ try {
             <?php endif; ?>
 
             <!-- Cashier Performance (Admin only) -->
-            <?php if ($employee_role === 'Admin' && !empty($cashier_performance)): ?>
+            <?php if ($canViewCashierPerformance && !empty($cashier_performance)): ?>
             <div class="report-section">
                 <h3><i class="fas fa-users"></i> Cashier Performance</h3>
                 <p class="text-muted">Payment processing performance by cashier</p>
@@ -592,8 +763,7 @@ try {
                     <i class="fas fa-arrow-left"></i> Back to Billing
                 </a>
             </div>
-        </div>
-    </div>
+    </section>
 
     <script>
         function toggleDateInputs() {

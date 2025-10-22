@@ -76,14 +76,20 @@ try {
             r.notes,
             p.first_name,
             p.last_name,
-            p.patient_number,
-            p.phone_number,
-            p.address,
+            p.username as patient_number,
+            p.contact_number,
+            p.date_of_birth,
+            bg.barangay_name,
+            bg.city,
+            bg.province,
+            bg.zip_code,
             e.first_name as cashier_first_name,
-            e.last_name as cashier_last_name
+            e.last_name as cashier_last_name,
+            TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
         FROM billing b
         JOIN receipts r ON b.receipt_id = r.receipt_id
         JOIN patients p ON b.patient_id = p.patient_id
+        LEFT JOIN barangay bg ON p.barangay_id = bg.barangay_id
         LEFT JOIN employees e ON r.processed_by = e.employee_id
         WHERE b.billing_id = ?
     ";
@@ -117,8 +123,8 @@ try {
         'patient' => [
             'name' => $receipt['first_name'] . ' ' . $receipt['last_name'],
             'patient_number' => $receipt['patient_number'],
-            'phone' => $receipt['phone_number'],
-            'address' => $receipt['address']
+            'phone' => $receipt['contact_number'],
+            'address' => $receipt['barangay_name'] . ', ' . $receipt['city'] . ', ' . $receipt['province'] . ' ' . $receipt['zip_code']
         ],
         'items' => $items,
         'amounts' => [
@@ -155,12 +161,42 @@ try {
         generateHTMLReceipt($receipt_data);
         
     } else if ($format === 'pdf') {
-        // For future PDF implementation
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => false,
-            'message' => 'PDF format not yet implemented'
-        ]);
+        // Generate PDF receipt
+        require_once $root_path . '/vendor/autoload.php';
+        
+        // Configure PDF options
+        $options = new \Dompdf\Options();
+        $options->set('defaultFont', 'Arial');
+        $options->set('isRemoteEnabled', true);
+        
+        // Initialize dompdf
+        $dompdf = new \Dompdf\Dompdf($options);
+        
+        // Generate HTML content for PDF
+        ob_start();
+        include $root_path . '/api/billing/shared/receipt_generator.php';
+        generateHTMLReceipt($receipt_data);
+        $html = ob_get_clean();
+        
+        // Load HTML content
+        $dompdf->loadHtml($html);
+        
+        // Set paper size and orientation
+        $dompdf->setPaper('A4', 'portrait');
+        
+        // Render the HTML as PDF
+        $dompdf->render();
+        
+        // Set headers for PDF download
+        $filename = 'receipt_' . $receipt_data['receipt_number'] . '.pdf';
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        
+        // Output the PDF
+        echo $dompdf->output();
     }
     
 } catch (PDOException $e) {

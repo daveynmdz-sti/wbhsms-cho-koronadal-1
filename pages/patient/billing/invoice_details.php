@@ -478,6 +478,12 @@ $patient_id = get_patient_session('patient_id');
                         <button class="btn btn-outline" onclick="printInvoice()">
                             <i class="fas fa-print"></i> Print
                         </button>
+                        <button class="btn btn-info" onclick="downloadInvoicePDF()">
+                            <i class="fas fa-download"></i> Download PDF
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadInvoiceHTML()">
+                            <i class="fas fa-file-code"></i> Download HTML
+                        </button>
                         
                         ${invoice.payment_status === 'unpaid' ? `
                             <button class="btn btn-primary" onclick="showPaymentInfo(${invoice.billing_id})">
@@ -508,7 +514,45 @@ $patient_id = get_patient_session('patient_id');
         }
 
         function printInvoice() {
-            window.print();
+            // Use dedicated invoice API for better formatting
+            const billingId = new URLSearchParams(window.location.search).get('billing_id');
+            if (billingId) {
+                const printUrl = `/wbhsms-cho-koronadal-1/api/billing/patient/view_invoice.php?billing_id=${billingId}&format=html`;
+                window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
+            } else {
+                // Fallback to page print if no billing ID
+                window.print();
+            }
+        }
+
+        function downloadInvoicePDF() {
+            const billingId = new URLSearchParams(window.location.search).get('billing_id');
+            if (billingId) {
+                const downloadUrl = `/wbhsms-cho-koronadal-1/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=pdf`;
+                
+                // Create a temporary link element to trigger download
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = '';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+
+        function downloadInvoiceHTML() {
+            const billingId = new URLSearchParams(window.location.search).get('billing_id');
+            if (billingId) {
+                const downloadUrl = `/wbhsms-cho-koronadal-1/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=html`;
+                
+                // Create a temporary link element to trigger download
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = '';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
         }
 
         function showPaymentInfo(billingId) {
