@@ -34,6 +34,9 @@ if ($base_path === '/' || $base_path === '.') {
 // Construct full asset URL for production
 $assets_path = $protocol . '://' . $host . $base_path . '/assets';
 
+// Construct API base URL for production
+$api_base_path = $base_path;
+
 // Check if user is logged in
 if (!isset($_SESSION['employee_id'])) {
     header("Location: ../auth/employee_login.php");
@@ -877,6 +880,10 @@ try {
     </div>
 
     <script>
+        // API base path for production compatibility
+        const API_BASE_PATH = '<?= $api_base_path ?>';
+        console.log('API Base Path:', API_BASE_PATH);
+        
         // Search and filter functions
         function applyFilters() {
             const searchQuery = document.getElementById('searchInvoices').value;
@@ -904,8 +911,16 @@ try {
                 // Show loading state
                 showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
                 
-                fetch(`/wbhsms-cho-koronadal-1/api/billing/management/get_invoice_details.php?billing_id=${billingId}`)
-                    .then(response => response.json())
+                const apiUrl = `${API_BASE_PATH}/api/billing/management/get_invoice_details.php?billing_id=${billingId}`;
+                console.log('Fetching invoice details from:', apiUrl);
+                
+                fetch(apiUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
                         if (data.success) {
                             displayInvoiceDetails(data.invoice);
@@ -926,7 +941,8 @@ try {
         // Print invoice using dedicated API
         function printInvoice(billingId) {
             try {
-                const printUrl = `/wbhsms-cho-koronadal-1/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
+                const printUrl = `${API_BASE_PATH}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
+                console.log('Opening print URL:', printUrl);
                 window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
             } catch (error) {
                 console.error('Error printing invoice:', error);
