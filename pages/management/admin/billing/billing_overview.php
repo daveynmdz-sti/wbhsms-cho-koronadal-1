@@ -43,8 +43,19 @@ try {
             COUNT(CASE WHEN payment_status = 'paid' THEN 1 END) as paid_invoices,
             COUNT(CASE WHEN payment_status = 'partial' THEN 1 END) as partial_invoices,
             COALESCE(SUM(CASE WHEN payment_status = 'unpaid' THEN net_amount END), 0) as total_outstanding,
-            COALESCE(SUM(CASE WHEN payment_status = 'paid' AND DATE(billing_date) = CURDATE() THEN net_amount END), 0) as today_collections,
-            COALESCE(SUM(CASE WHEN payment_status = 'paid' AND YEAR(billing_date) = YEAR(CURDATE()) AND MONTH(billing_date) = MONTH(CURDATE()) THEN net_amount END), 0) as month_collections
+            COALESCE((
+                SELECT SUM(r.amount_paid - COALESCE(r.change_amount, 0))
+                FROM receipts r 
+                JOIN billing b2 ON r.billing_id = b2.billing_id 
+                WHERE DATE(r.payment_date) = CURDATE()
+            ), 0) as today_collections,
+            COALESCE((
+                SELECT SUM(r.amount_paid - COALESCE(r.change_amount, 0))
+                FROM receipts r 
+                JOIN billing b3 ON r.billing_id = b3.billing_id 
+                WHERE YEAR(r.payment_date) = YEAR(CURDATE()) 
+                AND MONTH(r.payment_date) = MONTH(CURDATE())
+            ), 0) as month_collections
         FROM billing
     ");
     $stats = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -56,6 +67,8 @@ try {
             r.receipt_number,
             r.payment_date,
             r.amount_paid,
+            r.change_amount,
+            (r.amount_paid - COALESCE(r.change_amount, 0)) as actual_payment_applied,
             r.payment_method,
             CONCAT(p.first_name, ' ', p.last_name) as patient_name,
             CONCAT(e.first_name, ' ', e.last_name) as cashier_name
@@ -140,6 +153,8 @@ try {
             r.billing_id,
             r.payment_date,
             r.amount_paid,
+            r.change_amount,
+            (r.amount_paid - COALESCE(r.change_amount, 0)) as actual_payment_applied,
             r.payment_method,
             CONCAT(p.first_name, ' ', p.last_name) as patient_name,
             p.first_name,
@@ -1026,10 +1041,13 @@ try {
                                         <small style="color: #666;">
                                             Invoice #<?= $payment['billing_id'] ?> • 
                                             <?= ucfirst($payment['payment_method']) ?>
+                                            <?php if ($payment['change_amount'] > 0): ?>
+                                            <br><span style="color: #17a2b8;">Paid: ₱<?= number_format($payment['amount_paid'], 2) ?> | Change: ₱<?= number_format($payment['change_amount'], 2) ?></span>
+                                            <?php endif; ?>
                                         </small>
                                     </div>
                                     <div style="text-align: right;">
-                                        <strong style="color: #28a745;">₱<?= number_format($payment['amount_paid'], 2) ?></strong><br>
+                                        <strong style="color: #28a745;">₱<?= number_format($payment['actual_payment_applied'], 2) ?></strong><br>
                                         <small style="color: #666;"><?= date('M d, g:i A', strtotime($payment['payment_date'])) ?></small>
                                     </div>
                                 </div>
