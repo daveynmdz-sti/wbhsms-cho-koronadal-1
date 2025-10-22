@@ -238,8 +238,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CHO Koronadal — Appointments Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <!-- CSS Files -->
-    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
+    <!-- CSS Files - loaded by sidebar -->
     <style>
         .content-wrapper {
             margin-left: 300px;
@@ -631,20 +630,10 @@ try {
                 opacity: 0;
                 transform: translate(-50%, -20px);
             }
-
             to {
                 opacity: 1;
                 transform: translate(-50%, 0);
             }
-        }
-
-        .card-container {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            border-left: 4px solid #0077b6;
         }
 
         .modal {
@@ -1111,162 +1100,162 @@ try {
         </div>
 
         <!-- Appointments Table -->
-        <div class="card-container">
-            <div class="section-header">
-                <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
+<div class="card-container">
+    <div class="section-header">
+        <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
                     <i class="fas fa-calendar-check"></i> Appointments
                 </h4>
 
-            </div>
-            <div class="table-container">
-                <div class="table-wrapper">
-                    <?php if (empty($appointments)): ?>
-                        <div class="empty-state">
-                            <i class="fas fa-calendar-times"></i>
-                            <h3>No appointments found</h3>
-                            <p>No appointments match your current filters.</p>
-                        </div>
-                    <?php else: ?>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Patient</th>
-                                    <th>Patient ID</th>
-                                    <th>Date</th>
-                                    <th>Time Slot</th>
-                                    <th>Status</th>
-                                    <th>Facility</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($appointments as $appointment): ?>
-                                    <tr data-appointment-id="<?php echo $appointment['appointment_id']; ?>">
-                                        <td>
-                                            <div style="display: flex; align-items: center; gap: 10px;">
-                                                <img src="<?php echo $assets_path . '/images/user-default.png'; ?>"
-                                                    alt="Profile" class="profile-img">
-                                                <div>
-                                                    <strong><?php echo htmlspecialchars($appointment['last_name'] . ', ' . $appointment['first_name']); ?></strong>
-                                                    <?php if (!empty($appointment['middle_name'])): ?>
-                                                        <br><small><?php echo htmlspecialchars($appointment['middle_name']); ?></small>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($appointment['patient_id']); ?></td>
-                                        <td><?php echo date('M j, Y', strtotime($appointment['scheduled_date'])); ?></td>
-                                        <td>
-                                            <span class="time-slot"><?php echo date('g:i A', strtotime($appointment['scheduled_time'])); ?></span>
-                                        </td>
-                                        <td>
-                                            <?php
-                                            $badge_class = '';
-                                            switch ($appointment['status']) {
-                                                case 'confirmed':
-                                                    $badge_class = 'badge-success';
-                                                    break;
-                                                case 'completed':
-                                                    $badge_class = 'badge-primary';
-                                                    break;
-                                                case 'cancelled':
-                                                    $badge_class = 'badge-danger';
-                                                    break;
-                                                case 'checked_in':
-                                                    $badge_class = 'badge-warning';
-                                                    break;
-                                                default:
-                                                    $badge_class = 'badge-info';
-                                                    break;
-                                            }
-                                            ?>
-                                            <span class="badge <?php echo $badge_class; ?>">
-                                                <?php echo ucfirst(htmlspecialchars($appointment['status'])); ?>
-                                            </span>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($appointment['facility_name']); ?></td>
-                                        <td>
-                                            <div class="actions-group">
-                                                <button onclick="viewAppointment(<?php echo $appointment['appointment_id']; ?>)"
-                                                    class="btn btn-sm btn-primary" title="View Details">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                <?php if (in_array($appointment['status'], ['confirmed', 'checked_in'])): ?>
-                                                    <button onclick="cancelAppointment(<?php echo $appointment['appointment_id']; ?>)"
-                                                        class="btn btn-sm btn-danger" title="Cancel Appointment">
-                                                        <i class="fas fa-times"></i>
-                                                    </button>
+    </div>
+        <div class="table-container">
+            <div class="table-wrapper">
+                <?php if (empty($appointments)): ?>
+                    <div class="empty-state">
+                        <i class="fas fa-calendar-times"></i>
+                        <h3>No appointments found</h3>
+                        <p>No appointments match your current filters.</p>
+                    </div>
+                <?php else: ?>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Patient</th>
+                                <th>Patient ID</th>
+                                <th>Date</th>
+                                <th>Time Slot</th>
+                                <th>Status</th>
+                                <th>Facility</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($appointments as $appointment): ?>
+                                <tr data-appointment-id="<?php echo $appointment['appointment_id']; ?>">
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <img src="<?php echo $assets_path . '/images/user-default.png'; ?>"
+                                                alt="Profile" class="profile-img">
+                                            <div>
+                                                <strong><?php echo htmlspecialchars($appointment['last_name'] . ', ' . $appointment['first_name']); ?></strong>
+                                                <?php if (!empty($appointment['middle_name'])): ?>
+                                                    <br><small><?php echo htmlspecialchars($appointment['middle_name']); ?></small>
                                                 <?php endif; ?>
                                             </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Pagination -->
-                <?php if ($total_pages > 1): ?>
-                    <div class="pagination-container">
-                        <div class="pagination-info">
-                            <div class="records-info">
-                                Showing <strong><?php echo $offset + 1; ?></strong> to
-                                <strong><?php echo min($offset + $per_page, $total_records); ?></strong>
-                                of <strong><?php echo $total_records; ?></strong> appointments
-                            </div>
-                            <div class="page-size-selector">
-                                <label>Show:</label>
-                                <select onchange="changePageSize(this.value)">
-                                    <option value="10" <?php echo $per_page == 10 ? 'selected' : ''; ?>>10</option>
-                                    <option value="25" <?php echo $per_page == 25 ? 'selected' : ''; ?>>25</option>
-                                    <option value="50" <?php echo $per_page == 50 ? 'selected' : ''; ?>>50</option>
-                                    <option value="100" <?php echo $per_page == 100 ? 'selected' : ''; ?>>100</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="pagination-controls">
-                            <?php if ($page > 1): ?>
-                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="pagination-btn prev">
-                                    <i class="fas fa-chevron-left"></i> Previous
-                                </a>
-                            <?php endif; ?>
-
-                            <?php
-                            $start = max(1, $page - 2);
-                            $end = min($total_pages, $page + 2);
-
-                            if ($start > 1): ?>
-                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="pagination-btn">1</a>
-                                <?php if ($start > 2): ?>
-                                    <span class="pagination-ellipsis">...</span>
-                                <?php endif; ?>
-                            <?php endif; ?>
-
-                            <?php for ($i = $start; $i <= $end; $i++): ?>
-                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>"
-                                    class="pagination-btn <?php echo $i == $page ? 'active' : ''; ?>">
-                                    <?php echo $i; ?>
-                                </a>
-                            <?php endfor; ?>
-
-                            <?php if ($end < $total_pages): ?>
-                                <?php if ($end < $total_pages - 1): ?>
-                                    <span class="pagination-ellipsis">...</span>
-                                <?php endif; ?>
-                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="pagination-btn"><?php echo $total_pages; ?></a>
-                            <?php endif; ?>
-
-                            <?php if ($page < $total_pages): ?>
-                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="pagination-btn next">
-                                    Next <i class="fas fa-chevron-right"></i>
-                                </a>
-                            <?php endif; ?>
-                        </div>
-                    </div>
+                                        </div>
+                                    </td>
+                                    <td><?php echo htmlspecialchars($appointment['patient_id']); ?></td>
+                                    <td><?php echo date('M j, Y', strtotime($appointment['scheduled_date'])); ?></td>
+                                    <td>
+                                        <span class="time-slot"><?php echo date('g:i A', strtotime($appointment['scheduled_time'])); ?></span>
+                                    </td>
+                                    <td>
+                                        <?php
+                                        $badge_class = '';
+                                        switch ($appointment['status']) {
+                                            case 'confirmed':
+                                                $badge_class = 'badge-success';
+                                                break;
+                                            case 'completed':
+                                                $badge_class = 'badge-primary';
+                                                break;
+                                            case 'cancelled':
+                                                $badge_class = 'badge-danger';
+                                                break;
+                                            case 'checked_in':
+                                                $badge_class = 'badge-warning';
+                                                break;
+                                            default:
+                                                $badge_class = 'badge-info';
+                                                break;
+                                        }
+                                        ?>
+                                        <span class="badge <?php echo $badge_class; ?>">
+                                            <?php echo ucfirst(htmlspecialchars($appointment['status'])); ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo htmlspecialchars($appointment['facility_name']); ?></td>
+                                    <td>
+                                        <div class="actions-group">
+                                            <button onclick="viewAppointment(<?php echo $appointment['appointment_id']; ?>)"
+                                                class="btn btn-sm btn-primary" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            <?php if (in_array($appointment['status'], ['confirmed', 'checked_in'])): ?>
+                                                <button onclick="cancelAppointment(<?php echo $appointment['appointment_id']; ?>)"
+                                                    class="btn btn-sm btn-danger" title="Cancel Appointment">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 <?php endif; ?>
             </div>
+
+            <!-- Pagination -->
+            <?php if ($total_pages > 1): ?>
+                <div class="pagination-container">
+                    <div class="pagination-info">
+                        <div class="records-info">
+                            Showing <strong><?php echo $offset + 1; ?></strong> to
+                            <strong><?php echo min($offset + $per_page, $total_records); ?></strong>
+                            of <strong><?php echo $total_records; ?></strong> appointments
+                        </div>
+                        <div class="page-size-selector">
+                            <label>Show:</label>
+                            <select onchange="changePageSize(this.value)">
+                                <option value="10" <?php echo $per_page == 10 ? 'selected' : ''; ?>>10</option>
+                                <option value="25" <?php echo $per_page == 25 ? 'selected' : ''; ?>>25</option>
+                                <option value="50" <?php echo $per_page == 50 ? 'selected' : ''; ?>>50</option>
+                                <option value="100" <?php echo $per_page == 100 ? 'selected' : ''; ?>>100</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="pagination-controls">
+                        <?php if ($page > 1): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="pagination-btn prev">
+                                <i class="fas fa-chevron-left"></i> Previous
+                            </a>
+                        <?php endif; ?>
+
+                        <?php
+                        $start = max(1, $page - 2);
+                        $end = min($total_pages, $page + 2);
+
+                        if ($start > 1): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="pagination-btn">1</a>
+                            <?php if ($start > 2): ?>
+                                <span class="pagination-ellipsis">...</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
+
+                        <?php for ($i = $start; $i <= $end; $i++): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>"
+                                class="pagination-btn <?php echo $i == $page ? 'active' : ''; ?>">
+                                <?php echo $i; ?>
+                            </a>
+                        <?php endfor; ?>
+
+                        <?php if ($end < $total_pages): ?>
+                            <?php if ($end < $total_pages - 1): ?>
+                                <span class="pagination-ellipsis">...</span>
+                            <?php endif; ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="pagination-btn"><?php echo $total_pages; ?></a>
+                        <?php endif; ?>
+
+                        <?php if ($page < $total_pages): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="pagination-btn next">
+                                Next <i class="fas fa-chevron-right"></i>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
+</div>
     </section>
 
     <!-- View Appointment Modal -->
@@ -1341,12 +1330,12 @@ try {
 
             // Get appointment data
             fetch(`../../../../api/get_appointment_details.php?appointment_id=${appointmentId}`, {
-                    method: 'GET',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Cache-Control': 'no-cache'
-                    }
-                })
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: {
+                    'Cache-Control': 'no-cache'
+                }
+            })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);

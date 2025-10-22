@@ -64,25 +64,18 @@ if (($needsName || $needsNo) && $employee_id) {
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <?php
-// Production-safe path detection without external dependencies
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-$host = $_SERVER['HTTP_HOST'];
-$request_uri = $_SERVER['REQUEST_URI'];
+// Use global path configuration for production-safe navigation
+require_once __DIR__ . '/../config/paths.php';
 
-// Extract base path from REQUEST_URI for production compatibility
-$uri_parts = explode('/', trim($request_uri, '/'));
-$base_path = '';
-
-// Check if we're in a project subfolder (local development like XAMPP)
-if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
-    $base_path = '/' . $uri_parts[0];
-}
-
-// Create full base URL and vendor path
-$base_url = $protocol . $host . $base_path;
+// Get base URL and extract just the path portion for navigation
+$base_url = getBaseUrl();
 $vendorPath = $base_url . '/vendor/photo_controller.php';
 
-// Navigation paths using detected base path
+// Extract just the path part from the base URL for relative navigation
+$parsed_url = parse_url($base_url);
+$base_path = $parsed_url['path'] ?? '';
+
+// Navigation paths using extracted base path
 $nav_base = $base_path . '/pages/';
 $cashier_base = $base_path . '/pages/management/cashier/';
 
@@ -104,7 +97,7 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
 
 <!-- Mobile topbar -->
 <div class="mobile-topbar">
-    <a href="<?= $nav_base ?>management/cashier/dashboard.php">
+    <a href="<?= $cashier_base ?>dashboard.php">
         <img id="topbarLogo" class="logo" src="https://ik.imagekit.io/wbhsmslogo/Nav_Logo.png?updatedAt=1750422462527" alt="City Health Logo" />
     </a>
 </div>
@@ -118,18 +111,18 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
         <i class="fas fa-times"></i>
     </button>
 
-    <a href="<?= $nav_base ?>management/cashier/dashboard.php">
+    <a href="<?= $cashier_base ?>dashboard.php">
         <img id="topbarLogo" class="logo" src="https://ik.imagekit.io/wbhsmslogo/Nav_Logo.png?updatedAt=1750422462527" alt="City Health Logo" />
     </a>
 
     <div class="menu" role="menu">
-        <a href="<?= $nav_base ?>management/cashier/dashboard.php"
+        <a href="<?= $cashier_base ?>dashboard.php"
             class="<?= $activePage === 'dashboard' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-home"></i> Dashboard
         </a>
         <a href="<?= $nav_base ?>billing/billing_management.php"
-            class="<?= $activePage === 'billing_management' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-tachometer-alt"></i> Billing Dashboard
+            class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-tachometer-alt"></i> Billing Management
         </a>
         <a href="<?= $nav_base ?>billing/create_invoice.php"
             class="<?= $activePage === 'create_invoice' ? 'active' : '' ?>" role="menuitem">
@@ -145,7 +138,7 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
         </a>
     </div>
 
-    <a href="<?= $nav_base ?>user/admin_profile.php"
+    <a href="<?= $nav_base ?>management/user/employee_profile.php"
         class="<?= $activePage === 'profile' ? 'active' : '' ?>" aria-label="View profile">
         <div class="user-profile">
             <div class="user-info">
@@ -172,7 +165,7 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
     </a>
 
     <div class="user-actions">
-        <a href="<?= $nav_base ?>user/admin_settings.php"><i class="fas fa-cog"></i> Settings</a>
+        <a href="<?= $nav_base ?>management/user/employee_settings.php"><i class="fas fa-cog"></i> Settings</a>
         <a href="#" onclick="showLogoutModal(event)"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
 </nav>
@@ -184,9 +177,11 @@ $logoutUrl = '';
 // Determine the correct path based on current location
 if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     // We're in a management page
-    if (strpos($_SERVER['PHP_SELF'], '/pages/management/cashier/') !== false ||
+    if (
+        strpos($_SERVER['PHP_SELF'], '/pages/management/cashier/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/management/admin/') !== false ||
-        strpos($_SERVER['PHP_SELF'], '/pages/management/doctor/') !== false) {
+        strpos($_SERVER['PHP_SELF'], '/pages/management/doctor/') !== false
+    ) {
         // From role-specific pages (3 levels deep)
         $logoutUrl = '../auth/employee_logout.php';
     } else {
@@ -201,16 +196,16 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     $request_uri = $_SERVER['REQUEST_URI'];
-    
+
     // Extract base path from REQUEST_URI for production compatibility
     $uri_parts = explode('/', trim($request_uri, '/'));
     $base_path = '';
-    
+
     // Check if we're in a project subfolder (local development)
     if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
         $base_path = '/' . $uri_parts[0];
     }
-    
+
     $logoutUrl = $base_path . '/pages/management/auth/employee_logout.php';
 }
 ?>

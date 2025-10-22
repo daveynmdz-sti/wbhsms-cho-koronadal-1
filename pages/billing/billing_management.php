@@ -10,6 +10,10 @@ if (ob_get_level() === 0) {
     ob_start();
 }
 
+// Suppress errors to prevent interference with JavaScript
+error_reporting(E_ERROR | E_PARSE);
+ini_set('display_errors', 0);
+
 // Include employee session configuration
 // Use absolute path resolution
 $root_path = dirname(dirname(__DIR__));
@@ -127,20 +131,18 @@ try {
     $stmt->execute($params);
     $invoicesResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Debug information (add ?debug=1 to URL to see)
+    // Debug information (stored for later display)
+    $debug_info = null;
     if (isset($_GET['debug'])) {
-        echo "<div style='background: #f0f8ff; border: 1px solid #007bff; padding: 15px; margin: 20px; border-radius: 5px;'>";
-        echo "<h4>Debug Information:</h4>";
-        echo "<p><strong>SQL Query:</strong><br><code>" . htmlspecialchars($invoicesSql) . "</code></p>";
-        echo "<p><strong>Parameters:</strong> " . htmlspecialchars(json_encode($params)) . "</p>";
-        echo "<p><strong>Results Count:</strong> " . count($invoicesResult) . "</p>";
-        echo "<p><strong>Status Filter:</strong> " . htmlspecialchars($statusFilter) . "</p>";
-        echo "<p><strong>Search Query:</strong> " . htmlspecialchars($searchQuery) . "</p>";
-        echo "<p><strong>Date Filter:</strong> " . htmlspecialchars($dateFilter) . "</p>";
-        if (count($invoicesResult) > 0) {
-            echo "<p><strong>Sample Result:</strong><br><pre>" . htmlspecialchars(json_encode($invoicesResult[0], JSON_PRETTY_PRINT)) . "</pre></p>";
-        }
-        echo "</div>";
+        $debug_info = [
+            'sql' => $invoicesSql,
+            'params' => $params,
+            'results_count' => count($invoicesResult),
+            'status_filter' => $statusFilter,
+            'search_query' => $searchQuery,
+            'date_filter' => $dateFilter,
+            'sample_result' => count($invoicesResult) > 0 ? $invoicesResult[0] : null
+        ];
     }
 } catch (Exception $e) {
     // Table doesn't exist yet or query failed - we'll show empty results
@@ -340,7 +342,7 @@ try {
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             overflow: hidden;
-            padding: 1.5rem;
+            padding: 10px;
         }
 
         .panel-header {
@@ -535,7 +537,7 @@ try {
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            box-sizing: content-box;    
+            box-sizing: content-box;
         }
         
         .modal-header {
@@ -599,6 +601,21 @@ try {
     ?>
 
     <section class="content-wrapper">
+        <?php if ($debug_info): ?>
+        <div style='background: #f0f8ff; border: 1px solid #007bff; padding: 15px; margin: 20px; border-radius: 5px;'>
+            <h4>Debug Information:</h4>
+            <p><strong>SQL Query:</strong><br><code><?= htmlspecialchars($debug_info['sql']) ?></code></p>
+            <p><strong>Parameters:</strong> <?= htmlspecialchars(json_encode($debug_info['params'])) ?></p>
+            <p><strong>Results Count:</strong> <?= $debug_info['results_count'] ?></p>
+            <p><strong>Status Filter:</strong> <?= htmlspecialchars($debug_info['status_filter']) ?></p>
+            <p><strong>Search Query:</strong> <?= htmlspecialchars($debug_info['search_query']) ?></p>
+            <p><strong>Date Filter:</strong> <?= htmlspecialchars($debug_info['date_filter']) ?></p>
+            <?php if ($debug_info['sample_result']): ?>
+            <p><strong>Sample Result:</strong><br><pre><?= htmlspecialchars(json_encode($debug_info['sample_result'], JSON_PRETTY_PRINT)) ?></pre></p>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+        
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
             <a href="<?= getRoleDashboardUrl() ?>"><i class="fas fa-home"></i> Dashboard</a>
@@ -860,13 +877,6 @@ try {
     </div>
 
     <script>
-        // Global JavaScript path configuration for production compatibility
-        <?php
-        require_once $root_path . '/config/paths.php';
-        $js_api_base = rtrim(parse_url(getBaseUrl(), PHP_URL_PATH), '/') . '/api';
-        ?>
-        window.apiBase = '<?= $js_api_base ?>';
-        
         // Search and filter functions
         function applyFilters() {
             const searchQuery = document.getElementById('searchInvoices').value;
@@ -890,28 +900,38 @@ try {
         
         // View invoice details in modal
         function viewInvoice(billingId) {
-            // Show loading state
-            showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
-            
-            fetch(`${window.apiBase}/billing/management/get_invoice_details.php?billing_id=${billingId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        displayInvoiceDetails(data.invoice);
-                    } else {
-                        showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>' + (data.message || 'Failed to load invoice details') + '</p></div>');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching invoice:', error);
-                    showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>Error loading invoice details</p></div>');
-                });
+            try {
+                // Show loading state
+                showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
+                
+                fetch(`/wbhsms-cho-koronadal-1/api/billing/management/get_invoice_details.php?billing_id=${billingId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            displayInvoiceDetails(data.invoice);
+                        } else {
+                            showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>' + (data.message || 'Failed to load invoice details') + '</p></div>');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching invoice:', error);
+                        showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>Error loading invoice details</p></div>');
+                    });
+            } catch (error) {
+                console.error('Error in viewInvoice:', error);
+                alert('Error loading invoice details. Please try again.');
+            }
         }
         
         // Print invoice using dedicated API
         function printInvoice(billingId) {
-            const printUrl = `${window.apiBase}/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
-            window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
+            try {
+                const printUrl = `/wbhsms-cho-koronadal-1/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
+                window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
+            } catch (error) {
+                console.error('Error printing invoice:', error);
+                alert('Error printing invoice. Please try again.');
+            }
         }
         
         // Modal functions
@@ -1069,6 +1089,15 @@ try {
             const currentRole = pathParts.includes('admin') ? 'admin' : 'cashier';
             return '../management/' + currentRole + '/dashboard.php';
         }
+        
+        // Ensure functions are globally accessible
+        window.viewInvoice = viewInvoice;
+        window.printInvoice = printInvoice;
+        window.openReportsModal = openReportsModal;
+        window.applyFilters = applyFilters;
+        window.clearFilters = clearFilters;
+        window.closeInvoiceModal = closeInvoiceModal;
+        window.printModalInvoice = printModalInvoice;
     </script>
 
 </body>

@@ -871,13 +871,6 @@ try {
 
 
     <script>
-        // Global JavaScript path configuration for production compatibility
-        <?php
-        require_once $root_path . '/config/paths.php';
-        $js_api_base = rtrim(parse_url(getBaseUrl(), PHP_URL_PATH), '/') . '/api';
-        ?>
-        window.apiBase = '<?= $js_api_base ?>';
-        
         document.addEventListener('DOMContentLoaded', function() {
             // Mobile patient card selection function
             window.selectPatientCard = function(cardElement) {
@@ -1214,13 +1207,13 @@ try {
 
         function printNewInvoice() {
             const invoiceId = document.getElementById('success-invoice-id').textContent;
-            const printUrl = `${window.apiBase}/billing/management/print_invoice.php?billing_id=${invoiceId}&format=html`;
+            const printUrl = `/wbhsms-cho-koronadal-1/api/billing/management/print_invoice.php?billing_id=${invoiceId}&format=html`;
             window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
         }
 
         function downloadNewInvoice(format) {
             const invoiceId = document.getElementById('success-invoice-id').textContent;
-            const downloadUrl = `${window.apiBase}/billing/management/download_invoice.php?billing_id=${invoiceId}&format=${format}`;
+            const downloadUrl = `/wbhsms-cho-koronadal-1/api/billing/management/download_invoice.php?billing_id=${invoiceId}&format=${format}`;
             
             // Create a temporary link element to trigger download
             const link = document.createElement('a');
