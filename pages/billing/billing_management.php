@@ -535,6 +535,7 @@ try {
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            box-sizing: content-box;    
         }
         
         .modal-header {
@@ -859,6 +860,13 @@ try {
     </div>
 
     <script>
+        // Global JavaScript path configuration for production compatibility
+        <?php
+        require_once $root_path . '/config/paths.php';
+        $js_api_base = rtrim(parse_url(getBaseUrl(), PHP_URL_PATH), '/') . '/api';
+        ?>
+        window.apiBase = '<?= $js_api_base ?>';
+        
         // Search and filter functions
         function applyFilters() {
             const searchQuery = document.getElementById('searchInvoices').value;
@@ -885,7 +893,7 @@ try {
             // Show loading state
             showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
             
-            fetch(`/wbhsms-cho-koronadal-1/api/billing/management/get_invoice_details.php?billing_id=${billingId}`)
+            fetch(`${window.apiBase}/billing/management/get_invoice_details.php?billing_id=${billingId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
@@ -902,7 +910,7 @@ try {
         
         // Print invoice using dedicated API
         function printInvoice(billingId) {
-            const printUrl = `/wbhsms-cho-koronadal-1/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
+            const printUrl = `${window.apiBase}/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
             window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
         }
         

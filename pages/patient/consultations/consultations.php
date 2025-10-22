@@ -63,65 +63,75 @@ try {
     ");
     $stmt->execute([$patient_id]);
     $patient_info = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    // Calculate priority level
+    
     if ($patient_info) {
+        // Calculate priority level
         $patient_info['priority_level'] = ($patient_info['isPWD'] || $patient_info['isSenior']) ? 1 : 2;
         $patient_info['priority_description'] = ($patient_info['priority_level'] == 1) ? 'Priority Patient' : 'Regular Patient';
     }
-
+    
 } catch (Exception $e) {
-    $error = "Failed to fetch patient information.";
-    logConsultationError("Patient info fetch failed: " . $e->getMessage(), [
+    logConsultationError("Failed to fetch patient info: " . $e->getMessage(), [
         'patient_id' => $patient_id,
+        'sql_error' => $e->getMessage(),
         'file' => __FILE__,
         'line' => __LINE__
     ]);
+    $patient_info = null;
 }
 
-// Fetch consultations for this patient
+// Fetch consultations
 $consultations = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT c.consultation_id,
-               c.visit_id,
-               c.chief_complaint,
-               c.diagnosis,
-               c.treatment_plan,
-               c.remarks,
-               c.consultation_status,
-               c.consultation_date,
-               c.updated_at as last_updated,
-               v.visit_date,
-               v.time_in as visit_time,
-               v.visit_status,
-               v.appointment_id,
-               e.first_name as doctor_first_name, 
-               e.last_name as doctor_last_name,
+        SELECT c.consultation_id, c.patient_id, c.visit_id, c.chief_complaint,
+               c.diagnosis, c.treatment_plan, c.consultation_status,
+               c.consultation_date, c.updated_at,
+               v.visit_date, v.time_in as visit_time,
+               CONCAT(e.first_name, ' ', e.last_name) as doctor_name,
                e.license_number as doctor_license,
-               COUNT(p.prescription_id) as prescription_count
+               p.first_name as patient_first_name, 
+               p.last_name as patient_last_name,
+               p.username as patient_number
         FROM consultations c
         LEFT JOIN visits v ON c.visit_id = v.visit_id
+        LEFT JOIN patients p ON c.patient_id = p.patient_id
         LEFT JOIN employees e ON c.attending_employee_id = e.employee_id
-        LEFT JOIN prescriptions p ON c.consultation_id = p.consultation_id
         WHERE c.patient_id = ?
-        GROUP BY c.consultation_id
-        ORDER BY c.consultation_date DESC
-        LIMIT 50
+        ORDER BY c.consultation_date DESC, c.consultation_id DESC
     ");
+    
     $stmt->execute([$patient_id]);
     $consultations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
 } catch (Exception $e) {
-    $error = "Unable to load consultation records at this time. Please try again later.";
-    logConsultationError("Consultation fetch failed: " . $e->getMessage(), [
+    logConsultationError("Failed to fetch consultations: " . $e->getMessage(), [
         'patient_id' => $patient_id,
         'sql_error' => $e->getMessage(),
-        'sql_code' => $e->getCode(),
         'file' => __FILE__,
         'line' => __LINE__
     ]);
 }
+
+// Calculate age helper function
+function calculateAge($birthdate) {
+    if (empty($birthdate)) return 'N/A';
+    return date_diff(date_create($birthdate), date_create('now'))->y;
+}
+
+// Format date helper function
+function formatDate($date, $format = 'M j, Y') {
+    if (empty($date)) return 'N/A';
+    return date($format, strtotime($date));
+}
+
+// Format time helper function  
+function formatTime($time, $format = 'g:i A') {
+    if (empty($time)) return 'N/A';
+    return date($format, strtotime($time));
+}
+
+ob_end_flush(); // End output buffering
 ?>
 
 <!DOCTYPE html>
@@ -134,6 +144,7 @@ try {
     
     <!-- CSS Files -->
     <link rel="stylesheet" href="../../../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../../../assets/css/consultation-details.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
@@ -198,235 +209,126 @@ try {
             padding: 0.75rem 1.5rem;
             border-radius: 8px;
             font-weight: 600;
-            display: flex;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            cursor: pointer;
             transition: all 0.3s ease;
-            text-decoration: none;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         .btn-primary {
-            background: #007BFF;
-            color: #fff;
-            font-size: 16px;
-            padding: 12px 28px;
-            text-align: center;
-            display: inline-block;
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 119, 182, 0.3);
         }
 
         .btn-primary:hover {
-            background: #0056b3;
+            background: linear-gradient(135deg, #023e8a, #001d3d);
             transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 6px 20px rgba(0, 119, 182, 0.4);
         }
 
         .btn-secondary {
-            background: linear-gradient(135deg, #16a085, #0f6b5c);
+            background: #6c757d;
             color: white;
         }
 
-        .btn-secondary:hover {
-            background: linear-gradient(135deg, #0f6b5c, #0a4f44);
-            transform: translateY(-2px);
+        .btn-success {
+            background: #28a745;
+            color: white;
         }
 
-        /* Section Container */
-        .section-container {
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        /* Filters and Search */
+        .filters-section {
             background: white;
-            border-radius: 15px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-            padding: 2rem;
+            border-radius: 10px;
+            padding: 1.5rem;
             margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
-        .section-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 2px solid #f8f9fa;
-            justify-content: flex-start;
-        }
-
-        .section-icon {
-            background: linear-gradient(135deg, #0077b6, #023e8a);
-            color: white;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-        }
-
-        .section-title {
-            margin: 0;
-            font-size: 1.5rem;
-            color: #0077b6;
-            font-weight: 600;
-        }
-
-        /* Filter Tabs */
         .filter-tabs {
             display: flex;
-            gap: 1rem;
+            gap: 0.5rem;
             margin-bottom: 1.5rem;
             flex-wrap: wrap;
         }
 
         .filter-tab {
             padding: 0.75rem 1.25rem;
-            border-radius: 25px;
             background: #f8f9fa;
-            border: 2px solid transparent;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s ease;
             font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
 
         .filter-tab.active {
-            background: #007BFF;
+            background: #0077b6;
             color: white;
-            border-color: #0056b3;
+            border-color: #0077b6;
         }
 
-        .filter-tab:hover {
+        .filter-tab:hover:not(.active) {
             background: #e9ecef;
         }
 
-        .filter-tab.active:hover {
-            background: #0056b3;
+        /* Consultation Cards */
+        .consultations-grid {
+            display: grid;
+            gap: 1.5rem;
         }
 
-        /* Table Styles */
-        .table-container {
+        .consultation-card {
             background: white;
             border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-            overflow-x: auto;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #0077b6;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
-        .consultations-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 0;
-            min-width: 900px;
+        .consultation-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
         }
 
-        .consultations-table th {
-            background: linear-gradient(135deg, #0077b6, #023e8a);
-            color: white;
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.95rem;
-            white-space: nowrap;
-        }
-
-        /* Column width distribution */
-        .consultations-table th:nth-child(1) { width: 15%; } /* Date & Time */
-        .consultations-table th:nth-child(2) { width: 20%; } /* Doctor */
-        .consultations-table th:nth-child(3) { width: 25%; } /* Chief Complaint */
-        .consultations-table th:nth-child(4) { width: 20%; } /* Diagnosis */
-        .consultations-table th:nth-child(5) { width: 12%; } /* Status */
-        .consultations-table th:nth-child(6) { width: 8%; } /* Actions */
-
-        .consultations-table td {
-            padding: 1.25rem 1rem;
-            border-bottom: 1px solid #e9ecef;
-            vertical-align: middle;
-            line-height: 1.5;
-        }
-
-        .consultations-table tbody tr {
-            transition: all 0.2s ease;
-        }
-
-        .consultations-table tbody tr:hover {
-            background-color: #f8f9fa;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Cell content styling */
-        .date-info {
+        .consultation-header {
             display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
         }
 
-        .date-info strong {
-            font-size: 0.9rem;
+        .consultation-info h3 {
+            margin: 0 0 0.5rem 0;
             color: #2c3e50;
-            font-weight: 600;
+            font-size: 1.1rem;
         }
 
-        .date-info small {
-            font-size: 0.8rem;
+        .consultation-meta {
+            font-size: 0.9rem;
             color: #6c757d;
-            font-weight: 400;
         }
 
-        .doctor-info {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-
-        .doctor-info strong {
-            font-size: 0.9rem;
-            color: #2c3e50;
-            font-weight: 600;
-            line-height: 1.3;
-        }
-
-        .doctor-info small {
-            font-size: 0.75rem;
-            color: #6c757d;
-            font-weight: 400;
-        }
-
-        .complaint-info {
-            font-size: 0.9rem;
-            color: #2c3e50;
-            line-height: 1.4;
-            max-width: 250px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-        }
-
-        .diagnosis-info {
-            font-size: 0.9rem;
-            color: #2c3e50;
-            line-height: 1.4;
-            max-width: 200px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-        }
-
-        /* Status Badges */
-        .status-badge {
-            padding: 0.4rem 0.8rem;
+        .consultation-status {
+            padding: 0.25rem 0.75rem;
             border-radius: 20px;
             font-size: 0.8rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            white-space: nowrap;
         }
 
         .status-completed {
@@ -440,79 +342,29 @@ try {
         }
 
         .status-follow-up {
-            background: #cce5ff;
-            color: #0066cc;
+            background: #d1ecf1;
+            color: #0c5460;
         }
 
-        .status-cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        /* Action Buttons */
-        .action-buttons-cell {
-            display: flex;
-            gap: 0.4rem;
-            justify-content: flex-start;
-            align-items: center;
-        }
-
-        .btn-sm {
-            padding: 0.5rem 0.75rem;
-            font-size: 0.8rem;
-            border-radius: 6px;
-            font-weight: 500;
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-            min-width: fit-content;
-            transition: all 0.2s ease;
-            border: 2px solid;
-        }
-
-        .btn-outline-primary {
-            border-color: #007BFF;
-            color: #007BFF;
-            background: transparent;
-        }
-
-        .btn-outline-primary:hover {
-            background: #007BFF;
-            color: white;
-        }
-
-        .btn-outline-secondary {
-            border-color: #6c757d;
-            color: #6c757d;
-            background: transparent;
-        }
-
-        .btn-outline-secondary:hover {
-            background: #6c757d;
-            color: white;
-        }
-
-        .btn-sm i {
-            font-size: 0.75rem;
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 3rem 2rem;
-            color: #6c757d;
-        }
-
-        .empty-state i {
-            font-size: 3rem;
+        .consultation-content {
             margin-bottom: 1rem;
-            color: #dee2e6;
         }
 
-        .empty-state h3 {
-            margin-bottom: 0.5rem;
+        .complaint {
+            font-weight: 600;
             color: #495057;
+            margin-bottom: 0.5rem;
+        }
+
+        .diagnosis {
+            color: #2c3e50;
+            font-size: 0.95rem;
+        }
+
+        .consultation-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
         /* Modal Styles */
@@ -525,23 +377,27 @@ try {
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .modal-content {
-            background-color: white;
-            margin: 5% auto;
+            background-color: #fff;
+            margin: 2% auto;
             padding: 0;
-            border-radius: 15px;
+            border-radius: 12px;
             width: 90%;
-            max-width: 1000px;
-            max-height: 80vh;
-            overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            animation: modalSlideIn 0.3s ease-out;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideIn 0.3s ease-out;
         }
 
-        @keyframes modalSlideIn {
+        @keyframes slideIn {
             from {
                 transform: translateY(-50px);
                 opacity: 0;
@@ -553,40 +409,27 @@ try {
         }
 
         .modal-header {
-            background: linear-gradient(135deg, #0077b6, #023e8a);
-            color: white;
-            padding: 1.5rem 2rem;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e9ecef;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            border-radius: 12px 12px 0 0;
         }
 
         .modal-header h2 {
             margin: 0;
-            font-size: 1.3rem;
-        }
-
-        .modal-body {
-            padding: 2rem;
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-
-        .modal-footer {
-            padding: 1rem 2rem;
-            background: #f8f9fa;
-            display: flex;
-            justify-content: flex-end;
-            gap: 1rem;
+            font-size: 1.25rem;
         }
 
         .close {
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 1.5rem;
-            font-weight: bold;
-            cursor: pointer;
             background: none;
             border: none;
+            font-size: 1.5rem;
+            color: white;
+            cursor: pointer;
             padding: 0;
             width: 30px;
             height: 30px;
@@ -594,141 +437,71 @@ try {
             align-items: center;
             justify-content: center;
             border-radius: 50%;
-            transition: all 0.3s ease;
+            transition: background-color 0.3s ease;
         }
 
         .close:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
+            background-color: rgba(255, 255, 255, 0.2);
         }
 
-        /* Alert Styles */
-        .alert {
-            padding: 1rem;
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #6c757d;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
             margin-bottom: 1rem;
-            border-radius: 8px;
-            border: 1px solid transparent;
-            position: relative;
+            opacity: 0.5;
         }
 
-        .alert-success {
-            color: #155724;
-            background-color: #d4edda;
-            border-color: #c3e6cb;
+        .empty-state h3 {
+            margin-bottom: 0.5rem;
+            color: #495057;
         }
 
-        .alert-error {
-            color: #721c24;
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-        }
-
-        .btn-close {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            background: none;
-            border: none;
-            font-size: 1.2rem;
-            cursor: pointer;
-            opacity: 0.7;
-        }
-
-        .btn-close:hover {
-            opacity: 1;
+        .empty-state p {
+            max-width: 500px;
+            margin: 0 auto;
+            line-height: 1.6;
         }
 
         /* Responsive Design */
-        @media (max-width: 1024px) {
-            .consultations-table {
-                min-width: 800px;
-            }
-        }
-
         @media (max-width: 768px) {
-            .page-header {
+            .consultation-header {
                 flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
-
-            .page-header h1 {
-                font-size: 1.75rem;
-            }
-
-            .filter-tabs {
-                flex-wrap: wrap;
                 gap: 0.5rem;
             }
 
-            .filter-tab {
-                padding: 0.6rem 1rem;
-                font-size: 0.85rem;
-            }
-
-            .consultations-table {
-                font-size: 0.85rem;
-                min-width: 700px;
-            }
-
-            .consultations-table th,
-            .consultations-table td {
-                padding: 0.75rem 0.5rem;
-            }
-
-            .date-info strong,
-            .doctor-info strong {
-                font-size: 0.85rem;
-            }
-
-            .date-info small,
-            .doctor-info small {
-                font-size: 0.75rem;
-            }
-
-            .complaint-info,
-            .diagnosis-info {
-                font-size: 0.85rem;
-            }
-
-            .status-badge {
-                font-size: 0.7rem;
-                padding: 0.3rem 0.6rem;
-            }
-
-            .btn-sm {
-                padding: 0.4rem 0.6rem;
-                font-size: 0.75rem;
-                gap: 0.2rem;
-            }
-
-            .btn-sm i {
-                font-size: 0.7rem;
-            }
-
-            .action-buttons-cell {
-                gap: 0.3rem;
+            .consultation-actions {
+                margin-top: 1rem;
             }
 
             .modal-content {
                 width: 95%;
-                margin: 2% auto;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .consultations-table {
-                min-width: 600px;
+                margin: 5% auto;
             }
 
-            .action-buttons-cell {
+            .filter-tabs {
                 flex-direction: column;
-                gap: 0.25rem;
             }
 
-            .btn-sm {
-                width: 100%;
-                justify-content: center;
+            .filter-tab {
+                text-align: center;
             }
         }
     </style>
@@ -744,45 +517,20 @@ try {
     <section class="content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
-            <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
-            <span style="color: #0077b6;"> / </span>
-            <span style="color: #0077b6; font-weight: 600;">My Consultations</span>
+            <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a> &raquo; 
+            <span>My Consultations</span>
         </div>
 
+        <!-- Page Header -->
         <div class="page-header">
-            <h1><i class="fas fa-stethoscope" style="margin-right: 0.5rem;"></i>My Consultations</h1>
-            <div class="action-buttons">
-                <a href="../appointment/appointments.php" class="btn btn-secondary">
-                    <i class="fas fa-calendar-plus"></i> Book Appointment
-                </a>
+            <div>
+                <h1><i class="fas fa-stethoscope"></i> My Consultations</h1>
+                <p style="margin: 0; color: #6c757d;">View your medical consultation history and details</p>
             </div>
         </div>
 
-        <!-- Display Messages -->
-        <?php if (!empty($message)): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?>
-                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
-            </div>
-        <?php endif; ?>
-
-        <?php if (!empty($error)): ?>
-            <div class="alert alert-error">
-                <i class="fas fa-exclamation-triangle"></i> <?php echo htmlspecialchars($error); ?>
-                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
-            </div>
-        <?php endif; ?>
-
-        <!-- Consultations Section -->
-        <div class="section-container">
-            <div class="section-header">
-                <div class="section-icon">
-                    <i class="fas fa-stethoscope"></i>
-                </div>
-                <h2 class="section-title">Clinical Encounters & Consultations</h2>
-            </div>
-
-            <!-- Filter Tabs -->
+        <!-- Filters Section -->
+        <div class="filters-section">
             <div class="filter-tabs">
                 <div class="filter-tab active" onclick="filterConsultations('all', this)">
                     <i class="fas fa-list"></i> All Consultations
@@ -794,80 +542,61 @@ try {
                     <i class="fas fa-calendar-check"></i> Follow-up
                 </div>
             </div>
+        </div>
 
-            <!-- Consultations Table -->
-            <div class="table-container">
-                <table class="consultations-table" id="consultations-table">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Doctor</th>
-                            <th>Chief Complaint</th>
-                            <th>Diagnosis</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="consultations-tbody">
-                        <?php if (empty($consultations)): ?>
-                            <tr class="empty-row">
-                                <td colspan="6" class="empty-state">
-                                    <i class="fas fa-stethoscope"></i>
-                                    <h3>No Consultations Found</h3>
-                                    <p>You don't have any consultation records yet. Consultations will appear here after you visit the CHO for medical care.</p>
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($consultations as $consultation): ?>
-                                <tr class="consultation-row" 
-                                    data-status="<?php echo htmlspecialchars($consultation['consultation_status']); ?>" 
-                                    data-consultation-date="<?php echo htmlspecialchars($consultation['consultation_date']); ?>">
-                                    <td>
-                                        <div class="date-info">
-                                            <strong><?php echo date('M j, Y', strtotime($consultation['visit_date'] ?: $consultation['consultation_date'])); ?></strong>
-                                            <small><?php echo $consultation['visit_time'] ? date('g:i A', strtotime($consultation['visit_time'])) : date('g:i A', strtotime($consultation['consultation_date'])); ?></small>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="doctor-info">
-                                            <?php if (!empty($consultation['doctor_first_name'])): ?>
-                                                <strong>Dr. <?php echo htmlspecialchars($consultation['doctor_first_name'] . ' ' . $consultation['doctor_last_name']); ?></strong>
-                                                <?php if (!empty($consultation['doctor_license'])): ?>
-                                                    <small>License: <?php echo htmlspecialchars($consultation['doctor_license']); ?></small>
-                                                <?php endif; ?>
-                                            <?php else: ?>
-                                                <span class="text-muted">CHO Staff</span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="complaint-info">
-                                            <?php echo htmlspecialchars($consultation['chief_complaint'] ?: 'No complaint recorded'); ?>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="diagnosis-info">
-                                            <?php echo htmlspecialchars($consultation['diagnosis'] ?: 'Pending diagnosis'); ?>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-<?php echo htmlspecialchars(str_replace(' ', '-', strtolower($consultation['consultation_status']))); ?>">
-                                            <?php echo strtoupper($consultation['consultation_status']); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons-cell">
-                                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="viewConsultationDetails(<?php echo $consultation['consultation_id']; ?>)">
-                                                <i class="fas fa-eye"></i> View
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+        <!-- Consultations Grid -->
+        <div class="consultations-grid">
+            <?php if (empty($consultations)): ?>
+                <div class="empty-state">
+                    <i class="fas fa-stethoscope"></i>
+                    <h3>No Consultations Yet</h3>
+                    <p>You don't have any consultation records yet. Consultations will appear here after you visit the CHO for medical care.</p>
+                </div>
+            <?php else: ?>
+                <?php foreach ($consultations as $consultation): ?>
+                    <div class="consultation-card" data-status="<?php echo htmlspecialchars($consultation['consultation_status']); ?>">
+                        <div class="consultation-header">
+                            <div class="consultation-info">
+                                <h3>Consultation #<?php echo htmlspecialchars($consultation['consultation_id']); ?></h3>
+                                <div class="consultation-meta">
+                                    <i class="fas fa-calendar"></i> <?php echo formatDate($consultation['consultation_date']); ?>
+                                    <?php if (!empty($consultation['visit_time'])): ?>
+                                        <i class="fas fa-clock" style="margin-left: 1rem;"></i> <?php echo formatTime($consultation['visit_time']); ?>
+                                    <?php endif; ?>
+                                    <?php if (!empty($consultation['doctor_name'])): ?>
+                                        <br><i class="fas fa-user-md"></i> Dr. <?php echo htmlspecialchars($consultation['doctor_name']); ?>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <span class="consultation-status status-<?php echo str_replace(' ', '-', strtolower($consultation['consultation_status'])); ?>">
+                                <?php echo htmlspecialchars($consultation['consultation_status']); ?>
+                            </span>
+                        </div>
+                        
+                        <div class="consultation-content">
+                            <div class="complaint">
+                                <i class="fas fa-comment-medical"></i> Chief Complaint:
+                                <?php echo htmlspecialchars($consultation['chief_complaint'] ?: 'Not specified'); ?>
+                            </div>
+                            <?php if (!empty($consultation['diagnosis'])): ?>
+                                <div class="diagnosis">
+                                    <i class="fas fa-diagnoses"></i> Diagnosis: 
+                                    <?php echo htmlspecialchars($consultation['diagnosis']); ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="consultation-actions">
+                            <button class="btn btn-primary btn-sm" onclick="viewConsultationDetails(<?php echo $consultation['consultation_id']; ?>)">
+                                <i class="fas fa-eye"></i> View Details
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="printConsultation(<?php echo $consultation['consultation_id']; ?>)">
+                                <i class="fas fa-print"></i> Print
+                            </button>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </section>
 
@@ -875,20 +604,17 @@ try {
     <div id="consultationModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 style="color: white;"><i class="fas fa-stethoscope"></i> Consultation Details</h2>
-                <span class="close" onclick="closeConsultationModal()">&times;</span>
+                <h2><i class="fas fa-file-medical"></i> Consultation Details</h2>
+                <button class="close" onclick="closeModal('consultationModal')">&times;</button>
             </div>
             <div class="modal-body" id="consultationModalBody">
-                <!-- Content will be loaded dynamically -->
-                <div class="loading" style="text-align: center; padding: 2rem; color: #6c757d;">
-                    <i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i> Loading consultation details...
-                </div>
+                <!-- Content will be loaded via AJAX -->
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" onclick="printConsultation()" id="printConsultationBtn" style="display: none;">
-                    <i class="fas fa-print"></i> Print
+                <button id="printConsultationBtn" class="btn btn-secondary" onclick="printCurrentConsultation()" style="display: none;">
+                    <i class="fas fa-print"></i> Print Consultation
                 </button>
-                <button type="button" class="btn btn-secondary" onclick="closeConsultationModal()">
+                <button class="btn btn-primary" onclick="closeModal('consultationModal')">
                     <i class="fas fa-times"></i> Close
                 </button>
             </div>
@@ -896,23 +622,22 @@ try {
     </div>
 
     <script>
-        // Consultation Management JavaScript Functions
-        
         let currentConsultationId = null;
 
-        // Filter consultations by status
+        // Filter consultations
         function filterConsultations(status, element) {
             // Update active tab
             document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
             element.classList.add('active');
-
-            // Filter table rows
-            const rows = document.querySelectorAll('.consultation-row');
-            rows.forEach(row => {
-                if (status === 'all' || row.dataset.status === status) {
-                    row.style.display = '';
+            
+            // Show/hide consultation cards
+            const cards = document.querySelectorAll('.consultation-card');
+            cards.forEach(card => {
+                const cardStatus = card.dataset.status.toLowerCase();
+                if (status === 'all' || cardStatus === status || cardStatus.includes(status)) {
+                    card.style.display = 'block';
                 } else {
-                    row.style.display = 'none';
+                    card.style.display = 'none';
                 }
             });
         }
@@ -928,6 +653,14 @@ try {
             fetch(`get_consultation_details.php?consultation_id=${consultationId}`)
                 .then(response => response.text())
                 .then(html => {
+                    // Ensure consultation details CSS is loaded
+                    if (!document.querySelector('link[href*="consultation-details.css"]')) {
+                        const cssLink = document.createElement('link');
+                        cssLink.rel = 'stylesheet';
+                        cssLink.href = '../../../assets/css/consultation-details.css';
+                        document.head.appendChild(cssLink);
+                    }
+                    
                     document.getElementById('consultationModalBody').innerHTML = html;
                     document.getElementById('printConsultationBtn').style.display = 'inline-block';
                 })
@@ -936,46 +669,36 @@ try {
                 });
         }
 
-        // Print consultation in popup window
-        function printConsultation() {
+        // Print consultation
+        function printConsultation(consultationId) {
+            window.open(`../../../api/consultations/print_consultation.php?consultation_id=${consultationId}&type=patient`, '_blank');
+        }
+
+        // Print current consultation in modal
+        function printCurrentConsultation() {
             if (currentConsultationId) {
-                // Open popup window with specific dimensions and features
-                const popupFeatures = 'width=900,height=700,scrollbars=yes,resizable=yes,toolbar=no,location=no,directories=no,status=no,menubar=no';
-                window.open(`print_consultation.php?consultation_id=${currentConsultationId}`, 'printWindow', popupFeatures);
+                printConsultation(currentConsultationId);
             }
         }
 
         // Close modal
-        function closeConsultationModal() {
-            document.getElementById('consultationModal').style.display = 'none';
-            document.getElementById('printConsultationBtn').style.display = 'none';
-            currentConsultationId = null;
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
         }
 
         // Close modal when clicking outside
         window.onclick = function(event) {
             const modal = document.getElementById('consultationModal');
             if (event.target === modal) {
-                closeConsultationModal();
+                modal.style.display = 'none';
             }
         }
 
-        // Auto-dismiss alerts after 8 seconds
-        document.addEventListener('DOMContentLoaded', function() {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                setTimeout(() => {
-                    if (alert.parentNode) {
-                        alert.style.opacity = '0';
-                        alert.style.transform = 'translateY(-10px)';
-                        setTimeout(() => {
-                            if (alert.parentNode) {
-                                alert.remove();
-                            }
-                        }, 300);
-                    }
-                }, 8000);
-            });
+        // ESC key support for closing modals
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal('consultationModal');
+            }
         });
     </script>
 </body>

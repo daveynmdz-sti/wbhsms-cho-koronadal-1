@@ -342,7 +342,7 @@ $barangayResult = $conn->query($barangaySql);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Patient Records Management | CHO Koronadal</title>
-    <!-- CSS Files - loaded by sidebar -->
+    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -362,6 +362,16 @@ $barangayResult = $conn->query($barangaySql);
             --border-radius: 0.5rem;
             --border-radius-lg: 1rem;
             --transition: all 0.3s ease;
+        }
+
+        .card-container {
+            background-color: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+            padding: 25px 30px;
+            margin: 10px auto;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .loader {

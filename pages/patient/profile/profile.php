@@ -575,6 +575,9 @@ if (isset($_GET['logout'])) {
     ?> - WBHSMS</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <?php if (in_array($view_mode, ['admin', 'doctor', 'nurse', 'records_officer', 'dho', 'bhw', 'cashier', 'laboratory_tech', 'pharmacist'])): ?>
+    <link rel="stylesheet" href="../../../assets/css/sidebar.css" />
+    <?php endif; ?>
     <link rel="stylesheet" href="../../../assets/css/patient_profile.css" />
     <style>
         /* Enhanced Modal Styles */
@@ -1052,7 +1055,7 @@ if (isset($_GET['logout'])) {
     ?>
 
     <!-- Main Content -->
-    <section class="homepage">
+    <section class="homepage" style="margin-left: 300px;">
         <div class="profile-heading-bar"
             style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1em;margin-bottom:1.5em;">
             <h1 style="margin:0;font-size:2.2em;letter-spacing:1px;">

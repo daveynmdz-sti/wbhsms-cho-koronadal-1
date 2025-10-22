@@ -220,7 +220,8 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
-    <!-- CSS Files - loaded by sidebar -->
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
     
     <style>
         /* Exact CSS from referrals_management.php */

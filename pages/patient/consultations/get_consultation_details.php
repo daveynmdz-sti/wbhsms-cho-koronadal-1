@@ -25,6 +25,20 @@ function logConsultationDetailsError($error_message, $context = []) {
     error_log($log_entry, 3, $log_file);
 }
 
+// Safe date formatting function to prevent strtotime() deprecation warnings
+function safeFormatDate($date_value, $format = 'F j, Y', $fallback = 'Not specified') {
+    if (empty($date_value) || $date_value === null) {
+        return $fallback;
+    }
+    
+    $timestamp = strtotime($date_value);
+    if ($timestamp === false) {
+        return $fallback;
+    }
+    
+    return date($format, $timestamp);
+}
+
 // Ensure session is properly started
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -148,126 +162,22 @@ try {
 
     ?>
 
+    <!-- Load consultation details CSS if not already loaded -->
+    <link rel="stylesheet" href="../../../assets/css/consultation-details.css" type="text/css">
+    <style>
+        /* Fallback critical styles for consultation details */
+        .consultation-details { font-family: inherit; max-width: 100%; margin: 0 auto; }
+        .consultation-details .detail-section { margin-bottom: 2rem; background: #ffffff; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+        .consultation-details .detail-section h3 { color: #0077b6; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #f0f0f0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+        .consultation-details .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .consultation-details .detail-item { display: flex; flex-direction: column; background: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 3px solid #0077b6; }
+        .consultation-details .detail-item label { font-weight: 600; color: #495057; margin-bottom: 0.25rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .consultation-details .detail-item span, .consultation-details .detail-item div { color: #2c3e50; font-size: 0.95rem; line-height: 1.4; font-weight: 500; }
+        .consultation-details .no-data { text-align: center; color: #6c757d; font-style: italic; padding: 2rem; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6; }
+        @media (max-width: 768px) { .consultation-details .detail-grid { grid-template-columns: 1fr; } }
+    </style>
+    
     <div class="consultation-details">
-        <style>
-            .consultation-details {
-                font-family: inherit;
-            }
-
-            .detail-section {
-                margin-bottom: 2rem;
-            }
-
-            .detail-section h3 {
-                color: #0077b6;
-                margin-bottom: 1rem;
-                padding-bottom: 0.5rem;
-                border-bottom: 2px solid #f0f0f0;
-                font-size: 1.1rem;
-            }
-
-            .detail-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                gap: 1rem;
-                margin-bottom: 1.5rem;
-            }
-
-            .detail-item {
-                display: flex;
-                flex-direction: column;
-            }
-
-            .detail-item.full-width {
-                grid-column: 1 / -1;
-            }
-
-            .detail-item label {
-                font-weight: 600;
-                color: #495057;
-                margin-bottom: 0.25rem;
-                font-size: 0.9rem;
-            }
-
-            .detail-item span, .detail-item div {
-                color: #2c3e50;
-                font-size: 0.95rem;
-                line-height: 1.4;
-            }
-
-
-                color: #6c757d;
-                margin-bottom: 0.5rem;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-
-
-
-            .prescription-item, .referral-item {
-                background: #f8f9fa;
-                border-radius: 8px;
-                padding: 1rem;
-                margin-bottom: 1rem;
-                border-left: 4px solid #28a745;
-            }
-
-            .prescription-item h4, .referral-item h4 {
-                margin: 0 0 0.5rem 0;
-                color: #2c3e50;
-                font-size: 1rem;
-            }
-
-            .prescription-medications {
-                font-size: 0.9rem;
-                color: #495057;
-                line-height: 1.4;
-                margin: 0.5rem 0;
-            }
-
-            .prescription-status, .referral-status {
-                display: inline-block;
-                padding: 0.25rem 0.5rem;
-                border-radius: 12px;
-                font-size: 0.8rem;
-                font-weight: 600;
-                text-transform: uppercase;
-            }
-
-            .status-active, .status-pending {
-                background: #fff3cd;
-                color: #856404;
-            }
-
-            .status-completed {
-                background: #d4edda;
-                color: #155724;
-            }
-
-            .status-dispensed {
-                background: #d1ecf1;
-                color: #0c5460;
-            }
-
-            .no-data {
-                text-align: center;
-                color: #6c757d;
-                font-style: italic;
-                padding: 2rem;
-                background: #f8f9fa;
-                border-radius: 8px;
-            }
-
-            @media (max-width: 768px) {
-                .detail-grid {
-                    grid-template-columns: 1fr;
-                }
-                
-                .vitals-grid {
-                    grid-template-columns: repeat(2, 1fr);
-                }
-            }
-        </style>
 
         <!-- Patient & Visit Information -->
         <div class="detail-section">
@@ -306,11 +216,19 @@ try {
             <div class="detail-grid">
                 <div class="detail-item">
                     <label>Visit Date:</label>
-                    <span><?php echo date('F j, Y', strtotime($consultation['visit_date'])); ?></span>
+                    <span><?php 
+                        // Try visit_date first, then fallback to consultation_date
+                        $date_to_display = !empty($consultation['visit_date']) ? $consultation['visit_date'] : $consultation['consultation_date'];
+                        echo safeFormatDate($date_to_display, 'F j, Y');
+                    ?></span>
                 </div>
                 <div class="detail-item">
                     <label>Visit Time:</label>
-                    <span><?php echo date('g:i A', strtotime($consultation['visit_time'])); ?></span>
+                    <span><?php 
+                        // Try visit_time first, then fallback to consultation_date
+                        $time_to_display = !empty($consultation['visit_time']) ? $consultation['visit_time'] : $consultation['consultation_date'];
+                        echo safeFormatDate($time_to_display, 'g:i A');
+                    ?></span>
                 </div>
                 <div class="detail-item">
                     <label>Attending Doctor:</label>
