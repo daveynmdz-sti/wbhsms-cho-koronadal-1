@@ -148,7 +148,7 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
-    <a href="<?= $nav_base ?>billing/management/billing_management.php"
+    <a href="<?= $nav_base ?>management/admin/billing/billing_overview.php"
             class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-invoice-dollar"></i> Billing Management
         </a>

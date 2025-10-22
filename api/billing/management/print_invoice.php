@@ -7,6 +7,12 @@
 // Root path for includes
 $root_path = dirname(dirname(dirname(__DIR__)));
 
+// Include vendor autoload for PDF generation
+require_once $root_path . '/vendor/autoload.php';
+
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
 // Check if user is logged in as employee with proper role
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
@@ -217,8 +223,45 @@ try {
         include $root_path . '/api/billing/shared/receipt_generator.php';
         generatePrintableInvoice($invoice_data);
         
+    } else if ($format === 'pdf') {
+        // Generate PDF invoice
+        // Configure PDF options
+        $options = new Options();
+        $options->set('defaultFont', 'Arial');
+        $options->set('isRemoteEnabled', false);
+        $options->set('isPhpEnabled', false);
+        
+        // Create PDF generator
+        $dompdf = new Dompdf($options);
+        
+        // Generate HTML content for PDF
+        ob_start();
+        include $root_path . '/api/billing/shared/receipt_generator.php';
+        generatePrintableInvoice($invoice_data, true); // Pass true for PDF mode
+        $html = ob_get_clean();
+        
+        // Load HTML into DomPDF
+        $dompdf->loadHtml($html);
+        
+        // Set paper size and orientation
+        $dompdf->setPaper('A4', 'portrait');
+        
+        // Render PDF
+        $dompdf->render();
+        
+        // Set headers for PDF download
+        $filename = 'invoice_' . $billing_id . '_' . date('Ymd_His') . '.pdf';
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($dompdf->output()));
+        header('Cache-Control: private, max-age=0, must-revalidate');
+        header('Pragma: public');
+        
+        // Output PDF
+        echo $dompdf->output();
+        
     } else {
-        throw new Exception('Invalid format requested. Use "html" or "json"');
+        throw new Exception('Invalid format requested. Use "html", "json", or "pdf". Current format: ' . $format);
     }
     
 } catch (PDOException $e) {

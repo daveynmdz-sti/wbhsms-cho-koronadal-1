@@ -408,7 +408,7 @@ function validateReceiptData($receipt_data) {
 /**
  * Generate HTML invoice for display/printing
  */
-function generatePrintableInvoice($invoice_data) {
+function generatePrintableInvoice($invoice_data, $pdf_mode = false) {
     ?>
     <!DOCTYPE html>
     <html lang="en">
@@ -418,20 +418,20 @@ function generatePrintableInvoice($invoice_data) {
         <title>Invoice #<?php echo htmlspecialchars($invoice_data['invoice']['number']); ?></title>
         <style>
             body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                max-width: 800px;
+                font-family: <?php echo $pdf_mode ? 'Arial, sans-serif' : "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"; ?>;
+                max-width: <?php echo $pdf_mode ? '100%' : '800px'; ?>;
                 margin: 0 auto;
-                padding: 20px;
-                background: #f5f5f5;
+                padding: <?php echo $pdf_mode ? '10px' : '20px'; ?>;
+                background: <?php echo $pdf_mode ? 'white' : '#f5f5f5'; ?>;
                 line-height: 1.4;
             }
             
             .invoice-container {
                 background: white;
-                padding: 30px;
-                border-radius: 8px;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                margin-bottom: 20px;
+                padding: <?php echo $pdf_mode ? '20px' : '30px'; ?>;
+                border-radius: <?php echo $pdf_mode ? '0' : '8px'; ?>;
+                box-shadow: <?php echo $pdf_mode ? 'none' : '0 4px 6px rgba(0, 0, 0, 0.1)'; ?>;
+                margin-bottom: <?php echo $pdf_mode ? '0' : '20px'; ?>;
             }
             
             .invoice-header {
@@ -724,6 +724,38 @@ function generatePrintableInvoice($invoice_data) {
                     padding: 8px 6px;
                 }
             }
+            
+            <?php if ($pdf_mode): ?>
+            /* PDF-specific styles */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            
+            body {
+                font-size: 12px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            
+            .invoice-container {
+                margin: 0 !important;
+                padding: 15px !important;
+                border: none !important;
+            }
+            
+            .invoice-header {
+                page-break-inside: avoid;
+            }
+            
+            .services-section, .payment-section {
+                page-break-inside: avoid;
+            }
+            
+            .invoice-summary {
+                page-break-inside: avoid;
+            }
+            <?php endif; ?>
         </style>
     </head>
     <body>
