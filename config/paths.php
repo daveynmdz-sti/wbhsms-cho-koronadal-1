@@ -1,111 +1,100 @@
 <?php
 /**
- * Global Path Configuration for WBHSMS
- * Provides dynamic path detection for both localhost and production environments
+ * Global Path Configuration
+ * Purpose: Provides production-safe URL and path generation for the WBHSMS system
+ * Used by: Sidebar components, billing system, and other modules requiring dynamic paths
  */
 
-// Prevent direct access
-if (!defined('PHP_VERSION')) {
-    http_response_code(403);
-    die('Direct access not permitted');
-}
-
-// Get project root path dynamically
-function getProjectRoot() {
-    // Start from current file location
-    $current = __DIR__;
-    
-    // Look for index.php or composer.json to identify root
-    while ($current !== dirname($current)) {
-        if (file_exists($current . '/index.php') || file_exists($current . '/composer.json')) {
-            return $current;
-        }
-        $current = dirname($current);
-    }
-    
-    // Fallback to config directory parent
-    return dirname(__DIR__);
-}
-
-// Detect if we're running on localhost XAMPP or production
-function isLocalhost() {
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    return (
-        strpos($host, 'localhost') !== false ||
-        strpos($host, '127.0.0.1') !== false ||
-        strpos($host, '::1') !== false
-    );
-}
-
-// Get base URL for the application
+/**
+ * Get the base URL for the application
+ * Works in both local development (XAMPP) and production environments
+ * 
+ * @return string The base URL (e.g., "http://localhost/wbhsms-cho-koronadal-1" or "https://domain.com")
+ */
 function getBaseUrl() {
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+    $host = $_SERVER['HTTP_HOST'];
+    $request_uri = $_SERVER['REQUEST_URI'];
     
-    // Extract project folder from script path
-    $script_name = $_SERVER['SCRIPT_NAME'] ?? '';
+    // Extract base path from REQUEST_URI for production compatibility
+    $uri_parts = explode('/', trim($request_uri, '/'));
+    $base_path = '';
     
-    if (preg_match('#^(.*?)/pages/#', $script_name, $matches)) {
-        $base_path = $matches[1];
-    } elseif (preg_match('#^(.*?)/api/#', $script_name, $matches)) {
-        $base_path = $matches[1];
-    } elseif (preg_match('#^(.*?)/includes/#', $script_name, $matches)) {
-        $base_path = $matches[1];
-    } else {
-        // Try to extract from REQUEST_URI
-        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
-        $uri_parts = explode('/', trim($request_uri, '/'));
-        
-        if (count($uri_parts) > 0 && $uri_parts[0] && 
-            !in_array($uri_parts[0], ['pages', 'api', 'includes', 'assets'])) {
-            $base_path = '/' . $uri_parts[0];
-        } else {
-            $base_path = '';
-        }
+    // Check if we're in a project subfolder (local development like XAMPP)
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0];
     }
     
     return $protocol . $host . $base_path;
 }
 
-// Get asset URL with proper path
-function asset($path) {
-    $base_url = getBaseUrl();
-    $path = ltrim($path, '/');
-    return $base_url . '/assets/' . $path;
-}
-
-// Get API URL with proper path
-function api($path) {
-    $base_url = getBaseUrl();
-    $path = ltrim($path, '/');
-    return $base_url . '/api/' . $path;
-}
-
-// Get JavaScript paths configuration
-function getJavaScriptPaths() {
-    $base_url = getBaseUrl();
+/**
+ * Get the base path only (without protocol and host)
+ * Useful for relative URL construction
+ * 
+ * @return string The base path (e.g., "/wbhsms-cho-koronadal-1" or "")
+ */
+function getBasePath() {
+    $request_uri = $_SERVER['REQUEST_URI'];
     
-    return "
-    // WBHSMS Dynamic Paths Configuration
-    const WBHSMS_PATHS = {
-        base: '" . addslashes($base_url) . "',
-        api: '" . addslashes($base_url . '/api') . "',
-        assets: '" . addslashes($base_url . '/assets') . "',
-        pages: '" . addslashes($base_url . '/pages') . "'
-    };
-    ";
+    // Extract base path from REQUEST_URI for production compatibility
+    $uri_parts = explode('/', trim($request_uri, '/'));
+    $base_path = '';
+    
+    // Check if we're in a project subfolder (local development like XAMPP)
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0];
+    }
+    
+    return $base_path;
 }
 
-// Define global constants if not already defined
-if (!defined('WBHSMS_BASE_URL')) {
-    define('WBHSMS_BASE_URL', getBaseUrl());
+/**
+ * Get API base URL
+ * 
+ * @return string The API base URL
+ */
+function getApiBaseUrl() {
+    return getBaseUrl() . '/api';
 }
 
-if (!defined('WBHSMS_ROOT_PATH')) {
-    define('WBHSMS_ROOT_PATH', getProjectRoot());
+/**
+ * Get assets base URL
+ * 
+ * @return string The assets base URL
+ */
+function getAssetsBaseUrl() {
+    return getBaseUrl() . '/assets';
 }
 
-// Initialize paths for legacy compatibility
-$GLOBALS['base_url'] = getBaseUrl();
-$GLOBALS['root_path'] = getProjectRoot();
-?>
+/**
+ * Generate a safe URL for the application
+ * 
+ * @param string $path The relative path to append
+ * @return string The complete URL
+ */
+function url($path = '') {
+    $base = getBaseUrl();
+    $path = ltrim($path, '/');
+    return $base . ($path ? '/' . $path : '');
+}
+
+/**
+ * Generate an asset URL
+ * 
+ * @param string $path The asset path
+ * @return string The complete asset URL
+ */
+function asset($path) {
+    return getAssetsBaseUrl() . '/' . ltrim($path, '/');
+}
+
+/**
+ * Generate an API URL
+ * 
+ * @param string $endpoint The API endpoint
+ * @return string The complete API URL
+ */
+function api($endpoint) {
+    return getApiBaseUrl() . '/' . ltrim($endpoint, '/');
+}

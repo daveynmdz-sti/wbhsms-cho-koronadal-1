@@ -417,6 +417,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             background: white;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
             border-left: 4px solid #0077b6;
             overflow: hidden;
         }

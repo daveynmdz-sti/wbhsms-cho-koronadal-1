@@ -1,5 +1,4 @@
 <?php
-require_once __DIR__ . '/../../../config/paths.php'; // Global path configuration
 ob_start(); // Start output buffering to prevent header issues
 session_start();
 
@@ -7,8 +6,8 @@ $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/db.php';
 require_once $root_path . '/config/session/employee_session.php';
 
-// Check if user is logged in and has appropriate role (roles are stored in lowercase)
-if (!is_employee_logged_in() || (get_employee_session('role') !== 'cashier' && get_employee_session('role') !== 'admin')) {
+// Check if user is logged in and has appropriate role
+if (!is_employee_logged_in() || (get_employee_session('role') !== 'Cashier' && get_employee_session('role') !== 'Admin')) {
     http_response_code(403);
     echo json_encode(['error' => 'Access denied']);
     exit();

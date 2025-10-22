@@ -340,7 +340,7 @@ try {
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             overflow: hidden;
-            padding: 10px;
+            padding: 1.5rem;
         }
 
         .panel-header {
