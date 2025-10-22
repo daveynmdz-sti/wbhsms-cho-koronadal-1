@@ -238,10 +238,10 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CHO Koronadal — Appointments Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
     <!-- CSS Files - loaded by sidebar -->
     <style>
         .content-wrapper {
-            margin-left: 300px;
             padding: 2rem;
             transition: margin-left 0.3s;
         }
@@ -276,6 +276,15 @@ try {
             border-bottom: 1px solid rgba(0, 119, 182, 0.2);
         }
 
+        .card-container {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #0077b6;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -303,10 +312,6 @@ try {
 
         .stat-card.confirmed {
             border-left: 4px solid #43e97b;
-        }
-
-        .stat-card.pending {
-            border-left: 4px solid #f093fb;
         }
 
         .stat-card.completed {
@@ -408,11 +413,6 @@ try {
             transform: translateY(-2px);
         }
 
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-
         .btn-danger {
             background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
             color: white;
@@ -427,11 +427,6 @@ try {
             background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-        }
-
-        .btn-warning {
-            background: #ffc107;
-            color: #212529;
         }
 
         .btn-secondary {
@@ -1003,13 +998,15 @@ try {
 </head>
 
 <body>
-    <?php
-    $activePage = 'appointments';
-    include $root_path . '/includes/sidebar_admin.php';
-    ?>
+    <div class="homepage">
 
-    <section class="content-wrapper">
-        <!-- Breadcrumb Navigation -->
+        <?php
+        $activePage = 'appointments';
+        include $root_path . '/includes/sidebar_admin.php';
+        ?>
+
+        <div class="content-wrapper">
+            <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
             <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
             <i class="fas fa-chevron-right"></i>
@@ -1100,7 +1097,8 @@ try {
         </div>
 
         <!-- Appointments Table -->
-<div class="card-container">
+
+        <div class="card-container">
     <div class="section-header">
         <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
                     <i class="fas fa-calendar-check"></i> Appointments
@@ -1255,8 +1253,8 @@ try {
                 </div>
             <?php endif; ?>
         </div>
-</div>
-    </section>
+        </div>
+    </div>
 
     <!-- View Appointment Modal -->
     <div id="viewAppointmentModal" class="modal">

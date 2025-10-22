@@ -219,15 +219,17 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
-    <!-- CSS Files - loaded by sidebar -->
+    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
     
     <style>
         /* Exact CSS from referrals_management.php */
 
+        /* Layout */
+        .homepage {
+            min-height: 100vh;
+        }
+
         .content-wrapper {
-            margin-left: 300px;
-            padding: 2rem;
             transition: margin-left 0.3s;
         }
 
@@ -415,9 +417,18 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         .card-container {
             background: white;
             border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             border-left: 4px solid #0077b6;
             overflow: hidden;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
         .table-wrapper {
@@ -746,7 +757,8 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     <!-- Include sidebar -->
     <?php include $root_path . '/includes/sidebar_admin.php'; ?>
     
-    <section class="content-wrapper">
+    <div class="homepage">
+        <div class="content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
             <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
@@ -1033,7 +1045,8 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 </div>
             </div>
         <?php endif; ?>
-    </section>
+        </div>
+    </div>
     
     <script>
         // Auto-dismiss alerts after 8 seconds
