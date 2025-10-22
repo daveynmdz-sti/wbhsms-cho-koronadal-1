@@ -153,10 +153,12 @@ try {
     $invoicesResult = [];
 }
 
-// Recent payments query - shows recent payment transactions
+// Recent payments query - shows recent payment transactions with accurate payment amounts (excluding change)
 $recentPaymentsSql = "SELECT p.payment_id, 
                        p.billing_id,
                        p.amount_paid,
+                       COALESCE(p.change_amount, 0) as change_amount,
+                       (p.amount_paid - COALESCE(p.change_amount, 0)) as actual_payment_applied,
                        p.payment_method,
                        p.paid_at as payment_date,
                        p.receipt_number,
@@ -840,11 +842,19 @@ try {
                                         <small style="color: #666;">
                                             Invoice #<?= $payment['billing_id'] ?> • 
                                             <?= ucfirst($payment['payment_method']) ?>
+                                            <?php if ($payment['change_amount'] > 0): ?>
+                                                • Change: ₱<?= number_format($payment['change_amount'], 2) ?>
+                                            <?php endif; ?>
                                         </small>
                                     </div>
                                     <div style="text-align: right;">
-                                        <strong style="color: #28a745;">₱<?= number_format($payment['amount_paid'], 2) ?></strong><br>
+                                        <strong style="color: #28a745;">₱<?= number_format($payment['actual_payment_applied'], 2) ?></strong><br>
                                         <small style="color: #666;"><?= date('M d, g:i A', strtotime($payment['payment_date'])) ?></small>
+                                        <?php if ($payment['change_amount'] > 0): ?>
+                                            <br><small style="color: #999; font-size: 0.8em;">
+                                                Paid: ₱<?= number_format($payment['amount_paid'], 2) ?>
+                                            </small>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
