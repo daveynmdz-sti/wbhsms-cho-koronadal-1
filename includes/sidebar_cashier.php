@@ -64,35 +64,34 @@ if (($needsName || $needsNo) && $employee_id) {
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <?php
-// Get the proper base URL by extracting the project folder from the request URI
-$request_uri = $_SERVER['REQUEST_URI'];
-$script_name = $_SERVER['SCRIPT_NAME'];
+// Use global path configuration for production-safe navigation
+require_once __DIR__ . '/../config/paths.php';
 
-// Extract the base path (project folder) from the script name
-// For example: /wbhsms-cho-koronadal/pages/management/cashier/dashboard.php -> /wbhsms-cho-koronadal/
-if (preg_match('#^(.*?)/pages/#', $script_name, $matches)) {
-    $base_path = $matches[1];
-} else {
-    // Fallback: try to extract from REQUEST_URI
-    $uri_parts = explode('/', trim($request_uri, '/'));
-    if (count($uri_parts) > 0 && $uri_parts[0] !== 'pages') {
-        $base_path = '/' . $uri_parts[0];
-    } else {
-        $base_path = '';
-    }
+// Get base URL and extract just the path portion for navigation
+$base_url = getBaseUrl();
+$vendorPath = $base_url . '/vendor/photo_controller.php';
+
+// Extract just the path part from the base URL for relative navigation
+$parsed_url = parse_url($base_url);
+$base_path = $parsed_url['path'] ?? '';
+
+// Navigation paths using extracted base path
+$nav_base = $base_path . '/pages/';
+$cashier_base = $base_path . '/pages/management/cashier/';
+
+// Clean up any double slashes
+$nav_base = str_replace('//', '/', $nav_base);
+$cashier_base = str_replace('//', '/', $cashier_base);
+
+// Ensure paths start with / for proper navigation
+if ($nav_base && !str_starts_with($nav_base, '/')) {
+    $nav_base = '/' . $nav_base;
+}
+if ($cashier_base && !str_starts_with($cashier_base, '/')) {
+    $cashier_base = '/' . $cashier_base;
 }
 
-// Ensure base_path ends with / if it's not empty
-if ($base_path && !str_ends_with($base_path, '/')) {
-    $base_path .= '/';
-}
-
-// Create absolute URL for vendor path to fix photo loading
-$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-$host = $_SERVER['HTTP_HOST'];
-$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
-$nav_base = $base_path . 'pages/';
-$cashier_base = $base_path . 'pages/management/cashier/';
+// Path detection complete - ready for production use
 ?>
 <!-- CSS is included by the main page, not the sidebar -->
 
