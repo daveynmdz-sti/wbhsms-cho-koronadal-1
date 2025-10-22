@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing Management JavaScript Test</title>
+    <script>
+        // Test function loading
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            
+            // Check if functions exist
+            if (typeof viewInvoice === 'function') {
+                console.log('✓ viewInvoice function loaded');
+            } else {
+                console.error('✗ viewInvoice function not found');
+            }
+            
+            if (typeof printInvoice === 'function') {
+                console.log('✓ printInvoice function loaded');
+            } else {
+                console.error('✗ printInvoice function not found');
+            }
+            
+            if (typeof openReportsModal === 'function') {
+                console.log('✓ openReportsModal function loaded');
+            } else {
+                console.error('✗ openReportsModal function not found');
+            }
+        });
+        
+        // Define the functions here for testing
+        function viewInvoice(billingId) {
+            console.log('viewInvoice called with ID:', billingId);
+        }
+        
+        function printInvoice(billingId) {
+            console.log('printInvoice called with ID:', billingId);
+        }
+        
+        function openReportsModal() {
+            console.log('openReportsModal called');
+        }
+    </script>
+</head>
+<body>
+    <h1>JavaScript Function Test</h1>
+    <p>Check the console for function loading status</p>
+    
+    <button onclick="viewInvoice(1)">Test viewInvoice</button>
+    <button onclick="printInvoice(1)">Test printInvoice</button>
+    <button onclick="openReportsModal()">Test openReportsModal</button>
+</body>
+</html>

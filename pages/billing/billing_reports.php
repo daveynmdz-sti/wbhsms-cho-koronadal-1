@@ -16,8 +16,8 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Use relative path for assets - more reliable than absolute URLs
-$assets_path = '../../assets';
+// Use root-relative path for assets - works in both development and production
+$assets_path = '/wbhsms-cho-koronadal-1/assets';
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id'])) {

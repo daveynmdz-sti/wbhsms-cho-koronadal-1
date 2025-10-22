@@ -16,8 +16,8 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Use relative path for assets - more reliable than absolute URLs
-$assets_path = '../../assets';
+// Use root-relative path for assets - works in both development and production
+$assets_path = '/wbhsms-cho-koronadal-1/assets';
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id'])) {
@@ -911,94 +911,107 @@ try {
         function displayInvoiceDetails(invoice) {
             currentInvoiceId = invoice.billing_id;
             
+            // Build items HTML
             let itemsHtml = '';
             if (invoice.items && invoice.items.length > 0) {
-                itemsHtml = invoice.items.map(item => `
-                    <tr>
-                        <td>${item.item_name}</td>
-                        <td>${item.category_name || 'General'}</td>
-                        <td style="text-align: right;">${item.quantity}</td>
-                        <td style="text-align: right;">₱${parseFloat(item.item_price).toFixed(2)}</td>
-                        <td style="text-align: right;">₱${parseFloat(item.subtotal).toFixed(2)}</td>
-                    </tr>
-                `).join('');
+                for (let i = 0; i < invoice.items.length; i++) {
+                    const item = invoice.items[i];
+                    itemsHtml += '<tr>' +
+                        '<td>' + (item.item_name || '') + '</td>' +
+                        '<td>' + (item.category_name || 'General') + '</td>' +
+                        '<td style="text-align: right;">' + item.quantity + '</td>' +
+                        '<td style="text-align: right;">₱' + parseFloat(item.item_price).toFixed(2) + '</td>' +
+                        '<td style="text-align: right;">₱' + parseFloat(item.subtotal).toFixed(2) + '</td>' +
+                        '</tr>';
+                }
             } else {
                 itemsHtml = '<tr><td colspan="5" style="text-align: center; color: #666;">No items found</td></tr>';
             }
             
+            // Build payments HTML
             let paymentsHtml = '';
             if (invoice.payments && invoice.payments.length > 0) {
-                paymentsHtml = invoice.payments.map(payment => `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #f8f9fa; margin-bottom: 0.5rem; border-radius: 4px;">
-                        <div>
-                            <span style="font-weight: 600; text-transform: uppercase;">${payment.payment_method}</span>
-                            <small style="display: block; color: #666;">${new Date(payment.date).toLocaleDateString()}</small>
-                        </div>
-                        <div style="text-align: right;">
-                            <strong>₱${parseFloat(payment.amount).toFixed(2)}</strong>
-                            <small style="display: block; color: #666;">${payment.receipt_number || 'N/A'}</small>
-                        </div>
-                    </div>
-                `).join('');
+                for (let i = 0; i < invoice.payments.length; i++) {
+                    const payment = invoice.payments[i];
+                    const paymentDate = new Date(payment.date).toLocaleDateString();
+                    paymentsHtml += '<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #f8f9fa; margin-bottom: 0.5rem; border-radius: 4px;">' +
+                        '<div>' +
+                        '<span style="font-weight: 600; text-transform: uppercase;">' + payment.payment_method + '</span>' +
+                        '<small style="display: block; color: #666;">' + paymentDate + '</small>' +
+                        '</div>' +
+                        '<div style="text-align: right;">' +
+                        '<strong>₱' + parseFloat(payment.amount).toFixed(2) + '</strong>' +
+                        '<small style="display: block; color: #666;">' + (payment.receipt_number || 'N/A') + '</small>' +
+                        '</div>' +
+                        '</div>';
+                }
             } else {
                 paymentsHtml = '<p style="text-align: center; color: #666; padding: 1rem;">No payments recorded</p>';
             }
             
-            const invoiceHtml = `
-                <div style="padding: 2rem; font-family: Arial, sans-serif;">
-                    <div style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid #007bff;">
-                        <div>
-                            <h2 style="color: #007bff; margin: 0 0 0.5rem 0;">City Health Office</h2>
-                            <p style="margin: 0.25rem 0; color: #666;">Koronadal City, South Cotabato</p>
-                            <p style="margin: 0.25rem 0; color: #666;">Phone: (083) 228-xxxx</p>
-                        </div>
-                        <div style="text-align: right;">
-                            <h3 style="color: #333; margin: 0 0 1rem 0;">INVOICE #${invoice.billing_id}</h3>
-                            <p><strong>Date:</strong> ${new Date(invoice.billing_date).toLocaleDateString()}</p>
-                            <p><strong>Status:</strong> <span class="status-badge status-${invoice.payment_status}">${invoice.payment_status.toUpperCase()}</span></p>
-                        </div>
-                    </div>
+            // Build discount HTML if applicable
+            const discountHtml = invoice.discount_amount > 0 ? 
+                '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Discount (' + (invoice.discount_type || 'Standard') + '):</span><span>-₱' + parseFloat(invoice.discount_amount).toFixed(2) + '</span></div>' : '';
+            
+            // Calculate balance and color
+            const balance = parseFloat(invoice.net_amount) - parseFloat(invoice.paid_amount);
+            const balanceColor = balance > 0 ? '#dc3545' : '#28a745';
+            
+            // Build complete invoice HTML
+            const invoiceHtml = 
+                '<div style="padding: 2rem; font-family: Arial, sans-serif;">' +
+                    '<div style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid #007bff;">' +
+                        '<div>' +
+                            '<h2 style="color: #007bff; margin: 0 0 0.5rem 0;">City Health Office</h2>' +
+                            '<p style="margin: 0.25rem 0; color: #666;">Koronadal City, South Cotabato</p>' +
+                            '<p style="margin: 0.25rem 0; color: #666;">Phone: (083) 228-xxxx</p>' +
+                        '</div>' +
+                        '<div style="text-align: right;">' +
+                            '<h3 style="color: #333; margin: 0 0 1rem 0;">INVOICE #' + invoice.billing_id + '</h3>' +
+                            '<p><strong>Date:</strong> ' + new Date(invoice.billing_date).toLocaleDateString() + '</p>' +
+                            '<p><strong>Status:</strong> <span class="status-badge status-' + invoice.payment_status + '">' + invoice.payment_status.toUpperCase() + '</span></p>' +
+                        '</div>' +
+                    '</div>' +
                     
-                    <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-                        <h4 style="margin: 0 0 1rem 0; color: #333;"><i class="fas fa-user"></i> Patient Information</h4>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                            <div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient Name</span><span style="color: #333;">${invoice.first_name} ${invoice.last_name}</span></div>
-                            <div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient ID</span><span style="color: #333;">${invoice.patient_number}</span></div>
-                            <div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Age</span><span style="color: #333;">${invoice.age || 'N/A'} years old</span></div>
-                            <div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Contact</span><span style="color: #333;">${invoice.contact_number || 'N/A'}</span></div>
-                            <div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Address</span><span style="color: #333;">${invoice.barangay_name || 'N/A'}, ${invoice.city || 'Koronadal'}</span></div>
-                            <div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Visit Purpose</span><span style="color: #333;">${invoice.visit_purpose || 'General Consultation'}</span></div>
-                        </div>
-                    </div>
+                    '<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">' +
+                        '<h4 style="margin: 0 0 1rem 0; color: #333;"><i class="fas fa-user"></i> Patient Information</h4>' +
+                        '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">' +
+                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient Name</span><span style="color: #333;">' + (invoice.first_name || '') + ' ' + (invoice.last_name || '') + '</span></div>' +
+                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient ID</span><span style="color: #333;">' + (invoice.patient_number || 'N/A') + '</span></div>' +
+                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Age</span><span style="color: #333;">' + (invoice.age || 'N/A') + ' years old</span></div>' +
+                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Contact</span><span style="color: #333;">' + (invoice.contact_number || 'N/A') + '</span></div>' +
+                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Address</span><span style="color: #333;">' + (invoice.barangay_name || 'N/A') + ', ' + (invoice.city || 'Koronadal') + '</span></div>' +
+                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Visit Purpose</span><span style="color: #333;">' + (invoice.visit_purpose || 'General Consultation') + '</span></div>' +
+                        '</div>' +
+                    '</div>' +
                     
-                    <h4><i class="fas fa-list"></i> Services & Items</h4>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 2rem;">
-                        <thead>
-                            <tr>
-                                <th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Service/Item</th>
-                                <th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Category</th>
-                                <th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Qty</th>
-                                <th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Unit Price</th>
-                                <th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody>${itemsHtml}</tbody>
-                    </table>
+                    '<h4><i class="fas fa-list"></i> Services & Items</h4>' +
+                    '<table style="width: 100%; border-collapse: collapse; margin-bottom: 2rem;">' +
+                        '<thead>' +
+                            '<tr>' +
+                                '<th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Service/Item</th>' +
+                                '<th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Category</th>' +
+                                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Qty</th>' +
+                                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Unit Price</th>' +
+                                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Subtotal</th>' +
+                            '</tr>' +
+                        '</thead>' +
+                        '<tbody>' + itemsHtml + '</tbody>' +
+                    '</table>' +
                     
-                    <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Subtotal:</span><span>₱${parseFloat(invoice.total_amount).toFixed(2)}</span></div>
-                        ${invoice.discount_amount > 0 ? `<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Discount (${invoice.discount_type}):</span><span>-₱${parseFloat(invoice.discount_amount).toFixed(2)}</span></div>` : ''}
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: bold; font-size: 1.1rem; border-top: 2px solid #007bff; padding-top: 0.5rem; margin-top: 1rem;"><span>Total Amount:</span><span>₱${parseFloat(invoice.net_amount).toFixed(2)}</span></div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Amount Paid:</span><span>₱${parseFloat(invoice.paid_amount).toFixed(2)}</span></div>
-                        <div style="display: flex; justify-content: space-between; color: ${(invoice.net_amount - invoice.paid_amount) > 0 ? '#dc3545' : '#28a745'};"><span>Balance:</span><span>₱${(parseFloat(invoice.net_amount) - parseFloat(invoice.paid_amount)).toFixed(2)}</span></div>
-                    </div>
+                    '<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">' +
+                        '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Subtotal:</span><span>₱' + parseFloat(invoice.total_amount).toFixed(2) + '</span></div>' +
+                        discountHtml +
+                        '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: bold; font-size: 1.1rem; border-top: 2px solid #007bff; padding-top: 0.5rem; margin-top: 1rem;"><span>Total Amount:</span><span>₱' + parseFloat(invoice.net_amount).toFixed(2) + '</span></div>' +
+                        '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Amount Paid:</span><span>₱' + parseFloat(invoice.paid_amount).toFixed(2) + '</span></div>' +
+                        '<div style="display: flex; justify-content: space-between; color: ' + balanceColor + ';"><span>Balance:</span><span>₱' + balance.toFixed(2) + '</span></div>' +
+                    '</div>' +
                     
-                    <div>
-                        <h4><i class="fas fa-credit-card"></i> Payment History</h4>
-                        ${paymentsHtml}
-                    </div>
-                </div>
-            `;
+                    '<div>' +
+                        '<h4><i class="fas fa-credit-card"></i> Payment History</h4>' +
+                        paymentsHtml +
+                    '</div>' +
+                '</div>';
             
             showInvoiceModal(invoiceHtml);
             document.getElementById('print-modal-invoice').style.display = 'inline-block';
@@ -1031,7 +1044,11 @@ try {
         
         // Helper function to get role dashboard URL
         function getRoleDashboardUrl() {
-            return '../management/<?= $role ?>/dashboard.php';
+            // Get role from session via a safer method
+            const currentUrl = window.location.pathname;
+            const pathParts = currentUrl.split('/');
+            const currentRole = pathParts.includes('admin') ? 'admin' : 'cashier';
+            return '../management/' + currentRole + '/dashboard.php';
         }
     </script>
 
