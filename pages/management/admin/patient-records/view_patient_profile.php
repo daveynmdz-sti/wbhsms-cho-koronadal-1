@@ -33,20 +33,20 @@ set_exception_handler(function($exception) {
 });
 
 // Path setup
-$root_path = dirname(dirname(dirname(dirname(__DIR__))));
+$root_path = realpath(dirname(dirname(dirname(dirname(__DIR__)))));
 
 // Load configuration first
-require_once $root_path . '/config/env.php';
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'env.php';
 
 // Use employee session for admin users
-require_once $root_path . '/config/session/employee_session.php';
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
 
 // Ensure session is properly started
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once $root_path . '/config/db.php';
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.php';
 
 // Get patient ID from URL parameter
 $patient_id = $_GET['patient_id'] ?? null;
@@ -901,7 +901,7 @@ if ($completion_percentage >= 90) {
 <body>
     <?php
     $activePage = 'patient_records';
-    include $root_path . '/includes/sidebar_admin.php';
+    include $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'sidebar_admin.php';
     ?>
 
     <!-- Main Content -->
