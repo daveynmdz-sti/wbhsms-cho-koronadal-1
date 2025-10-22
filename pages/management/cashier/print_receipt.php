@@ -116,6 +116,22 @@ try {
     error_log("Recent receipts error: " . $e->getMessage());
     $recent_receipts = [];
 }
+
+// Dynamic asset path detection for production compatibility
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'];
+$request_uri = $_SERVER['REQUEST_URI'];
+
+// Extract base path from REQUEST_URI
+$uri_parts = explode('/', trim($request_uri, '/'));
+$base_path = '';
+
+// Detect project folder for localhost development
+if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+    $base_path = '/' . $uri_parts[0];
+}
+
+$asset_base_url = $protocol . $host . $base_path;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -124,9 +140,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Receipt Printing - CHO Koronadal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="../../../assets/css/dashboard.css">
-    <link rel="stylesheet" href="../../../assets/css/topbar.css">
-    <link rel="stylesheet" href="../../../assets/css/profile-edit.css">
+    <link rel="stylesheet" href="<?= $asset_base_url ?>/assets/css/dashboard.css">
+    <link rel="stylesheet" href="<?= $asset_base_url ?>/assets/css/topbar.css">
+    <link rel="stylesheet" href="<?= $asset_base_url ?>/assets/css/profile-edit.css">
     <style>
         .print-container {
             max-width: 1200px;

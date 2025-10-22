@@ -15,6 +15,20 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
+// Dynamic asset path detection for production compatibility
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$script_name = $_SERVER['SCRIPT_NAME'];
+
+// Extract base path from script location - go up 3 levels from /pages/billing/file.php to root
+$base_path = dirname(dirname(dirname($script_name)));
+if ($base_path === '/' || $base_path === '.') {
+    $base_path = '';
+}
+
+// Construct full URLs for production compatibility
+$assets_path = $protocol . '://' . $host . $base_path . '/assets';
+
 // Check if user is logged in and authorized
 if (!is_employee_logged_in()) {
     header('Location: ../management/auth/employee_login.php');
@@ -254,10 +268,10 @@ if ($payment_success_data) {
     <meta charset="UTF-8" />
     <title>Process Payment | CHO Koronadal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="../../assets/css/topbar.css" />
-    <link rel="stylesheet" href="../../assets/css/profile-edit-responsive.css" />
-    <link rel="stylesheet" href="../../assets/css/profile-edit.css" />
-    <link rel="stylesheet" href="../../assets/css/edit.css">
+    <link rel="stylesheet" href="<?= $assets_path ?>/css/topbar.css" />
+    <link rel="stylesheet" href="<?= $assets_path ?>/css/profile-edit-responsive.css" />
+    <link rel="stylesheet" href="<?= $assets_path ?>/css/profile-edit.css" />
+    <link rel="stylesheet" href="<?= $assets_path ?>/css/edit.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <style>
         .search-container {

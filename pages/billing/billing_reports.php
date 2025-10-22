@@ -16,8 +16,19 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Use root-relative path for assets - works in both development and production
-$assets_path = '/wbhsms-cho-koronadal-1/assets';
+// Dynamic asset path detection for production compatibility
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$script_name = $_SERVER['SCRIPT_NAME'];
+
+// Extract base path from script location - go up 3 levels from /pages/billing/file.php to root
+$base_path = dirname(dirname(dirname($script_name)));
+if ($base_path === '/' || $base_path === '.') {
+    $base_path = '';
+}
+
+// Construct full asset URL for production
+$assets_path = $protocol . '://' . $host . $base_path . '/assets';
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id'])) {

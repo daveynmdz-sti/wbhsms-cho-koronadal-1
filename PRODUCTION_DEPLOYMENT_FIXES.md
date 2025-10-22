@@ -1,6 +1,6 @@
 # Production Deployment Fixes - Billing Management
 
-## Issues Fixed:
+## Critical Issues Fixed:
 
 ### 1. JavaScript Syntax Error (Line 906)
 **Problem:** PHP code mixed in JavaScript causing "Invalid or unexpected token"
@@ -17,14 +17,43 @@ return '../management/' + currentRole + '/dashboard.php';
 **Problem:** ES6 template literals causing compatibility issues in production
 **Solution:** Converted to standard string concatenation for better browser support
 
-### 3. Asset Path Issues (404 Errors)
-**Problem:** Relative paths not resolving correctly in production
+### 3. Dynamic Asset Path Resolution (404 Errors)
+**Problem:** Static paths failing in production domain structure
+**Solution:** Dynamic path detection based on server environment
 ```php
-// BEFORE
-$assets_path = '../../assets';
-
-// AFTER
+// BEFORE (STATIC PATHS - BROKEN)
 $assets_path = '/wbhsms-cho-koronadal-1/assets';
+
+// AFTER (DYNAMIC DETECTION - WORKING)
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$script_name = $_SERVER['SCRIPT_NAME'];
+$base_path = dirname(dirname($script_name));
+$assets_path = $protocol . '://' . $host . $base_path . '/assets';
+```
+
+### 4. Sidebar CSS Duplication
+**Problem:** Sidebar including its own CSS causing path conflicts
+**Solution:** Removed duplicate CSS includes from sidebar files
+```php
+// BEFORE (DUPLICATE CSS)
+<link rel="stylesheet" href="<?= $cssPath ?>">
+
+// AFTER (HANDLED BY MAIN PAGE)
+<!-- CSS is included by the main page, not the sidebar -->
+```
+
+### 5. Vendor Photo Controller Path
+**Problem:** Incorrect relative paths to photo controller
+**Solution:** Dynamic absolute URL generation
+```php
+// BEFORE (BROKEN RELATIVE PATH)
+$vendorPath = $base_path . 'vendor/photo_controller.php';
+
+// AFTER (ABSOLUTE URL)
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
 ```
 
 ### 4. Missing JavaScript Functions
@@ -65,16 +94,36 @@ $assets_path = '/wbhsms-cho-koronadal-1/assets';
 - Test print functionality across different browsers
 
 ## Files Modified:
-1. `pages/billing/billing_management.php` - Fixed JavaScript syntax, simplified template literals, updated asset paths
-2. `pages/billing/billing_reports.php` - Updated asset paths for production compatibility
+1. `pages/billing/billing_management.php` - Fixed JavaScript syntax, simplified template literals, dynamic asset paths
+2. `pages/billing/billing_reports.php` - Dynamic asset path detection
+3. `includes/sidebar_admin.php` - Removed duplicate CSS, fixed vendor path
+4. `includes/sidebar_cashier.php` - Removed duplicate CSS, fixed vendor path
+
+## Production URL Structure Support:
+The fixes now support various production URL structures:
+- `https://domain.com/` (root installation)
+- `https://domain.com/wbhsms-cho-koronadal-1/` (subdirectory)
+- `https://subdomain.domain.com/` (subdomain)
+- `https://cityhealthofficeofkoronadal.31.97.106.60.sslip.io/` (SSL proxy domains)
 
 ## Testing Commands:
 ```bash
-# Syntax check
+# Syntax check all files
 php -l pages/billing/billing_management.php
 php -l pages/billing/billing_reports.php
+php -l includes/sidebar_admin.php
+php -l includes/sidebar_cashier.php
 
-# Test in browser
-http://your-domain/wbhsms-cho-koronadal-1/pages/billing/billing_management.php
-http://your-domain/wbhsms-cho-koronadal-1/pages/billing/billing_reports.php
+# Test in browser (replace with your domain)
+https://your-domain/pages/billing/billing_management.php
+https://your-domain/pages/billing/billing_reports.php
 ```
+
+## Expected Results After Deployment:
+- ✅ No 404 errors for CSS files
+- ✅ No 404 errors for photo controller
+- ✅ No JavaScript syntax errors
+- ✅ Modal functionality works
+- ✅ Print functionality works
+- ✅ All buttons and links function properly
+- ✅ User photos display correctly in sidebar

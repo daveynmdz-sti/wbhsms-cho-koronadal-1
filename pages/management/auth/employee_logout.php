@@ -89,6 +89,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || (!empty($provided_token) && hash_eq
 
 // End output buffering and flush content
 ob_end_flush();
+
+// Dynamic asset path detection for production compatibility
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'];
+$request_uri = $_SERVER['REQUEST_URI'];
+
+// Extract base path from REQUEST_URI
+$uri_parts = explode('/', trim($request_uri, '/'));
+$base_path = '';
+
+// Detect project folder for localhost development
+if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+    $base_path = '/' . $uri_parts[0];
+}
+
+$asset_base_url = $protocol . $host . $base_path;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -96,7 +112,7 @@ ob_end_flush();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logout - CHO Employee Portal</title>
-    <link rel="stylesheet" href="../../../assets/css/login.css">
+    <link rel="stylesheet" href="<?= $asset_base_url ?>/assets/css/login.css">
     <style>
         .logout-form {
             max-width: 400px;

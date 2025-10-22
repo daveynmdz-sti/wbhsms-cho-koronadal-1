@@ -83,13 +83,13 @@ if (preg_match('#^(/[^/]+)/pages/#', $script_name, $matches)) {
     }
 }
 
-$cssPath = $base_path . 'assets/css/sidebar.css';
-$dashboardCssPath = $base_path . 'assets/css/dashboard.css';
-$vendorPath = $base_path . 'vendor/photo_controller.php';
+// Create absolute URL for vendor path to fix photo loading
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
 $nav_base = $base_path . 'pages/';
 ?>
-<link rel="stylesheet" href="<?= $cssPath ?>">
-<link rel="stylesheet" href="<?= $dashboardCssPath ?>">
+<!-- CSS is included by the main page, not the sidebar -->
 
 <!-- Mobile topbar -->
 <div class="mobile-topbar">

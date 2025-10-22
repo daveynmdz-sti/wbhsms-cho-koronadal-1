@@ -376,6 +376,22 @@ $flash = $sessionFlash ?: (!empty($error) ? ['type' => 'error', 'msg' => $error]
 if (ob_get_level()) {
     ob_end_flush();
 }
+
+// Dynamic asset path detection for production compatibility
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'];
+$request_uri = $_SERVER['REQUEST_URI'];
+
+// Extract base path from REQUEST_URI
+$uri_parts = explode('/', trim($request_uri, '/'));
+$base_path = '';
+
+// Detect project folder for localhost development
+if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+    $base_path = '/' . $uri_parts[0];
+}
+
+$asset_base_url = $protocol . $host . $base_path;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -387,7 +403,7 @@ if (ob_get_level()) {
     <title>CHO - Employee Login</title>
     <!-- Icons & Styles -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-    <link rel="stylesheet" href="../../../assets/css/login.css" />
+    <link rel="stylesheet" href="<?= $asset_base_url ?>/assets/css/login.css" />
     <style>
         /* Enhanced Snackbar */
         #snackbar {

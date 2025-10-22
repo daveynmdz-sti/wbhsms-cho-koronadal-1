@@ -87,11 +87,13 @@ if ($base_path && !str_ends_with($base_path, '/')) {
     $base_path .= '/';
 }
 
-$cssPath = $base_path . 'assets/css/sidebar.css';
-$vendorPath = $base_path . 'vendor/photo_controller.php';
+// Create absolute URL for vendor path to fix photo loading
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
 $nav_base = $base_path . 'pages/';
 ?>
-<link rel="stylesheet" href="<?= $cssPath ?>">
+<!-- CSS is included by the main page, not the sidebar -->
 
 <!-- Mobile topbar -->
 <div class="mobile-topbar">
