@@ -4,6 +4,11 @@
  * Process Payment Page
  * Purpose: Cashier interface for receiving payments on invoices
  * UI Pattern: Topbar only (form page), follows create_referrals.php structure
+ * 
+ * Dual Receipt Architecture:
+ * - payments table: Tracks payment transactions and financial processing
+ * - receipts table: Tracks formal receipt generation for audit trail
+ * Both tables share the same receipt_number for cross-reference
  */
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -195,16 +200,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Invoice not found or already paid.');
             }
 
-            // Validate payment amount
+            // Calculate remaining balance and change
             $remaining_amount = $billing['net_amount'] - $billing['paid_amount'];
-            if ($amount_paid > $remaining_amount + 0.01) { // Allow small rounding differences
-                throw new Exception('Payment amount exceeds remaining balance of ₱' . number_format($remaining_amount, 2));
+            
+            // Allow overpayments and calculate change (real-world scenario)
+            $change_amount = 0;
+            $actual_payment_amount = $amount_paid;
+            
+            if ($amount_paid > $remaining_amount) {
+                // Customer overpaid - calculate change
+                $change_amount = $amount_paid - $remaining_amount;
+                $actual_payment_amount = $remaining_amount; // Only apply the remaining balance
             }
 
             // Calculate new totals
-            $new_paid_amount = $billing['paid_amount'] + $amount_paid;
-            $change_amount = $amount_paid - $remaining_amount;
-            if ($change_amount < 0) $change_amount = 0;
+            $new_paid_amount = $billing['paid_amount'] + $actual_payment_amount;
 
             // Determine new payment status
             $new_status = 'paid';
@@ -215,22 +225,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Generate receipt number
             $receipt_number = 'RCP-' . date('Ymd') . '-' . str_pad($billing_id, 6, '0', STR_PAD_LEFT);
 
-            // Insert payment record
-            $stmt = $pdo->prepare("INSERT INTO payments (billing_id, amount_paid, payment_method, cashier_id, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$billing_id, $amount_paid, $payment_method, $employee_id, $receipt_number, $notes]);
+            // Insert payment record (including change amount) - for payment processing
+            $stmt = $pdo->prepare("INSERT INTO payments (billing_id, amount_paid, change_amount, payment_method, cashier_id, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$billing_id, $amount_paid, $change_amount, $payment_method, $employee_id, $receipt_number, $notes]);
 
             $payment_id = $pdo->lastInsertId();
+
+            // Insert receipt record for audit trail - for formal receipt tracking
+            $stmt = $pdo->prepare("INSERT INTO receipts (billing_id, receipt_number, amount_paid, change_amount, payment_method, received_by_employee_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$billing_id, $receipt_number, $amount_paid, $change_amount, $payment_method, $employee_id, $notes]);
+
+            $receipt_id = $pdo->lastInsertId();
+            error_log("Receipt record created - Receipt ID: $receipt_id");
 
             // Update billing record
             $stmt = $pdo->prepare("UPDATE billing SET paid_amount = ?, payment_status = ? WHERE billing_id = ?");
             $stmt->execute([$new_paid_amount, $new_status, $billing_id]);
 
             $pdo->commit();
-            error_log("Payment processed successfully - Payment ID: $payment_id, Receipt: $receipt_number");
+            error_log("Payment processed successfully - Payment ID: $payment_id, Receipt ID: $receipt_id, Receipt: $receipt_number");
+            error_log("Dual receipt architecture: payments table (ID: $payment_id) + receipts table (ID: $receipt_id) both linked by receipt_number: $receipt_number");
 
             // Set success data for receipt display
             $_SESSION['payment_success'] = [
                 'payment_id' => $payment_id,
+                'receipt_id' => $receipt_id,
                 'billing_id' => $billing_id,
                 'receipt_number' => $receipt_number,
                 'amount_paid' => $amount_paid,

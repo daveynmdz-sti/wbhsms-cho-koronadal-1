@@ -92,12 +92,13 @@ $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : '
 $host = $_SERVER['HTTP_HOST'];
 $vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
 $nav_base = $base_path . 'pages/';
+$cashier_base = $base_path . 'pages/management/cashier/';
 ?>
 <!-- CSS is included by the main page, not the sidebar -->
 
 <!-- Mobile topbar -->
 <div class="mobile-topbar">
-    <a href="<?= $nav_base ?>management/cashier/dashboard.php">
+    <a href="<?= $cashier_base ?>dashboard.php">
         <img id="topbarLogo" class="logo" src="https://ik.imagekit.io/wbhsmslogo/Nav_Logo.png?updatedAt=1750422462527" alt="City Health Logo" />
     </a>
 </div>
@@ -111,18 +112,18 @@ $nav_base = $base_path . 'pages/';
         <i class="fas fa-times"></i>
     </button>
 
-    <a href="<?= $nav_base ?>management/cashier/dashboard.php">
+    <a href="<?= $cashier_base ?>dashboard.php">
         <img id="topbarLogo" class="logo" src="https://ik.imagekit.io/wbhsmslogo/Nav_Logo.png?updatedAt=1750422462527" alt="City Health Logo" />
     </a>
 
     <div class="menu" role="menu">
-        <a href="<?= $nav_base ?>management/cashier/dashboard.php"
+        <a href="<?= $cashier_base ?>dashboard.php"
             class="<?= $activePage === 'dashboard' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-home"></i> Dashboard
         </a>
         <a href="<?= $nav_base ?>billing/billing_management.php"
-            class="<?= $activePage === 'billing_management' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-tachometer-alt"></i> Billing Dashboard
+            class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-tachometer-alt"></i> Billing Management
         </a>
         <a href="<?= $nav_base ?>billing/create_invoice.php"
             class="<?= $activePage === 'create_invoice' ? 'active' : '' ?>" role="menuitem">
@@ -138,7 +139,7 @@ $nav_base = $base_path . 'pages/';
         </a>
     </div>
 
-    <a href="<?= $nav_base ?>user/admin_profile.php"
+    <a href="<?= $nav_base ?>management/user/employee_profile.php"
         class="<?= $activePage === 'profile' ? 'active' : '' ?>" aria-label="View profile">
         <div class="user-profile">
             <div class="user-info">
@@ -165,7 +166,7 @@ $nav_base = $base_path . 'pages/';
     </a>
 
     <div class="user-actions">
-        <a href="<?= $nav_base ?>user/admin_settings.php"><i class="fas fa-cog"></i> Settings</a>
+        <a href="<?= $nav_base ?>management/user/employee_settings.php"><i class="fas fa-cog"></i> Settings</a>
         <a href="#" onclick="showLogoutModal(event)"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
 </nav>

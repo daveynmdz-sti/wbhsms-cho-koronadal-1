@@ -58,16 +58,21 @@ try {
         throw new Exception('Invoice not found or already paid');
     }
 
-    // Validate payment amount
+    // Calculate remaining balance and change
     $remaining_amount = $billing['net_amount'] - $billing['paid_amount'];
-    if ($amount_paid > $remaining_amount + 0.01) { // Allow small rounding differences
-        throw new Exception('Payment amount exceeds remaining balance');
+    
+    // Allow overpayments and calculate change (real-world scenario)
+    $change_amount = 0;
+    $actual_payment_amount = $amount_paid;
+    
+    if ($amount_paid > $remaining_amount) {
+        // Customer overpaid - calculate change
+        $change_amount = $amount_paid - $remaining_amount;
+        $actual_payment_amount = $remaining_amount; // Only apply the remaining balance
     }
 
     // Calculate new totals
-    $new_paid_amount = $billing['paid_amount'] + $amount_paid;
-    $change_amount = $amount_paid - $remaining_amount;
-    if ($change_amount < 0) $change_amount = 0;
+    $new_paid_amount = $billing['paid_amount'] + $actual_payment_amount;
 
     // Determine new payment status
     $new_status = 'paid';
@@ -78,9 +83,9 @@ try {
     // Generate receipt number
     $receipt_number = 'RCP-' . date('Ymd') . '-' . str_pad($billing_id, 6, '0', STR_PAD_LEFT);
 
-    // Insert payment record
-    $stmt = $pdo->prepare("INSERT INTO payments (billing_id, amount_paid, payment_method, cashier_id, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$billing_id, $amount_paid, $payment_method, $employee_id, $receipt_number, $notes]);
+    // Insert payment record (including change amount)
+    $stmt = $pdo->prepare("INSERT INTO payments (billing_id, amount_paid, change_amount, payment_method, cashier_id, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$billing_id, $amount_paid, $change_amount, $payment_method, $employee_id, $receipt_number, $notes]);
     
     $payment_id = $pdo->lastInsertId();
 

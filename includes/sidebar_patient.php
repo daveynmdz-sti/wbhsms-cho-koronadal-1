@@ -139,7 +139,7 @@ $vendor_path = $base_path . '/vendor/photo_controller.php';
             class="<?= $activePage === 'laboratory' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-flask"></i> Laboratory
         </a>
-    <a href="<?= $nav_base ?>billing/patient/billing.php"
+    <a href="<?= $nav_base ?>billing/billing.php"
             class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-invoice-dollar"></i> Billing
         </a>
