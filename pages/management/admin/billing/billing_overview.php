@@ -1066,9 +1066,85 @@ try {
     </div>
 
     <script>
-        // API base path for production compatibility
-        const API_BASE_PATH = '/wbhsms-cho-koronadal-1';
+        // API base path - auto-detect based on current page location
+        function getApiBasePath() {
+            const currentPath = window.location.pathname;
+            const hostname = window.location.hostname;
+            
+            // Production environment detection
+            if (hostname.includes('sslip.io') || hostname.includes('cityhealthoffice')) {
+                // For production environments, try to detect the correct base path
+                const pathParts = currentPath.split('/');
+                
+                // Remove the pages and subsequent directories to get to root
+                let projectRoot = '';
+                for (let i = 0; i < pathParts.length; i++) {
+                    if (pathParts[i] === 'pages') {
+                        projectRoot = pathParts.slice(0, i).join('/') || '/';
+                        break;
+                    }
+                }
+                
+                // If no pages directory found, assume root
+                if (!projectRoot) {
+                    projectRoot = '/';
+                }
+                
+                return window.location.protocol + '//' + window.location.host + projectRoot;
+            }
+            
+            // Local development environment (localhost)
+            const pathParts = currentPath.split('/');
+            
+            // Find the project root by looking for the pages directory
+            let projectRoot = '';
+            for (let i = 0; i < pathParts.length; i++) {
+                if (pathParts[i] === 'pages') {
+                    projectRoot = pathParts.slice(0, i).join('/') || '/';
+                    break;
+                }
+            }
+            
+            // If we can't find pages directory, assume we're in the project root
+            if (!projectRoot && currentPath.includes('wbhsms-cho-koronadal-1')) {
+                projectRoot = currentPath.substring(0, currentPath.indexOf('wbhsms-cho-koronadal-1') + 'wbhsms-cho-koronadal-1'.length);
+            } else if (!projectRoot) {
+                projectRoot = '';
+            }
+            
+            return window.location.protocol + '//' + window.location.host + projectRoot;
+        }
+        
+        const API_BASE_PATH = getApiBasePath();
         console.log('API Base Path:', API_BASE_PATH);
+        console.log('Current pathname:', window.location.pathname);
+        
+        // Debug function to help identify correct paths in production
+        function debugApiPaths() {
+            console.group('API Path Debug Information');
+            console.log('Window location:', window.location);
+            console.log('Document URL:', document.URL);
+            console.log('Base URI:', document.baseURI);
+            console.log('Current script location:', document.currentScript?.src || 'N/A');
+            console.log('Calculated API base path:', API_BASE_PATH);
+            
+            // Test if common API paths exist
+            const testPaths = [
+                `${API_BASE_PATH}/api/billing/management/`,
+                `./../../../../api/billing/management/`,
+                `/api/billing/management/`,
+                `../../../api/billing/management/`
+            ];
+            
+            console.log('Testing API path accessibility...');
+            testPaths.forEach((path, index) => {
+                console.log(`Path ${index + 1}: ${path}`);
+            });
+            console.groupEnd();
+        }
+        
+        // Call debug function on page load
+        debugApiPaths();
         
         // Search and filter functions
         function applyFilters() {
@@ -1091,57 +1167,134 @@ try {
             window.location.href = window.location.pathname;
         }
         
-        // View invoice details in modal
+        // View invoice details in modal with fallback API paths
         function viewInvoice(billingId) {
             try {
                 // Show loading state
                 showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
                 
-                const apiUrl = `${API_BASE_PATH}/api/billing/management/get_invoice_details.php?billing_id=${billingId}`;
-                console.log('Fetching invoice details from:', apiUrl);
+                // Try multiple API path strategies
+                const apiPaths = [
+                    `${API_BASE_PATH}/api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
+                    `../../../../api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
+                    `/api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
+                    `../../../api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
+                    `api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
+                    `./api/billing/management/get_invoice_details.php?billing_id=${billingId}`
+                ];
                 
-                fetch(apiUrl)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.success) {
-                            displayInvoiceDetails(data.invoice);
-                        } else {
-                            showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>' + (data.message || 'Failed to load invoice details') + '</p></div>');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error fetching invoice:', error);
-                        showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>Error loading invoice details</p></div>');
-                    });
+                console.log('Trying API paths:', apiPaths);
+                
+                tryApiPaths(apiPaths, 0, billingId);
+                
             } catch (error) {
                 console.error('Error in viewInvoice:', error);
-                alert('Error loading invoice details. Please try again.');
+                showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>Error loading invoice details</p></div>');
             }
         }
         
-        // Print invoice using dedicated API
+        // Recursive function to try different API paths
+        function tryApiPaths(paths, index, billingId) {
+            if (index >= paths.length) {
+                showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>Unable to load invoice details. All API paths failed.</p></div>');
+                return;
+            }
+            
+            const apiUrl = paths[index];
+            console.log(`Trying API path ${index + 1}/${paths.length}:`, apiUrl);
+            
+            fetch(apiUrl, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                console.log(`API path ${index + 1} response status:`, response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    displayInvoiceDetails(data.invoice);
+                } else {
+                    showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>' + (data.message || 'Failed to load invoice details') + '</p></div>');
+                }
+            })
+            .catch(error => {
+                console.error(`API path ${index + 1} failed:`, error);
+                // Try next path
+                tryApiPaths(paths, index + 1, billingId);
+            });
+        }
+        
+        // Print invoice using dedicated API with fallback paths
         function printInvoice(billingId) {
             try {
-                const printUrl = `${API_BASE_PATH}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
-                console.log('Opening print URL:', printUrl);
-                window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
+                const printPaths = [
+                    `${API_BASE_PATH}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
+                    `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
+                    `/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
+                    `../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
+                    `api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
+                    `./api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`
+                ];
+                
+                console.log('Trying print paths:', printPaths);
+                
+                // Try each path until one works
+                for (let i = 0; i < printPaths.length; i++) {
+                    const printUrl = printPaths[i];
+                    console.log(`Trying print URL ${i + 1}/${printPaths.length}:`, printUrl);
+                    
+                    // Test if the path exists by attempting to open it
+                    const testWindow = window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
+                    
+                    // If window opened successfully, break the loop
+                    if (testWindow) {
+                        break;
+                    }
+                }
             } catch (error) {
                 console.error('Error printing invoice:', error);
                 alert('Error printing invoice. Please try again.');
             }
         }
 
-        // Download invoice as PDF
+        // Download invoice as PDF with fallback paths
         function downloadInvoice(billingId) {
             try {
-                const downloadUrl = `${API_BASE_PATH}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`;
-                console.log('Downloading from:', downloadUrl);
-                window.open(downloadUrl, '_blank');
+                const downloadPaths = [
+                    `${API_BASE_PATH}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
+                    `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
+                    `/api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
+                    `../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
+                    `api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
+                    `./api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`
+                ];
+                
+                console.log('Trying download paths:', downloadPaths);
+                
+                // Try each path until one works
+                for (let i = 0; i < downloadPaths.length; i++) {
+                    const downloadUrl = downloadPaths[i];
+                    console.log(`Trying download URL ${i + 1}/${downloadPaths.length}:`, downloadUrl);
+                    
+                    // Create a temporary link and click it
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.target = '_blank';
+                    link.download = `invoice_${billingId}.pdf`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // Only try one download at a time
+                    break;
+                }
             } catch (error) {
                 console.error('Error downloading invoice:', error);
                 alert('Error downloading invoice. Please try again.');

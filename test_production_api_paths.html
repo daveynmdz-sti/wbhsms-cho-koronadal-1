@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Production API Path Tester</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { margin: 5px; padding: 10px 15px; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Production API Path Tester</h1>
+    <p>This tool helps identify the correct API paths for the production environment.</p>
+    
+    <div class="test-section info">
+        <h3>Environment Information</h3>
+        <div id="env-info"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>API Path Tests</h3>
+        <button onclick="testApiPaths()">Test All API Paths</button>
+        <button onclick="testSpecificInvoice()">Test Invoice API (ID: 3)</button>
+        <div id="test-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Manual Path Testing</h3>
+        <input type="text" id="manual-path" placeholder="Enter API path to test" style="width: 400px;">
+        <button onclick="testManualPath()">Test Path</button>
+        <div id="manual-results"></div>
+    </div>
+
+    <script>
+        // Display environment information
+        function displayEnvInfo() {
+            const envInfo = document.getElementById('env-info');
+            envInfo.innerHTML = `
+                <strong>Current URL:</strong> ${window.location.href}<br>
+                <strong>Hostname:</strong> ${window.location.hostname}<br>
+                <strong>Pathname:</strong> ${window.location.pathname}<br>
+                <strong>Protocol:</strong> ${window.location.protocol}<br>
+                <strong>Port:</strong> ${window.location.port || 'default'}<br>
+                <strong>Base URI:</strong> ${document.baseURI}<br>
+                <strong>User Agent:</strong> ${navigator.userAgent}
+            `;
+        }
+
+        // Generate potential API paths
+        function generateApiPaths() {
+            const currentPath = window.location.pathname;
+            const hostname = window.location.hostname;
+            const protocol = window.location.protocol;
+            const host = window.location.host;
+            
+            const basePaths = [
+                `${protocol}//${host}`,
+                `${protocol}//${host}/`,
+                `${protocol}//${host}/wbhsms-cho-koronadal-1`,
+                `${protocol}//${host}/wbhsms-cho-koronadal-1/`,
+                `.`,
+                `./`,
+                `../`,
+                `../../`,
+                `../../../`,
+                `../../../../`,
+                `/`,
+                `/api`,
+                `/wbhsms-cho-koronadal-1`,
+                `/wbhsms-cho-koronadal-1/`
+            ];
+            
+            return basePaths.map(base => `${base}/api/billing/management/get_invoice_details.php`.replace(/\/+/g, '/').replace(':/', '://'));
+        }
+
+        // Test a single API path
+        async function testSinglePath(path, billingId = 3) {
+            try {
+                const url = `${path}?billing_id=${billingId}`;
+                console.log('Testing:', url);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = {
+                    url: url,
+                    status: response.status,
+                    ok: response.ok,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries())
+                };
+                
+                if (response.ok) {
+                    try {
+                        const data = await response.json();
+                        result.data = data;
+                        result.success = data.success || false;
+                    } catch (e) {
+                        result.data = await response.text();
+                        result.parseError = e.message;
+                    }
+                }
+                
+                return result;
+            } catch (error) {
+                return {
+                    url: path,
+                    error: error.message,
+                    type: error.name
+                };
+            }
+        }
+
+        // Test all potential API paths
+        async function testApiPaths() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<p>Testing API paths...</p>';
+            
+            const paths = generateApiPaths();
+            const results = [];
+            
+            for (const path of paths) {
+                const result = await testSinglePath(path);
+                results.push(result);
+            }
+            
+            // Display results
+            let html = '<h4>Test Results:</h4>';
+            results.forEach((result, index) => {
+                const cssClass = result.ok ? 'success' : (result.error ? 'error' : 'info');
+                html += `
+                    <div class="${cssClass}" style="margin: 5px 0; padding: 10px; border-radius: 3px;">
+                        <strong>Path ${index + 1}:</strong> ${result.url}<br>
+                        <strong>Status:</strong> ${result.status || 'Error'} ${result.statusText || ''}<br>
+                        ${result.error ? `<strong>Error:</strong> ${result.error}<br>` : ''}
+                        ${result.success ? '<strong>✅ API CALL SUCCESSFUL!</strong><br>' : ''}
+                        ${result.data && typeof result.data === 'object' ? `<strong>Response:</strong> ${JSON.stringify(result.data, null, 2)}<br>` : ''}
+                    </div>
+                `;
+            });
+            
+            resultsDiv.innerHTML = html;
+            
+            // Find working paths
+            const workingPaths = results.filter(r => r.ok && r.success);
+            if (workingPaths.length > 0) {
+                resultsDiv.innerHTML += `
+                    <div class="success" style="margin: 20px 0; padding: 15px;">
+                        <h4>✅ Working API Paths Found:</h4>
+                        ${workingPaths.map(p => `<div><strong>${p.url}</strong></div>`).join('')}
+                    </div>
+                `;
+            }
+        }
+
+        // Test specific invoice API
+        async function testSpecificInvoice() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<p>Testing invoice API with ID 3...</p>';
+            
+            const testPath = `${window.location.protocol}//${window.location.host}/api/billing/management/get_invoice_details.php`;
+            const result = await testSinglePath(testPath, 3);
+            
+            const cssClass = result.ok && result.success ? 'success' : 'error';
+            resultsDiv.innerHTML = `
+                <div class="${cssClass}">
+                    <h4>Invoice API Test Result</h4>
+                    <strong>URL:</strong> ${result.url}<br>
+                    <strong>Status:</strong> ${result.status || 'Error'}<br>
+                    ${result.error ? `<strong>Error:</strong> ${result.error}<br>` : ''}
+                    ${result.success ? '<strong>✅ Success!</strong><br>' : ''}
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        // Test manual path
+        async function testManualPath() {
+            const manualPath = document.getElementById('manual-path').value;
+            const resultsDiv = document.getElementById('manual-results');
+            
+            if (!manualPath) {
+                resultsDiv.innerHTML = '<div class="error">Please enter a path to test</div>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<p>Testing manual path...</p>';
+            
+            const result = await testSinglePath(manualPath);
+            const cssClass = result.ok ? 'success' : 'error';
+            
+            resultsDiv.innerHTML = `
+                <div class="${cssClass}">
+                    <h4>Manual Path Test Result</h4>
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            displayEnvInfo();
+        });
+    </script>
+</body>
+</html>
