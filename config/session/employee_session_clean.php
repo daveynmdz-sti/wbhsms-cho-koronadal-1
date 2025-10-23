@@ -75,9 +75,34 @@ function clear_employee_session() {
  * @return string
  */
 function getEmployeeRootPath() {
-    // Calculate relative path from current script to root
+    // Calculate relative path from current script to project root
     $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
-    $depth = substr_count($scriptPath, '/') - 1;
+    
+    // For XAMPP localhost: /wbhsms-cho-koronadal-1/pages/prescription-management/api/file.php
+    // For production: /pages/prescription-management/api/file.php
+    
+    // Find project root by looking for the project folder in the path
+    $pathParts = explode('/', trim($scriptPath, '/'));
+    
+    // Remove the filename
+    array_pop($pathParts);
+    
+    // Find the index of the project folder or determine depth to project root
+    $projectIndex = -1;
+    for ($i = 0; $i < count($pathParts); $i++) {
+        if ($pathParts[$i] === 'wbhsms-cho-koronadal-1') {
+            $projectIndex = $i;
+            break;
+        }
+    }
+    
+    if ($projectIndex >= 0) {
+        // XAMPP localhost: calculate relative path to project root
+        $depth = count($pathParts) - $projectIndex - 1;
+    } else {
+        // Production: assume we're already at project root level
+        $depth = count($pathParts);
+    }
     
     if ($depth <= 0) {
         return './';
