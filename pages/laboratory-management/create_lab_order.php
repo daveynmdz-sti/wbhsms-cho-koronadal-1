@@ -69,7 +69,7 @@ if (isset($_GET['action'])) {
                 'error' => true,
                 'message' => 'Search failed: ' . $e->getMessage(),
                 'debug' => [
-                    'file' => __FILE__,
+                    'file' => basename(__FILE__),
                     'line' => __LINE__,
                     'search_term' => $search ?? 'undefined'
                 ]
@@ -146,7 +146,7 @@ if (isset($_GET['action'])) {
                 'error' => true,
                 'message' => 'Search failed: ' . $e->getMessage(),
                 'debug' => [
-                    'file' => __FILE__,
+                    'file' => basename(__FILE__),
                     'line' => __LINE__,
                     'search_term' => $search ?? 'undefined',
                     'barangay_filter' => $barangay_filter ?? 'undefined'
@@ -207,7 +207,7 @@ if (isset($_GET['action'])) {
                 'error' => true,
                 'message' => 'Search visits failed: ' . $e->getMessage(),
                 'debug' => [
-                    'file' => __FILE__,
+                    'file' => basename(__FILE__),
                     'line' => __LINE__,
                     'search_term' => $search ?? 'undefined'
                 ]

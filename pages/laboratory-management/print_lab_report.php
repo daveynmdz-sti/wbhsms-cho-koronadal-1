@@ -7,22 +7,33 @@ include $root_path . '/config/db.php';
 // Check authentication
 if (!isset($_SESSION['employee_id'])) {
     http_response_code(401);
-    exit('Not authenticated');
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Authentication required']);
+    exit();
 }
 
-$lab_order_id = $_GET['lab_order_id'] ?? null;
-if (!$lab_order_id) {
-    exit('Lab order ID is required');
+// Validate and sanitize lab_order_id
+$lab_order_id = filter_input(INPUT_GET, 'lab_order_id', FILTER_VALIDATE_INT);
+if (!$lab_order_id || $lab_order_id <= 0) {
+    http_response_code(400);
+    header('Content-Type: text/html; charset=UTF-8');
+    echo '<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Error</h1><p>Invalid lab order ID provided.</p></body></html>';
+    exit();
 }
 
 // Check if timing columns exist
-$timingColumnsSql = "SHOW COLUMNS FROM lab_order_items WHERE Field IN ('started_at', 'completed_at', 'turnaround_time', 'waiting_time')";
-$timingResult = $conn->query($timingColumnsSql);
-$hasTimingColumns = $timingResult->num_rows > 0;
+try {
+    $timingColumnsSql = "SHOW COLUMNS FROM lab_order_items WHERE Field IN ('started_at', 'completed_at')";
+    $timingResult = $conn->query($timingColumnsSql);
+    $hasTimingColumns = $timingResult ? $timingResult->num_rows > 0 : false;
+} catch (Exception $e) {
+    error_log("Error checking timing columns in print_lab_report.php: " . $e->getMessage());
+    $hasTimingColumns = false;
+}
 
 // Fetch lab order details
 $orderSql = "SELECT lo.lab_order_id, lo.patient_id, lo.order_date, lo.status, lo.remarks,
-                    p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.gender, p.username as patient_id_display,
+                    p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.sex as gender, p.username as patient_id_display,
                     e.first_name as ordered_by_first_name, e.last_name as ordered_by_last_name,
                     TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
              FROM lab_orders lo
@@ -30,14 +41,32 @@ $orderSql = "SELECT lo.lab_order_id, lo.patient_id, lo.order_date, lo.status, lo
              LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
              WHERE lo.lab_order_id = ?";
 
-$orderStmt = $conn->prepare($orderSql);
-$orderStmt->bind_param("i", $lab_order_id);
-$orderStmt->execute();
-$orderResult = $orderStmt->get_result();
-$order = $orderResult->fetch_assoc();
-
-if (!$order) {
-    exit('Lab order not found');
+try {
+    $orderStmt = $conn->prepare($orderSql);
+    if (!$orderStmt) {
+        throw new Exception("Failed to prepare lab order query: " . $conn->error);
+    }
+    
+    $orderStmt->bind_param("i", $lab_order_id);
+    if (!$orderStmt->execute()) {
+        throw new Exception("Failed to execute lab order query: " . $orderStmt->error);
+    }
+    
+    $orderResult = $orderStmt->get_result();
+    $order = $orderResult->fetch_assoc();
+    
+    if (!$order) {
+        http_response_code(404);
+        header('Content-Type: text/html; charset=UTF-8');
+        echo '<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>Error</h1><p>Lab order not found.</p></body></html>';
+        exit();
+    }
+} catch (Exception $e) {
+    error_log("Database error in print_lab_report.php: " . $e->getMessage());
+    http_response_code(500);
+    header('Content-Type: text/html; charset=UTF-8');
+    echo '<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Error</h1><p>Unable to load lab order. Please try again later.</p></body></html>';
+    exit();
 }
 
 // Fetch completed lab order items only
@@ -45,35 +74,72 @@ $itemsSql = "SELECT loi.item_id, loi.test_type, loi.status, loi.result_file, loi
                     loi.remarks, loi.created_at, loi.updated_at";
 
 if ($hasTimingColumns) {
-    $itemsSql .= ", loi.started_at, loi.completed_at, loi.turnaround_time, loi.waiting_time";
+    $itemsSql .= ", loi.started_at, loi.completed_at";
 } else {
-    $itemsSql .= ", NULL as started_at, NULL as completed_at, NULL as turnaround_time, NULL as waiting_time";
+    $itemsSql .= ", NULL as started_at, NULL as completed_at";
 }
+$itemsSql .= ", NULL as turnaround_time, NULL as waiting_time";
 
 $itemsSql .= " FROM lab_order_items loi
                WHERE loi.lab_order_id = ? AND loi.status = 'completed'
                ORDER BY loi.created_at ASC";
 
-$itemsStmt = $conn->prepare($itemsSql);
-$itemsStmt->bind_param("i", $lab_order_id);
-$itemsStmt->execute();
-$itemsResult = $itemsStmt->get_result();
+try {
+    $itemsStmt = $conn->prepare($itemsSql);
+    if (!$itemsStmt) {
+        throw new Exception("Failed to prepare lab items query: " . $conn->error);
+    }
+    
+    $itemsStmt->bind_param("i", $lab_order_id);
+    if (!$itemsStmt->execute()) {
+        throw new Exception("Failed to execute lab items query: " . $itemsStmt->error);
+    }
+    
+    $itemsResult = $itemsStmt->get_result();
+} catch (Exception $e) {
+    error_log("Database error fetching lab items in print_lab_report.php: " . $e->getMessage());
+    http_response_code(500);
+    header('Content-Type: text/html; charset=UTF-8');
+    echo '<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Error</h1><p>Unable to load lab items. Please try again later.</p></body></html>';
+    exit();
+}
 
-$patientName = trim($order['first_name'] . ' ' . ($order['middle_name'] ? $order['middle_name'] . ' ' : '') . $order['last_name']);
-$orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_last_name']);
+// Safely build patient and ordered by names
+$patientName = trim(($order['first_name'] ?? '') . ' ' . (($order['middle_name'] ?? '') ? $order['middle_name'] . ' ' : '') . ($order['last_name'] ?? ''));
+$orderedBy = trim(($order['ordered_by_first_name'] ?? '') . ' ' . ($order['ordered_by_last_name'] ?? ''));
 
-// Calculate summary statistics
+// Calculate summary statistics with error handling
 $totalItems = 0;
 $avgTurnaround = 0;
 $items = [];
-while ($item = $itemsResult->fetch_assoc()) {
-    $items[] = $item;
-    $totalItems++;
-    if ($item['turnaround_time']) {
-        $avgTurnaround += $item['turnaround_time'];
+
+try {
+    while ($item = $itemsResult->fetch_assoc()) {
+        $items[] = $item;
+        $totalItems++;
+        
+        // Calculate turnaround time from timestamps if available
+        if (!empty($item['started_at']) && !empty($item['completed_at'])) {
+            try {
+                $start = new DateTime($item['started_at']);
+                $end = new DateTime($item['completed_at']);
+                $diff = $end->diff($start);
+                $turnaround = $diff->h + ($diff->days * 24);
+                $avgTurnaround += $turnaround;
+            } catch (Exception $dateException) {
+                // Log date parsing error but continue processing
+                error_log("Date parsing error in print_lab_report.php: " . $dateException->getMessage());
+            }
+        }
     }
+    $avgTurnaround = $totalItems > 0 ? $avgTurnaround / $totalItems : 0;
+} catch (Exception $e) {
+    error_log("Error processing lab items in print_lab_report.php: " . $e->getMessage());
+    // Continue with empty items array to allow page to render
+    $items = [];
+    $totalItems = 0;
+    $avgTurnaround = 0;
 }
-$avgTurnaround = $totalItems > 0 ? $avgTurnaround / $totalItems : 0;
 ?>
 
 <!DOCTYPE html>
@@ -96,6 +162,28 @@ $avgTurnaround = $totalItems > 0 ? $avgTurnaround / $totalItems : 0;
             .report-container {
                 margin: 0;
                 box-shadow: none;
+            }
+            
+            .result-detail {
+                page-break-inside: avoid;
+                margin-bottom: 30px;
+            }
+            
+            .pdf-embed-container {
+                page-break-inside: avoid;
+                min-height: 400px;
+            }
+            
+            .image-result img {
+                max-height: 600px;
+                page-break-inside: avoid;
+            }
+            
+            /* Ensure file content is visible in print */
+            object[data*="application/pdf"] {
+                width: 100% !important;
+                height: 600px !important;
+                display: block !important;
             }
         }
 
@@ -269,6 +357,55 @@ $avgTurnaround = $totalItems > 0 ? $avgTurnaround / $totalItems : 0;
             font-size: 0.9em;
             color: #666;
         }
+
+        .result-detail {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            background-color: #fafafa;
+        }
+
+        .result-file-container {
+            margin-top: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .pdf-embed-container {
+            position: relative;
+            background-color: white;
+        }
+
+        .image-result {
+            background-color: white;
+            border-radius: 4px;
+        }
+
+        .image-result img {
+            transition: transform 0.3s ease;
+        }
+
+        .image-result img:hover {
+            transform: scale(1.02);
+        }
+
+        /* Print-specific styles for better file rendering */
+        @media print {
+            .result-detail {
+                border: 2px solid #000;
+                margin-bottom: 40px;
+                background-color: white;
+            }
+            
+            .result-file-container {
+                border: 1px solid #000;
+                box-shadow: none;
+            }
+            
+            .pdf-embed-container object {
+                border: 1px solid #000;
+            }
+        }
     </style>
 </head>
 <body>
@@ -363,6 +500,8 @@ $avgTurnaround = $totalItems > 0 ? $avgTurnaround / $totalItems : 0;
         <?php if (empty($items)): ?>
         <p style="text-align: center; color: #666; font-style: italic;">No completed test results available for this order.</p>
         <?php else: ?>
+        
+        <!-- Results Summary Table -->
         <table class="results-table">
             <thead>
                 <tr>
@@ -400,7 +539,7 @@ $avgTurnaround = $totalItems > 0 ? $avgTurnaround / $totalItems : 0;
                     <td>
                         <?php if ($item['result_file']): ?>
                         <i class="fas fa-file-pdf" style="color: #dc3545;"></i> 
-                        <?= htmlspecialchars($item['result_file']) ?>
+                        Result file attached (see below)
                         <?php else: ?>
                         <em>No file attached</em>
                         <?php endif; ?>
@@ -409,6 +548,102 @@ $avgTurnaround = $totalItems > 0 ? $avgTurnaround / $totalItems : 0;
                 <?php endforeach; ?>
             </tbody>
         </table>
+
+        <!-- Detailed Results with File Content -->
+        <div style="page-break-before: auto; margin-top: 30px;">
+            <h3 style="color: #03045e; border-bottom: 2px solid #03045e; padding-bottom: 10px;">Detailed Test Results</h3>
+            
+            <?php foreach ($items as $index => $item): ?>
+            <div class="result-detail" style="margin-bottom: 40px; page-break-inside: avoid;">
+                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <h4 style="margin: 0 0 10px 0; color: #03045e;">
+                        <?= ($index + 1) ?>. <?= htmlspecialchars($item['test_type']) ?>
+                    </h4>
+                    <div class="info-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                        <div class="info-item">
+                            <span class="info-label">Status:</span>
+                            <span class="status-badge"><?= ucfirst(str_replace('_', ' ', $item['status'])) ?></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Result Date:</span>
+                            <span><?= date('M d, Y g:i A', strtotime($item['result_date'])) ?></span>
+                        </div>
+                        <?php if ($item['remarks']): ?>
+                        <div class="info-item" style="grid-column: 1 / -1;">
+                            <span class="info-label">Remarks:</span>
+                            <span><?= htmlspecialchars($item['remarks']) ?></span>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <?php if ($item['result_file']): ?>
+                <div class="result-file-container" style="border: 2px solid #03045e; border-radius: 8px; padding: 20px; background-color: white;">
+                    <h5 style="margin: 0 0 15px 0; color: #03045e; text-align: center;">
+                        <i class="fas fa-file-pdf" style="color: #dc3545;"></i> Test Result Document
+                    </h5>
+                    
+                    <?php
+                    // Convert BLOB to base64 for embedding
+                    $fileData = $item['result_file'];
+                    if ($fileData) {
+                        // Try to determine if it's a PDF by checking the header
+                        $isPDF = (substr($fileData, 0, 4) === '%PDF');
+                        
+                        if ($isPDF) {
+                            // For PDFs, embed as object for print
+                            $base64Data = base64_encode($fileData);
+                            echo '<div class="pdf-embed-container" style="width: 100%; min-height: 600px; border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">';
+                            echo '<object data="data:application/pdf;base64,' . $base64Data . '" type="application/pdf" width="100%" height="600px" style="display: block;">';
+                            echo '<div style="padding: 20px; text-align: center; background-color: #f8f9fa;">';
+                            echo '<p><i class="fas fa-file-pdf" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i></p>';
+                            echo '<p><strong>PDF Result Document</strong></p>';
+                            echo '<p>This document contains the lab test results for ' . htmlspecialchars($item['test_type']) . '</p>';
+                            echo '<p><em>PDF content will be displayed when printed or viewed in a PDF-compatible browser.</em></p>';
+                            echo '</div>';
+                            echo '</object>';
+                            echo '</div>';
+                        } else {
+                            // For images, embed directly
+                            $imageData = base64_encode($fileData);
+                            // Try to determine image type from file header
+                            $imageType = 'image/png'; // default
+                            if (substr($fileData, 0, 3) === "\xFF\xD8\xFF") {
+                                $imageType = 'image/jpeg';
+                            } elseif (substr($fileData, 0, 8) === "\x89PNG\r\n\x1a\n") {
+                                $imageType = 'image/png';
+                            } elseif (substr($fileData, 0, 6) === 'GIF87a' || substr($fileData, 0, 6) === 'GIF89a') {
+                                $imageType = 'image/gif';
+                            }
+                            
+                            echo '<div class="image-result" style="text-align: center; padding: 20px;">';
+                            echo '<img src="data:' . $imageType . ';base64,' . $imageData . '" ';
+                            echo 'style="max-width: 100%; max-height: 800px; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" ';
+                            echo 'alt="Lab result for ' . htmlspecialchars($item['test_type']) . '">';
+                            echo '</div>';
+                        }
+                    } else {
+                        echo '<div style="text-align: center; padding: 40px; color: #666;">';
+                        echo '<i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 15px;"></i>';
+                        echo '<p>Unable to load result file content.</p>';
+                        echo '</div>';
+                    }
+                    ?>
+                </div>
+                <?php else: ?>
+                <div style="text-align: center; padding: 40px; background-color: #f8f9fa; border-radius: 8px; color: #666;">
+                    <i class="fas fa-file-times" style="font-size: 48px; margin-bottom: 15px;"></i>
+                    <p>No result file attached for this test.</p>
+                </div>
+                <?php endif; ?>
+            </div>
+            
+            <?php if ($index < count($items) - 1): ?>
+            <div style="page-break-after: always;"></div>
+            <?php endif; ?>
+            
+            <?php endforeach; ?>
+        </div>
         <?php endif; ?>
 
         <?php if ($order['remarks']): ?>

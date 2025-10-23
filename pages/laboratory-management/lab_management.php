@@ -1,4 +1,10 @@
 <?php
+// Security headers
+header('X-Frame-Options: SAMEORIGIN');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 // Include employee session configuration
 // Use absolute path resolution
 $root_path = dirname(dirname(__DIR__));
@@ -699,8 +705,24 @@ try {
 </head>
 
 <body>
-    <!-- Include Admin Sidebar -->
-    <?php include $root_path . '/includes/sidebar_admin.php'; ?>
+    <!-- Include Role-based Sidebar -->
+    <?php 
+    // Get current user's role for sidebar inclusion
+    $role_id = $_SESSION['role_id'];
+    $roleMap = [
+        1 => 'admin',
+        2 => 'doctor', 
+        3 => 'nurse',
+        4 => 'pharmacist',
+        5 => 'dho',
+        6 => 'bhw',
+        7 => 'records_officer',
+        8 => 'cashier',
+        9 => 'laboratory_tech'
+    ];
+    $role = $roleMap[$role_id] ?? 'admin';
+    include $root_path . '/includes/sidebar_' . $role . '.php'; 
+    ?>
 
     <section class="content-wrapper">
         <!-- Breadcrumb Navigation -->
@@ -1424,6 +1446,111 @@ try {
         window.uploadResult = uploadResult;
         window.uploadSingleResult = uploadSingleResult;
         window.downloadResult = downloadResult;
+
+        // Lab report printing function
+        function printLabReport(labOrderId) {
+            // Open print report in new window
+            window.open(`print_lab_report.php?lab_order_id=${labOrderId}`, '_blank', 'width=800,height=600,scrollbars=yes');
+        }
+        
+        // Order status update function
+        function updateOrderStatus(labOrderId, currentStatus) {
+            const statuses = ['pending', 'in_progress', 'completed', 'cancelled', 'partial'];
+            const currentIndex = statuses.indexOf(currentStatus);
+            
+            let options = '';
+            statuses.forEach(status => {
+                const selected = status === currentStatus ? 'selected' : '';
+                options += `<option value="${status}" ${selected}>${status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}</option>`;
+            });
+
+            const modalContent = `
+                <div style="padding: 20px;">
+                    <h4>Update Order Status</h4>
+                    <form onsubmit="submitOrderStatusUpdate(event, ${labOrderId})">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Overall Status:</label>
+                            <select id="newOrderStatus" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                ${options}
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Remarks (Optional):</label>
+                            <textarea id="orderStatusRemarks" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" rows="3"></textarea>
+                        </div>
+                        <div style="text-align: right;">
+                            <button type="button" class="btn-secondary" onclick="closeModal('orderStatusUpdateModal')" style="margin-right: 10px;">Cancel</button>
+                            <button type="submit" class="btn-primary">Update Status</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+
+            // Create and show order status update modal
+            let orderStatusModal = document.getElementById('orderStatusUpdateModal');
+            if (!orderStatusModal) {
+                orderStatusModal = document.createElement('div');
+                orderStatusModal.id = 'orderStatusUpdateModal';
+                orderStatusModal.className = 'modal';
+                orderStatusModal.innerHTML = `
+                    <div class="modal-content" style="max-width: 500px;">
+                        ${modalContent}
+                    </div>
+                `;
+                document.body.appendChild(orderStatusModal);
+            } else {
+                orderStatusModal.querySelector('.modal-content').innerHTML = modalContent;
+            }
+            
+            orderStatusModal.style.display = 'block';
+        }
+
+        function submitOrderStatusUpdate(event, labOrderId) {
+            event.preventDefault();
+            const newStatus = document.getElementById('newOrderStatus').value;
+            const remarks = document.getElementById('orderStatusRemarks').value;
+
+            fetch('api/update_lab_order_status.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    lab_order_id: labOrderId,
+                    overall_status: newStatus,
+                    remarks: remarks
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeModal('orderStatusUpdateModal');
+                    // Refresh the order details if modal is open
+                    const orderModal = document.getElementById('orderDetailsModal');
+                    if (orderModal && orderModal.style.display === 'block') {
+                        viewOrderDetails(labOrderId);
+                    }
+                    showAlert('Order status updated successfully', 'success');
+                    // Refresh status checks and reload page
+                    refreshStatusChecks();
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showAlert('Error updating order status: ' + (data.message || 'Unknown error'), 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error updating order status', 'error');
+            });
+        }
+        
+        // Make print function globally accessible
+        window.printLabReport = printLabReport;
+        window.updateOrderStatus = updateOrderStatus;
+        window.submitOrderStatusUpdate = submitOrderStatusUpdate;
+        window.uploadItemResult = uploadItemResult;
 
         // Functions are now handled by inline events in modal content
 

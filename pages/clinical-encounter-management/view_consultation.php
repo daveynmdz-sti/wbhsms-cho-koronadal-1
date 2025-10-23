@@ -1,6 +1,12 @@
 <?php
+// Security headers
+header('X-Frame-Options: SAMEORIGIN');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 // Resolve path to root directory using realpath for consistent path format
-$root_path = realpath(dirname(dirname(dirname(__FILE__))));
+$root_path = realpath(dirname(dirname(__DIR__)));
 
 // Include authentication and config
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
@@ -39,9 +45,9 @@ if (!in_array($employee_role, $authorized_roles)) {
     exit();
 }
 
-// Get consultation_id from URL
-$consultation_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if (!$consultation_id) {
+// Get consultation_id from URL with validation
+$consultation_id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+if (!$consultation_id || $consultation_id <= 0) {
     header("Location: /wbhsms-cho-koronadal/pages/clinical-encounter-management/index.php?error=invalid_consultation");
     exit();
 }
@@ -68,6 +74,7 @@ try {
                b.barangay_name, d.district_name,
                doc.first_name as doctor_first_name, doc.last_name as doctor_last_name,
                doc.specialization as doctor_specialization,
+               s.name as service_name,
                -- Get linked vitals information
                v.vitals_id, v.systolic_bp, v.diastolic_bp, v.heart_rate, v.respiratory_rate,
                v.temperature, v.weight, v.height, v.bmi, v.remarks as vitals_remarks,
@@ -77,22 +84,36 @@ try {
         JOIN patients p ON c.patient_id = p.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN districts d ON b.district_id = d.district_id
-        LEFT JOIN employees doc ON c.consulted_by = doc.employee_id
+        LEFT JOIN employees doc ON (c.consulted_by = doc.employee_id OR c.attending_employee_id = doc.employee_id)
+        LEFT JOIN services s ON c.service_id = s.service_id
         LEFT JOIN vitals v ON c.vitals_id = v.vitals_id
         LEFT JOIN employees ve ON v.recorded_by = ve.employee_id
         WHERE c.consultation_id = ?
     ");
-    if ($consultation_stmt) {
-        $consultation_stmt->bind_param("i", $consultation_id);
-        $consultation_stmt->execute();
-        $result = $consultation_stmt->get_result();
-        $consultation_data = $result->fetch_assoc();
+    
+    if (!$consultation_stmt) {
+        error_log("Failed to prepare consultation statement in view_consultation.php: " . $conn->error);
+        $error_message = "Database error occurred while loading consultation.";
     } else {
-        $consultation_data = null;
+        $consultation_stmt->bind_param("i", $consultation_id);
+        if (!$consultation_stmt->execute()) {
+            error_log("Failed to execute consultation query in view_consultation.php: " . $consultation_stmt->error);
+            $error_message = "Error loading consultation data.";
+            $consultation_data = null;
+        } else {
+            $result = $consultation_stmt->get_result();
+            $consultation_data = $result->fetch_assoc();
+        }
     }
     
     if (!$consultation_data) {
-        header("Location: /wbhsms-cho-koronadal/pages/clinical-encounter-management/index.php?error=consultation_not_found");
+        if (empty($error_message)) {
+            // No database error, just not found
+            header("Location: /wbhsms-cho-koronadal/pages/clinical-encounter-management/index.php?error=consultation_not_found");
+        } else {
+            // Database error occurred, show error page
+            header("Location: /wbhsms-cho-koronadal/pages/clinical-encounter-management/index.php?error=database_error");
+        }
         exit();
     }
     
@@ -121,6 +142,9 @@ try {
             'vitals_id' => $consultation_data['vitals_id'],
             'systolic_bp' => $consultation_data['systolic_bp'],
             'diastolic_bp' => $consultation_data['diastolic_bp'],
+            'blood_pressure' => ($consultation_data['systolic_bp'] && $consultation_data['diastolic_bp']) 
+                ? $consultation_data['systolic_bp'] . '/' . $consultation_data['diastolic_bp'] 
+                : null,
             'heart_rate' => $consultation_data['heart_rate'],
             'respiratory_rate' => $consultation_data['respiratory_rate'],
             'temperature' => $consultation_data['temperature'],
@@ -481,6 +505,86 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                 justify-content: center;
             }
         }
+
+        /* Print Styles */
+        @media print {
+            .action-buttons,
+            .alert,
+            .read-only-notice {
+                display: none !important;
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+                background: white;
+            }
+
+            .consultation-container {
+                max-width: none;
+                margin: 0;
+                padding: 0;
+            }
+
+            .section-card {
+                box-shadow: none;
+                border: 1px solid #ddd;
+                border-radius: 0;
+                page-break-inside: avoid;
+                margin-bottom: 20px;
+            }
+
+            .section-title {
+                font-size: 14px;
+                border-bottom: 1px solid #ddd;
+            }
+
+            .info-grid {
+                display: block;
+            }
+
+            .info-item {
+                margin-bottom: 8px;
+                padding: 4px 0;
+                border-bottom: 1px solid #eee;
+                display: block;
+            }
+
+            .info-label {
+                font-weight: bold;
+                font-size: 12px;
+            }
+
+            .info-value {
+                font-size: 12px;
+                margin-top: 2px;
+            }
+
+            .vitals-grid {
+                display: block;
+            }
+
+            .vitals-item {
+                margin-bottom: 8px;
+                border: 1px solid #ddd;
+                padding: 8px;
+                border-radius: 0;
+            }
+
+            .clinical-notes {
+                border-radius: 0;
+                border: 1px solid #ddd;
+                margin: 10px 0;
+            }
+
+            .clinical-notes h4 {
+                font-size: 12px;
+            }
+
+            .clinical-notes p {
+                font-size: 11px;
+            }
+        }
     </style>
 </head>
 
@@ -581,6 +685,16 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                                 <?php endif; ?>
                             </div>
                         </div>
+                        <div class="info-item">
+                            <div class="info-label">Service Type</div>
+                            <div class="info-value">
+                                <?php if ($consultation_data['service_name']): ?>
+                                    <span style="color: #0077b6;"><i class="fas fa-medical-plus"></i> <?= htmlspecialchars($consultation_data['service_name']) ?></span>
+                                <?php else: ?>
+                                    <span style="color: #6c757d;"><em>Not specified</em></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                         <?php if ($consultation_data['vitals_id']): ?>
                         <div class="info-item">
                             <div class="info-label">Linked Vitals</div>
@@ -608,7 +722,7 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                             <i class="fas fa-heartbeat"></i> Vital Signs
                             <small style="margin-left: auto; font-size: 0.8rem; color: #6c757d;">
                                 Taken by: <?= htmlspecialchars($vitals_data['taken_by_first_name'] . ' ' . $vitals_data['taken_by_last_name']) ?> 
-                                on <?= date('M j, Y g:i A', strtotime($vitals_data['created_at'])) ?>
+                                on <?= date('M j, Y g:i A', strtotime($vitals_data['recorded_at'])) ?>
                             </small>
                         </h3>
 
@@ -617,6 +731,14 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                                 <div class="vitals-item">
                                     <div class="vitals-label">Blood Pressure</div>
                                     <div class="vitals-value"><?= htmlspecialchars($vitals_data['blood_pressure']) ?> <span class="vitals-unit">mmHg</span></div>
+                                </div>
+                            <?php elseif ($vitals_data['systolic_bp'] || $vitals_data['diastolic_bp']): ?>
+                                <div class="vitals-item">
+                                    <div class="vitals-label">Blood Pressure</div>
+                                    <div class="vitals-value">
+                                        <?= htmlspecialchars(($vitals_data['systolic_bp'] ?: '--') . '/' . ($vitals_data['diastolic_bp'] ?: '--')) ?> 
+                                        <span class="vitals-unit">mmHg</span>
+                                    </div>
                                 </div>
                             <?php endif; ?>
                             
@@ -822,19 +944,25 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
 
                 <!-- Action Buttons -->
                 <div class="action-buttons">
-                    <a href="index.php" class="btn btn-secondary">
-                        <i class="fas fa-arrow-left"></i> Back to List
-                    </a>
-                    
-                    <?php if ($can_edit_consultation): ?>
-                        <a href="edit_consultation.php?id=<?= $consultation_id ?>" class="btn btn-primary">
-                            <i class="fas fa-edit"></i> Edit Consultation
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <a href="index.php" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to List
                         </a>
-                    <?php endif; ?>
-                    
-                    <a href="consultation.php?visit_id=<?= $consultation_data['visit_id'] ?>" class="btn btn-success">
-                        <i class="fas fa-stethoscope"></i> Full Consultation View
-                    </a>
+                        
+                        <button onclick="printConsultation()" class="btn btn-secondary" style="background: #6f42c1; border-color: #6f42c1;">
+                            <i class="fas fa-print"></i> Print
+                        </button>
+                        
+                        <button onclick="downloadConsultationPDF()" class="btn btn-secondary" style="background: #e83e8c; border-color: #e83e8c;">
+                            <i class="fas fa-download"></i> Download PDF
+                        </button>
+                        
+                        <?php if ($can_edit_consultation): ?>
+                            <a href="edit_consultation_new.php?id=<?= $consultation_id ?>" class="btn btn-primary">
+                                <i class="fas fa-edit"></i> Edit Consultation
+                            </a>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
             <?php else: ?>
@@ -850,6 +978,117 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
 
         </div>
     </section>
+
+    <script>
+        function printConsultation() {
+            // Create a printable version of the consultation details
+            const consultationContainer = document.querySelector('.consultation-container');
+            
+            if (!consultationContainer) {
+                alert('No consultation data found to print.');
+                return;
+            }
+            
+            // Create print content with header using string concatenation
+            const printDate = new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', month: 'long', day: 'numeric', 
+                hour: '2-digit', minute: '2-digit' 
+            });
+            
+            const printContent = '<!DOCTYPE html>' +
+                '<html>' +
+                '<head>' +
+                '<meta charset="UTF-8">' +
+                '<title>Consultation Details - CHO Koronadal</title>' +
+                '<style>' +
+                'body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: white; }' +
+                '.header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #0077b6; padding-bottom: 20px; }' +
+                '.header h1 { color: #0077b6; margin: 0; font-size: 28px; }' +
+                '.header h2 { color: #666; margin: 10px 0; font-size: 20px; }' +
+                '.header p { margin: 5px 0; color: #666; font-size: 14px; }' +
+                '.section-card { background: #f8f9fa; border-left: 4px solid #0077b6; padding: 15px; margin-bottom: 20px; border-radius: 5px; page-break-inside: avoid; }' +
+                '.section-title { color: #0077b6; margin: 0 0 15px 0; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }' +
+                '.info-grid { display: block; }' +
+                '.info-item { margin-bottom: 8px; padding: 5px 0; border-bottom: 1px solid #eee; }' +
+                '.info-item:last-child { border-bottom: none; }' +
+                '.info-label { font-weight: bold; color: #333; display: inline-block; width: 30%; }' +
+                '.info-value { color: #666; display: inline-block; width: 65%; }' +
+                '.vitals-grid { display: block; }' +
+                '.vitals-item { margin-bottom: 8px; border: 1px solid #ddd; padding: 8px; border-radius: 3px; }' +
+                '.vitals-label { font-weight: bold; font-size: 12px; color: #333; }' +
+                '.vitals-value { font-size: 14px; color: #666; }' +
+                '.clinical-notes { border: 1px solid #ddd; margin: 10px 0; padding: 10px; border-radius: 3px; }' +
+                '.clinical-notes h4 { font-size: 12px; margin: 0 0 5px 0; color: #0077b6; }' +
+                '.clinical-notes p { font-size: 11px; margin: 0; line-height: 1.4; }' +
+                '.action-buttons, .alert, .read-only-notice { display: none !important; }' +
+                '.status-badge { background: #e9ecef; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }' +
+                '@media print { body { margin: 0; padding: 15px; } .section-card { page-break-inside: avoid; } }' +
+                '</style>' +
+                '</head>' +
+                '<body>' +
+                '<div class="header">' +
+                '<h1>CHO Koronadal</h1>' +
+                '<h2>Consultation Details</h2>' +
+                '<p>Consultation ID: <?= $consultation_id ?></p>' +
+                '<p>Printed on: ' + printDate + '</p>' +
+                '</div>' +
+                consultationContainer.innerHTML +
+                '<script>' +
+                'window.onload = function() {' +
+                'window.print();' +
+                'window.onafterprint = function() { window.close(); }' +
+                '}' +
+                '<\/script>' +
+                '<\/body>' +
+                '<\/html>';
+            
+            // Open print popup window
+            const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+        }
+
+        function downloadConsultationPDF() {
+            const consultationId = <?= $consultation_id ?>;
+            
+            if (!consultationId) {
+                alert('No consultation selected for download.');
+                return;
+            }
+
+            // Show loading state
+            const downloadBtn = event.target;
+            const originalText = downloadBtn.innerHTML;
+            downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
+            downloadBtn.disabled = true;
+
+            // Create a form to submit to the PDF generation endpoint
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '../../api/generate_consultation_pdf.php';
+            form.style.display = 'none';
+
+            const consultationIdInput = document.createElement('input');
+            consultationIdInput.type = 'hidden';
+            consultationIdInput.name = 'consultation_id';
+            consultationIdInput.value = consultationId;
+
+            form.appendChild(consultationIdInput);
+            document.body.appendChild(form);
+
+            // Submit form to download PDF
+            form.submit();
+
+            // Clean up
+            document.body.removeChild(form);
+
+            // Restore button state after a delay
+            setTimeout(() => {
+                downloadBtn.innerHTML = originalText;
+                downloadBtn.disabled = false;
+            }, 2000);
+        }
+    </script>
 </body>
 
 </html>

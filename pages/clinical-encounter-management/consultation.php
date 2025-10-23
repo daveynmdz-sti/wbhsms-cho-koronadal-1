@@ -1,6 +1,12 @@
 <?php
+// Security headers
+header('X-Frame-Options: SAMEORIGIN');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 // Resolve path to root directory using realpath for consistent path format
-$root_path = realpath(dirname(dirname(dirname(__FILE__))));
+$root_path = realpath(dirname(dirname(__DIR__)));
 
 // Include authentication and config
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
@@ -53,54 +59,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Save Vitals
     if (isset($_POST['save_vitals']) && in_array($employee_role, ['nurse', 'doctor'])) {
-        $blood_pressure = trim($_POST['blood_pressure'] ?? '');
-        $heart_rate = isset($_POST['heart_rate']) ? (int)$_POST['heart_rate'] : null;
-        $temperature = isset($_POST['temperature']) ? (float)$_POST['temperature'] : null;
-        $respiratory_rate = isset($_POST['respiratory_rate']) ? (int)$_POST['respiratory_rate'] : null;
-        $height = isset($_POST['height']) ? (float)$_POST['height'] : null;
-        $weight = isset($_POST['weight']) ? (float)$_POST['weight'] : null;
+        // Validate and sanitize inputs
+        $blood_pressure = filter_var(trim($_POST['blood_pressure'] ?? ''), FILTER_SANITIZE_STRING);
+        $heart_rate = filter_input(INPUT_POST, 'heart_rate', FILTER_VALIDATE_INT, 
+            array("options" => array("min_range" => 30, "max_range" => 300)));
+        $temperature = filter_input(INPUT_POST, 'temperature', FILTER_VALIDATE_FLOAT,
+            array("options" => array("min_range" => 30.0, "max_range" => 45.0)));
+        $respiratory_rate = filter_input(INPUT_POST, 'respiratory_rate', FILTER_VALIDATE_INT,
+            array("options" => array("min_range" => 5, "max_range" => 60)));
+        $height = filter_input(INPUT_POST, 'height', FILTER_VALIDATE_FLOAT,
+            array("options" => array("min_range" => 30.0, "max_range" => 250.0)));
+        $weight = filter_input(INPUT_POST, 'weight', FILTER_VALIDATE_FLOAT,
+            array("options" => array("min_range" => 1.0, "max_range" => 500.0)));
         
-        try {
-            // Check if vitals already exist
-            $check_stmt = $conn->prepare("SELECT vital_id FROM vitals WHERE visit_id = ?");
-            if ($check_stmt) {
-                $check_stmt->bind_param("i", $visit_id);
-                $check_stmt->execute();
-                $existing_vitals = $check_stmt->get_result()->fetch_assoc();
-                
-                if ($existing_vitals) {
-                    // Update existing vitals
-                    $update_stmt = $conn->prepare("UPDATE vitals SET blood_pressure = ?, heart_rate = ?, temperature = ?, respiratory_rate = ?, height = ?, weight = ?, updated_by = ?, updated_at = NOW() WHERE visit_id = ?");
-                    if ($update_stmt) {
-                        $update_stmt->bind_param("siidddii", $blood_pressure, $heart_rate, $temperature, $respiratory_rate, $height, $weight, $employee_id, $visit_id);
-                        $update_stmt->execute();
-                    }
-                } else {
-                    // Insert new vitals
-                    $insert_stmt = $conn->prepare("INSERT INTO vitals (visit_id, blood_pressure, heart_rate, temperature, respiratory_rate, height, weight, taken_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
-                    if ($insert_stmt) {
-                        $insert_stmt->bind_param("isiidddi", $visit_id, $blood_pressure, $heart_rate, $temperature, $respiratory_rate, $height, $weight, $employee_id);
-                        $insert_stmt->execute();
+        // Validate blood pressure format
+        if (!empty($blood_pressure) && !preg_match('/^\d{2,3}\/\d{2,3}$/', $blood_pressure)) {
+            $error_message = "Blood pressure must be in format XXX/XXX (e.g., 120/80).";
+        } else {
+            try {
+                // Check if vitals already exist
+                $check_stmt = $conn->prepare("SELECT vital_id FROM vitals WHERE visit_id = ?");
+                if ($check_stmt) {
+                    $check_stmt->bind_param("i", $visit_id);
+                    $check_stmt->execute();
+                    $existing_vitals = $check_stmt->get_result()->fetch_assoc();
+                    
+                    if ($existing_vitals) {
+                        // Update existing vitals
+                        $update_stmt = $conn->prepare("UPDATE vitals SET blood_pressure = ?, heart_rate = ?, temperature = ?, respiratory_rate = ?, height = ?, weight = ?, updated_by = ?, updated_at = NOW() WHERE visit_id = ?");
+                        if ($update_stmt) {
+                            $update_stmt->bind_param("siidddii", $blood_pressure, $heart_rate, $temperature, $respiratory_rate, $height, $weight, $employee_id, $visit_id);
+                            if ($update_stmt->execute()) {
+                                $success_message = "Vitals updated successfully.";
+                            } else {
+                                $error_message = "Error updating vitals.";
+                            }
+                        }
+                    } else {
+                        // Insert new vitals
+                        $insert_stmt = $conn->prepare("INSERT INTO vitals (visit_id, blood_pressure, heart_rate, temperature, respiratory_rate, height, weight, taken_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
+                        if ($insert_stmt) {
+                            $insert_stmt->bind_param("isiidddi", $visit_id, $blood_pressure, $heart_rate, $temperature, $respiratory_rate, $height, $weight, $employee_id);
+                            if ($insert_stmt->execute()) {
+                                $success_message = "Vitals saved successfully.";
+                            } else {
+                                $error_message = "Error saving vitals.";
+                            }
+                        }
                     }
                 }
+            } catch (Exception $e) {
+                error_log("Error saving vitals in consultation.php: " . $e->getMessage());
+                $error_message = "Error saving vitals. Please try again.";
             }
-            
-            $success_message = "Vitals saved successfully.";
-        } catch (Exception $e) {
-            $error_message = "Error saving vitals: " . $e->getMessage();
         }
     }
     
     // Save Consultation
     if (isset($_POST['save_consultation']) && $employee_role === 'doctor') {
-        $chief_complaint = trim($_POST['chief_complaint'] ?? '');
-        $diagnosis = trim($_POST['diagnosis'] ?? '');
-        $treatment_plan = trim($_POST['treatment_plan'] ?? '');
-        $remarks = trim($_POST['remarks'] ?? '');
-        $consultation_status = $_POST['consultation_status'] ?? 'pending';
+        // Validate and sanitize inputs
+        $chief_complaint = filter_var(trim($_POST['chief_complaint'] ?? ''), FILTER_SANITIZE_STRING);
+        $diagnosis = filter_var(trim($_POST['diagnosis'] ?? ''), FILTER_SANITIZE_STRING);
+        $treatment_plan = filter_var(trim($_POST['treatment_plan'] ?? ''), FILTER_SANITIZE_STRING);
+        $remarks = filter_var(trim($_POST['remarks'] ?? ''), FILTER_SANITIZE_STRING);
+        $consultation_status = in_array($_POST['consultation_status'] ?? '', ['pending', 'completed', 'follow_up_required']) 
+            ? $_POST['consultation_status'] : 'pending';
         
-        // Validation
-        if (empty($chief_complaint) || empty($diagnosis)) {
+        // Additional length validation
+        if (strlen($chief_complaint) > 1000) {
+            $error_message = "Chief complaint cannot exceed 1000 characters.";
+        } elseif (strlen($diagnosis) > 1000) {
+            $error_message = "Diagnosis cannot exceed 1000 characters.";
+        } elseif (strlen($treatment_plan) > 2000) {
+            $error_message = "Treatment plan cannot exceed 2000 characters.";
+        } elseif (strlen($remarks) > 1000) {
+            $error_message = "Remarks cannot exceed 1000 characters.";
+        } elseif (empty($chief_complaint) || empty($diagnosis)) {
             $error_message = "Chief Complaint and Diagnosis are required.";
         } else {
             try {
@@ -128,14 +162,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $update_stmt = $conn->prepare("UPDATE consultations SET chief_complaint = ?, diagnosis = ?, treatment_plan = ?, remarks = ?, consultation_status = ?, attending_employee_id = ?, updated_at = NOW() WHERE visit_id = ?");
                                 if ($update_stmt) {
                                     $update_stmt->bind_param("sssssii", $chief_complaint, $diagnosis, $treatment_plan, $remarks, $consultation_status, $employee_id, $visit_id);
-                                    $update_stmt->execute();
+                                    if ($update_stmt->execute()) {
+                                        $success_message = "Consultation updated successfully.";
+                                    } else {
+                                        $error_message = "Error updating consultation.";
+                                    }
                                 }
                             } else {
                                 // Insert new consultation
                                 $insert_stmt = $conn->prepare("INSERT INTO consultations (visit_id, patient_id, attending_employee_id, chief_complaint, diagnosis, treatment_plan, remarks, consultation_status, consultation_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())");
                                 if ($insert_stmt) {
                                     $insert_stmt->bind_param("iiisssss", $visit_id, $patient_id, $employee_id, $chief_complaint, $diagnosis, $treatment_plan, $remarks, $consultation_status);
-                                    $insert_stmt->execute();
+                                    if ($insert_stmt->execute()) {
+                                        $success_message = "Consultation saved successfully.";
+                                    } else {
+                                        $error_message = "Error saving consultation.";
+                                    }
                                 }
                             }
                         }
@@ -143,10 +185,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $error_message = "Database error occurred.";
                 }
-                
-                $success_message = "Consultation saved successfully.";
             } catch (Exception $e) {
-                $error_message = "Error saving consultation: " . $e->getMessage();
+                error_log("Error saving consultation in consultation.php: " . $e->getMessage());
+                $error_message = "Error saving consultation. Please try again.";
             }
         }
     }

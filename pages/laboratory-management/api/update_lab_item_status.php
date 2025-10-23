@@ -1,17 +1,23 @@
 <?php
+// Security headers
+header('X-Frame-Options: SAMEORIGIN');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Content-Type: application/json');
+
 // Include employee session configuration
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Server-side role enforcement
-if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role'], ['admin', 'laboratory_tech'])) {
+// Server-side role enforcement with role_id for consistency
+$authorizedRoleIds = [1, 9]; // admin, laboratory_tech
+if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role_id'], $authorizedRoleIds)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Not authorized']);
     exit();
 }
-
-header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

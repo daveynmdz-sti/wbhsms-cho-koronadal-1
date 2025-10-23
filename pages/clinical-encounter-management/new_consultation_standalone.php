@@ -5,6 +5,12 @@
  * Role-based access: Nurses can enter vitals, Doctors can complete consultations
  */
 
+// Security headers
+header('X-Frame-Options: SAMEORIGIN');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
@@ -242,18 +248,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $conn->begin_transaction();
             
-            // Get form data
-            $patient_id = (int)($_POST['patient_id'] ?? 0);
+            // Get and validate form data
+            $patient_id = filter_input(INPUT_POST, 'patient_id', FILTER_VALIDATE_INT);
             
-            // Vitals data
-            $systolic_bp = !empty($_POST['systolic_bp']) ? (int)$_POST['systolic_bp'] : null;
-            $diastolic_bp = !empty($_POST['diastolic_bp']) ? (int)$_POST['diastolic_bp'] : null;
-            $heart_rate = !empty($_POST['heart_rate']) ? (int)$_POST['heart_rate'] : null;
-            $respiratory_rate = !empty($_POST['respiratory_rate']) ? (int)$_POST['respiratory_rate'] : null;
-            $temperature = !empty($_POST['temperature']) ? (float)$_POST['temperature'] : null;
-            $weight = !empty($_POST['weight']) ? (float)$_POST['weight'] : null;
-            $height = !empty($_POST['height']) ? (float)$_POST['height'] : null;
-            $vitals_remarks = trim($_POST['vitals_remarks'] ?? '');
+            // Validate vitals with medical ranges
+            $systolic_bp = filter_input(INPUT_POST, 'systolic_bp', FILTER_VALIDATE_INT, 
+                array("options" => array("min_range" => 60, "max_range" => 300)));
+            $diastolic_bp = filter_input(INPUT_POST, 'diastolic_bp', FILTER_VALIDATE_INT,
+                array("options" => array("min_range" => 30, "max_range" => 200)));
+            $heart_rate = filter_input(INPUT_POST, 'heart_rate', FILTER_VALIDATE_INT,
+                array("options" => array("min_range" => 30, "max_range" => 300)));
+            $respiratory_rate = filter_input(INPUT_POST, 'respiratory_rate', FILTER_VALIDATE_INT,
+                array("options" => array("min_range" => 5, "max_range" => 60)));
+            $temperature = filter_input(INPUT_POST, 'temperature', FILTER_VALIDATE_FLOAT,
+                array("options" => array("min_range" => 30.0, "max_range" => 45.0)));
+            $weight = filter_input(INPUT_POST, 'weight', FILTER_VALIDATE_FLOAT,
+                array("options" => array("min_range" => 1.0, "max_range" => 500.0)));
+            $height = filter_input(INPUT_POST, 'height', FILTER_VALIDATE_FLOAT,
+                array("options" => array("min_range" => 30.0, "max_range" => 250.0)));
+            $vitals_remarks = filter_var(trim($_POST['vitals_remarks'] ?? ''), FILTER_SANITIZE_STRING);
+            
+            // Limit remarks length
+            if (strlen($vitals_remarks) > 500) {
+                throw new Exception('Vitals remarks cannot exceed 500 characters.');
+            }
             
             // Calculate BMI if both weight and height are provided
             $bmi = null;
@@ -263,8 +281,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Validation
-            if (!$patient_id) {
-                throw new Exception('Please select a patient.');
+            if (!$patient_id || $patient_id <= 0) {
+                throw new Exception('Please select a valid patient.');
             }
             
             if (!$systolic_bp && !$diastolic_bp && !$heart_rate && !$temperature && !$weight && !$height) {
@@ -334,21 +352,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $conn->begin_transaction();
             
-            // Get form data
-            $patient_id = (int)($_POST['patient_id'] ?? 0);
-            $provided_vitals_id = !empty($_POST['vitals_id']) ? (int)$_POST['vitals_id'] : null;
+            // Get and validate form data
+            $patient_id = filter_input(INPUT_POST, 'patient_id', FILTER_VALIDATE_INT);
+            $provided_vitals_id = filter_input(INPUT_POST, 'vitals_id', FILTER_VALIDATE_INT);
             
-            // Consultation data
-            $chief_complaint = trim($_POST['chief_complaint'] ?? '');
-            $diagnosis = trim($_POST['diagnosis'] ?? '');
-            $treatment_plan = trim($_POST['treatment_plan'] ?? '');
-            $follow_up_date = !empty($_POST['follow_up_date']) ? $_POST['follow_up_date'] : null;
-            $remarks = trim($_POST['remarks'] ?? '');
-            $consultation_status = $_POST['consultation_status'] ?? 'ongoing';
+            // Consultation data with validation
+            $service_id = filter_input(INPUT_POST, 'service_id', FILTER_VALIDATE_INT);
+            $chief_complaint = filter_var(trim($_POST['chief_complaint'] ?? ''), FILTER_SANITIZE_STRING);
+            $diagnosis = filter_var(trim($_POST['diagnosis'] ?? ''), FILTER_SANITIZE_STRING);
+            $treatment_plan = filter_var(trim($_POST['treatment_plan'] ?? ''), FILTER_SANITIZE_STRING);
+            $follow_up_date = filter_input(INPUT_POST, 'follow_up_date', FILTER_SANITIZE_STRING);
+            $remarks = filter_var(trim($_POST['remarks'] ?? ''), FILTER_SANITIZE_STRING);
+            $consultation_status = in_array($_POST['consultation_status'] ?? '', ['ongoing', 'completed', 'follow_up_required']) 
+                ? $_POST['consultation_status'] : 'ongoing';
             
-            // Validation
-            if (!$patient_id) {
-                throw new Exception('Please select a patient.');
+            // Validate date format if provided
+            if ($follow_up_date && !DateTime::createFromFormat('Y-m-d', $follow_up_date)) {
+                throw new Exception('Invalid follow-up date format.');
+            }
+            
+            // Length validation
+            if (strlen($chief_complaint) > 1000) {
+                throw new Exception('Chief complaint cannot exceed 1000 characters.');
+            }
+            
+            if (strlen($diagnosis) > 1000) {
+                throw new Exception('Diagnosis cannot exceed 1000 characters.');
+            }
+            
+            if (strlen($treatment_plan) > 2000) {
+                throw new Exception('Treatment plan cannot exceed 2000 characters.');
+            }
+            
+            if (strlen($remarks) > 1000) {
+                throw new Exception('Remarks cannot exceed 1000 characters.');
+            }
+            
+            // Required field validation
+            if (!$patient_id || $patient_id <= 0) {
+                throw new Exception('Please select a valid patient.');
+            }
+            
+            if (!$service_id || $service_id <= 0) {
+                throw new Exception('Please select a valid service type.');
             }
             
             if (empty($chief_complaint)) {
@@ -387,14 +433,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Update existing consultation
                 $stmt = $conn->prepare("
                     UPDATE consultations SET
-                        vitals_id = ?, chief_complaint = ?, diagnosis = ?, 
+                        service_id = ?, vitals_id = ?, chief_complaint = ?, diagnosis = ?, 
                         treatment_plan = ?, follow_up_date = ?, remarks = ?,
                         consultation_status = ?, consulted_by = ?, updated_at = NOW()
                     WHERE consultation_id = ?
                 ");
                 $stmt->bind_param(
-                    'issssssii',
-                    $vitals_id, $chief_complaint, $diagnosis, $treatment_plan,
+                    'iissssssii',
+                    $service_id, $vitals_id, $chief_complaint, $diagnosis, $treatment_plan,
                     $follow_up_date, $remarks, $consultation_status, $employee_id, 
                     $existing_consultation['consultation_id']
                 );
@@ -404,14 +450,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Insert new consultation
                 $stmt = $conn->prepare("
                     INSERT INTO consultations (
-                        patient_id, vitals_id, chief_complaint, diagnosis, 
+                        patient_id, service_id, vitals_id, chief_complaint, diagnosis, 
                         treatment_plan, follow_up_date, remarks, consultation_status, 
                         consulted_by, attending_employee_id, consultation_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ");
                 $stmt->bind_param(
-                    'iissssssii',
-                    $patient_id, $vitals_id, $chief_complaint, $diagnosis,
+                    'iiissssssii',
+                    $patient_id, $service_id, $vitals_id, $chief_complaint, $diagnosis,
                     $treatment_plan, $follow_up_date, $remarks, $consultation_status,
                     $employee_id, $employee_id
                 );
@@ -445,6 +491,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Include reusable topbar component
 require_once $root_path . '/includes/topbar.php';
+
+// Fetch available services for dropdown
+$services = [];
+try {
+    $stmt = $conn->prepare("SELECT service_id, name FROM services WHERE service_id IN (1,2,3,4,5,6,7) ORDER BY service_id");
+    $stmt->execute();
+    $services = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+} catch (Exception $e) {
+    error_log("Error fetching services: " . $e->getMessage());
+    // Continue without services - form will still work
+}
 
 // If we have a selected patient after form submission, load their data
 if ($selected_patient_id) {
@@ -684,6 +741,29 @@ if ($selected_patient_id) {
             outline: none;
             border-color: #28a745;
             box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.1);
+        }
+
+        /* Checkbox styling for better integration */
+        .form-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin: 0;
+            cursor: pointer;
+            accent-color: #28a745;
+        }
+
+        .form-group label:has(input[type="checkbox"]) {
+            font-weight: 600;
+            color: #28a745;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-group label:has(input[type="checkbox"]) span {
+            user-select: none;
         }
 
         .btn {
@@ -942,7 +1022,7 @@ if ($selected_patient_id) {
         ]);
         ?>
 
-        <div class="profile-wrapper" style="margin: 0 200px;">
+        <div class="profile-wrapper">
             <!-- Role Information -->
             <div class="role-info">
                 <strong>Welcome, <?= htmlspecialchars($employee_name) ?> (<?= ucfirst($employee_role) ?>)</strong>
@@ -1224,6 +1304,19 @@ if ($selected_patient_id) {
                     <?php endif; ?>
                     
                     <div class="consultation-grid">
+                        
+                        <div class="form-group">
+                            <label>Service Type *</label>
+                            <select name="service_id" class="form-control" required>
+                                <option value="">Select Service Type</option>
+                                <?php foreach ($services as $service): ?>
+                                    <option value="<?= htmlspecialchars($service['service_id']) ?>">
+                                        <?= htmlspecialchars($service['name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
                         <div class="form-group">
                             <label>Chief Complaint *</label>
                             <textarea name="chief_complaint" class="form-control" placeholder="Patient's main concern or reason for visit..." required rows="3"></textarea>
@@ -1240,10 +1333,10 @@ if ($selected_patient_id) {
                         </div>
                         
                         <div class="form-group">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                                <input type="checkbox" id="requireFollowUp" onchange="toggleFollowUpDate()" style="transform: scale(1.2);">
-                                <label for="requireFollowUp" style="margin: 0; cursor: pointer;">Schedule Follow-up Date</label>
-                            </div>
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0.5rem;">
+                                <input type="checkbox" id="requireFollowUp" onchange="toggleFollowUpDate()" style="width: 18px; height: 18px; cursor: pointer;">
+                                <span>Schedule Follow-up Date</span>
+                            </label>
                             <input type="date" name="follow_up_date" id="followUpDateInput" class="form-control" min="<?= date('Y-m-d') ?>" style="display: none;" disabled>
                         </div>
                         
@@ -1602,15 +1695,32 @@ if ($selected_patient_id) {
             const dateInput = document.getElementById('followUpDateInput');
             
             if (checkbox.checked) {
-                // Show date input and enable it
+                // Show date input with smooth transition
                 dateInput.style.display = 'block';
                 dateInput.disabled = false;
-                dateInput.focus();
+                
+                // Small delay to ensure display is set before focusing
+                setTimeout(() => {
+                    dateInput.focus();
+                }, 50);
+                
+                // Add visual feedback
+                dateInput.style.opacity = '0';
+                setTimeout(() => {
+                    dateInput.style.transition = 'opacity 0.3s ease';
+                    dateInput.style.opacity = '1';
+                }, 10);
             } else {
-                // Hide date input, disable it, and clear value
-                dateInput.style.display = 'none';
-                dateInput.disabled = true;
-                dateInput.value = '';
+                // Hide date input with smooth transition
+                dateInput.style.transition = 'opacity 0.3s ease';
+                dateInput.style.opacity = '0';
+                
+                setTimeout(() => {
+                    dateInput.style.display = 'none';
+                    dateInput.disabled = true;
+                    dateInput.value = '';
+                    dateInput.style.transition = '';
+                }, 300);
             }
         }
 

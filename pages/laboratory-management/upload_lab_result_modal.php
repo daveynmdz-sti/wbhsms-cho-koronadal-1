@@ -1,5 +1,12 @@
 <?php
 // Lab result upload modal - using working pattern from simple test
+
+// Security headers
+header('X-Frame-Options: SAMEORIGIN');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 require_once '../../config/session/employee_session.php';
 require_once '../../config/db.php';
 
@@ -10,10 +17,11 @@ if (!isset($_SESSION['employee_id']) || !in_array($_SESSION['role_id'], $authori
     exit('Not authorized');
 }
 
-$item_id = $_GET['item_id'] ?? null;
-if (!$item_id) {
+// Validate and sanitize item_id
+$item_id = filter_input(INPUT_GET, 'item_id', FILTER_VALIDATE_INT);
+if (!$item_id || $item_id <= 0) {
     http_response_code(400);
-    exit('Item ID required');
+    exit('Valid Item ID required');
 }
 
 // Handle POST request (process upload) - Using working pattern
@@ -23,18 +31,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         error_log("Upload modal POST request received for item_id: $item_id");
         
-        // Validate required field
-        $result_text = trim($_POST['result_text'] ?? '');
+        // Validate required field with length limits
+        $result_text = filter_var(trim($_POST['result_text'] ?? ''), FILTER_SANITIZE_STRING);
         if (empty($result_text)) {
             error_log("Upload failed: result_text is empty");
             echo json_encode(['success' => false, 'message' => 'Result text is required']);
             exit;
         }
         
+        if (strlen($result_text) > 2000) {
+            echo json_encode(['success' => false, 'message' => 'Lab result text cannot exceed 2000 characters']);
+            exit;
+        }
+        
         // Combine results and remarks like in working version
         $remarks = "Results: " . $result_text;
         if (!empty($_POST['remarks'])) {
-            $remarks .= "\n\nRemarks: " . trim($_POST['remarks']);
+            $additional_remarks = filter_var(trim($_POST['remarks']), FILTER_SANITIZE_STRING);
+            if (strlen($additional_remarks) > 500) {
+                echo json_encode(['success' => false, 'message' => 'Additional remarks cannot exceed 500 characters']);
+                exit;
+            }
+            $remarks .= "\n\nRemarks: " . $additional_remarks;
         }
         
         error_log("Combined remarks: $remarks");

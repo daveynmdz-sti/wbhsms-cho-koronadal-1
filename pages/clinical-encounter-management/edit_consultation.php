@@ -1,6 +1,12 @@
 <?php
+// Security headers
+header('X-Frame-Options: SAMEORIGIN');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 // Resolve path to root directory using realpath for consistent path format
-$root_path = realpath(dirname(dirname(dirname(__FILE__))));
+$root_path = realpath(dirname(dirname(__DIR__)));
 
 // Include authentication and config
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
@@ -54,20 +60,35 @@ $error_message = '';
 
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_consultation'])) {
-    $chief_complaint = trim($_POST['chief_complaint'] ?? '');
-    $diagnosis = trim($_POST['diagnosis'] ?? '');
-    $treatment_plan = trim($_POST['treatment_plan'] ?? '');
-    $remarks = trim($_POST['remarks'] ?? '');
-    $consultation_status = $_POST['consultation_status'] ?? 'pending';
+    // Validate and sanitize inputs
+    $chief_complaint = filter_var(trim($_POST['chief_complaint'] ?? ''), FILTER_SANITIZE_STRING);
+    $diagnosis = filter_var(trim($_POST['diagnosis'] ?? ''), FILTER_SANITIZE_STRING);
+    $treatment_plan = filter_var(trim($_POST['treatment_plan'] ?? ''), FILTER_SANITIZE_STRING);
+    $remarks = filter_var(trim($_POST['remarks'] ?? ''), FILTER_SANITIZE_STRING);
+    $consultation_status = in_array($_POST['consultation_status'] ?? '', ['pending', 'completed', 'follow_up_required']) 
+        ? $_POST['consultation_status'] : 'pending';
     $follow_up_date = null;
     
-    // Handle follow-up date
+    // Handle follow-up date with validation
     if (isset($_POST['has_followup']) && $_POST['has_followup'] === '1' && !empty($_POST['follow_up_date'])) {
-        $follow_up_date = $_POST['follow_up_date'];
+        $follow_up_date = filter_input(INPUT_POST, 'follow_up_date', FILTER_SANITIZE_STRING);
+        // Validate date format
+        if ($follow_up_date && !DateTime::createFromFormat('Y-m-d', $follow_up_date)) {
+            $error_message = "Invalid follow-up date format.";
+            $follow_up_date = null;
+        }
     }
     
-    // Validation
-    if (empty($chief_complaint) || empty($diagnosis)) {
+    // Additional length validation
+    if (strlen($chief_complaint) > 1000) {
+        $error_message = "Chief complaint cannot exceed 1000 characters.";
+    } elseif (strlen($diagnosis) > 1000) {
+        $error_message = "Diagnosis cannot exceed 1000 characters.";
+    } elseif (strlen($treatment_plan) > 2000) {
+        $error_message = "Treatment plan cannot exceed 2000 characters.";
+    } elseif (strlen($remarks) > 1000) {
+        $error_message = "Remarks cannot exceed 1000 characters.";
+    } elseif (empty($chief_complaint) || empty($diagnosis)) {
         $error_message = "Chief Complaint and Diagnosis are required.";
     } else {
         try {
@@ -82,20 +103,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_consultation']
                 $update_stmt->bind_param("ssssssi", $chief_complaint, $diagnosis, $treatment_plan, $remarks, $consultation_status, $follow_up_date, $consultation_id);
                 
                 if ($update_stmt->execute()) {
-                $success_message = "Consultation updated successfully.";
-                
-                // Redirect to view consultation with success message
-                $success_param = urlencode("Consultation updated successfully by " . $employee_name);
-                header("Location: view_consultation.php?id=$consultation_id&success=" . $success_param);
-                exit();
-            } else {
-                $error_message = "Error updating consultation. Please try again.";
-            }
+                    $success_message = "Consultation updated successfully.";
+                    
+                    // Redirect to view consultation with success message
+                    $success_param = urlencode("Consultation updated successfully by " . $employee_name);
+                    header("Location: view_consultation.php?id=$consultation_id&success=" . $success_param);
+                    exit();
+                } else {
+                    $error_message = "Error updating consultation. Please try again.";
+                }
             } else {
                 $error_message = "Database error occurred.";
             }
         } catch (Exception $e) {
-            $error_message = "Error updating consultation: " . $e->getMessage();
+            error_log("Error updating consultation in edit_consultation.php: " . $e->getMessage());
+            $error_message = "Error updating consultation. Please try again.";
         }
     }
 }
