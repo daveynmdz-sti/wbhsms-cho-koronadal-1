@@ -5,16 +5,10 @@
 // Start output buffering to prevent header issues
 ob_start();
 
-// Security headers - must be sent before any output
-header('X-Frame-Options: DENY');
-header('X-XSS-Protection: 1; mode=block');
-header('X-Content-Type-Options: nosniff');
-header('Referrer-Policy: strict-origin-when-cross-origin');
-
-// Include employee session configuration - Use absolute path resolution
+// Include path resolution and security configuration first (includes CSP headers)
 $root_path = dirname(dirname(dirname(dirname(__DIR__))));
-require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/production_security.php';
+require_once $root_path . '/config/session/employee_session.php';
 
 // If user is not logged in, bounce to login
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {

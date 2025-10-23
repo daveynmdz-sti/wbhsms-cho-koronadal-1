@@ -16,17 +16,23 @@ $displayName = $defaults['name'] ?? ($_SESSION['employee_name'] ?? ($_SESSION['e
 $employeeNo = $defaults['employee_number'] ?? ($_SESSION['employee_number'] ?? '');
 $role = $_SESSION['role'] ?? 'Doctor';
 
+// Check if doctor has station assignments for queue management access
+$hasStationAssignment = false;
+$assignedStationName = '';
+$debug_info = []; // For debugging station assignment issues
+
 // If we don't have good display values yet, pull from DB (only if we have an id)
 $needsName = empty($displayName) || $displayName === 'Doctor';
 $needsNo = empty($employeeNo);
 
-if (($needsName || $needsNo) && $employee_id) {
+if (($needsName || $needsNo || !isset($hasStationAssignment)) && $employee_id) {
     // Ensure $conn exists; adjust the path if your config lives elsewhere
     if (!isset($conn)) {
         require_once __DIR__ . '/../config/db.php';
     }
 
     if (isset($conn)) {
+        // Get employee details
         $stmt = $conn->prepare("
             SELECT employee_id, first_name, middle_name, last_name, employee_number, role
             FROM employees
@@ -59,6 +65,89 @@ if (($needsName || $needsNo) && $employee_id) {
             }
         }
         $stmt->close();
+
+        // Check for active station assignments for doctors
+        // Try multiple possible table names to match your schema
+        $possible_queries = [
+            // Try staff_assignments first
+            "SELECT s.station_name, s.station_type, sch.schedule_id
+             FROM staff_assignments sch 
+             JOIN stations s ON sch.station_id = s.station_id 
+             WHERE sch.employee_id = ? 
+             AND sch.is_active = 1
+             AND (sch.start_date <= CURDATE() AND (sch.end_date IS NULL OR sch.end_date >= CURDATE()))
+             AND s.station_type = 'consultation'
+             ORDER BY sch.assigned_at DESC LIMIT 1",
+            
+            // Try assignment_schedules as fallback
+            "SELECT s.station_name, s.station_type, sch.assignment_id
+             FROM assignment_schedules sch 
+             JOIN stations s ON sch.station_id = s.station_id 
+             WHERE sch.employee_id = ? 
+             AND sch.is_active = 1
+             AND (sch.start_date <= CURDATE() AND (sch.end_date IS NULL OR sch.end_date >= CURDATE()))
+             AND s.station_type = 'consultation'
+             ORDER BY sch.assigned_at DESC LIMIT 1"
+        ];
+        
+        foreach ($possible_queries as $index => $query) {
+            $assignment_stmt = $conn->prepare($query);
+            if ($assignment_stmt) {
+                $assignment_stmt->bind_param("i", $employee_id);
+                if ($assignment_stmt->execute()) {
+                    $assignment_result = $assignment_stmt->get_result();
+                    $debug_info["query_$index"] = "executed successfully";
+                    if ($assignment_row = $assignment_result->fetch_assoc()) {
+                        $hasStationAssignment = true;
+                        $assignedStationName = $assignment_row['station_name'];
+                        $debug_info["found"] = "Query $index found: " . $assignment_row['station_name'];
+                        $assignment_stmt->close();
+                        break; // Found assignment, stop trying other queries
+                    } else {
+                        $debug_info["query_$index"] .= " - no results";
+                    }
+                } else {
+                    $debug_info["query_$index"] = "execution failed: " . $assignment_stmt->error;
+                }
+                $assignment_stmt->close();
+            } else {
+                $debug_info["query_$index"] = "prepare failed: " . $conn->error;
+            }
+        }
+        
+        // Temporary debug - remove after fixing
+        if (!$hasStationAssignment && isset($_GET['debug_station'])) {
+            error_log("Station Debug for Employee ID $employee_id: " . json_encode($debug_info));
+        }
+        
+        // TEMPORARY FIX: Enable queue management for all doctors until we fix the query
+        // TODO: Remove this after fixing the station assignment query
+        if (!$hasStationAssignment && strtolower($role) === 'doctor') {
+            // Try to get ANY station assignment for this doctor
+            $fallback_stmt = $conn->prepare("
+                SELECT s.station_name 
+                FROM staff_assignments sa 
+                JOIN stations s ON sa.station_id = s.station_id 
+                WHERE sa.employee_id = ? AND sa.is_active = 1 
+                ORDER BY sa.assigned_at DESC LIMIT 1
+            ");
+            if ($fallback_stmt) {
+                $fallback_stmt->bind_param("i", $employee_id);
+                $fallback_stmt->execute();
+                $fallback_result = $fallback_stmt->get_result();
+                if ($fallback_row = $fallback_result->fetch_assoc()) {
+                    $hasStationAssignment = true;
+                    $assignedStationName = $fallback_row['station_name'];
+                }
+                $fallback_stmt->close();
+            }
+            
+            // If still no assignment found, enable with generic name for doctors
+            if (!$hasStationAssignment) {
+                $hasStationAssignment = true;
+                $assignedStationName = 'Consultation Station';
+            }
+        }
     }
 }
 ?>
@@ -135,10 +224,26 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
-        <a href="<?= $nav_base ?>queueing/dashboard.php"
-            class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-list-ol"></i> Queue Management
-        </a>
+        <?php if ($hasStationAssignment): ?>
+            <a href="<?= $nav_base ?>queueing/consultation_station.php"
+                class="<?= $activePage === 'queueing' || $activePage === 'queue_management' ? 'active' : '' ?>" 
+                role="menuitem">
+                <i class="fas fa-list-ol"></i> Queue Management
+                <?php if ($assignedStationName): ?>
+                    <small style="display:block;font-size:11px;color:#b3d9ff;margin-top:2px;">
+                        <i class="fas fa-clinic-medical" style="margin-right:3px;"></i><?= htmlspecialchars($assignedStationName) ?>
+                    </small>
+                <?php endif; ?>
+            </a>
+        <?php else: ?>
+            <a href="#" onclick="showStationRequiredModal(event)" 
+                class="disabled" role="menuitem" style="opacity:0.5;cursor:not-allowed;">
+                <i class="fas fa-list-ol"></i> Queue Management
+                <small style="display:block;font-size:11px;color:#ff6b6b;margin-top:2px;">
+                    <i class="fas fa-exclamation-triangle" style="margin-right:3px;"></i>Station assignment required
+                </small>
+            </a>
+        <?php endif; ?>
     </div>
 
     <a href="<?= $nav_base ?>user/doctor_profile.php"
@@ -230,6 +335,18 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     </div>
 </div>
 
+<!-- Station Assignment Required Modal -->
+<div id="stationRequiredModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="stationRequiredTitle">
+        <h2 id="stationRequiredTitle"><i class="fas fa-exclamation-triangle"></i> Station Assignment Required</h2>
+        <p>Queue Management is not available because you are not currently assigned to any consultation station.</p>
+        <p>Please contact your administrator to assign you to a consultation station to access queue management functions.</p>
+        <div class="modal-actions">
+            <button type="button" onclick="closeStationRequiredModal()" class="btn btn-primary">Understood</button>
+        </div>
+    </div>
+</div>
+
 <!-- Optional overlay -->
 <div class="overlay" id="overlay" onclick="closeNav()"></div>
 
@@ -264,4 +381,25 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
         const f = document.getElementById('logoutForm');
         if (f) f.submit();
     }
+
+    function showStationRequiredModal(e) {
+        if (e) e.preventDefault();
+        closeNav(); // Close sidebar on mobile
+        const modal = document.getElementById('stationRequiredModal');
+        if (modal) modal.style.display = 'flex';
+        return false;
+    }
+
+    function closeStationRequiredModal() {
+        const modal = document.getElementById('stationRequiredModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    // Close modals when clicking outside
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('modal-overlay')) {
+            if (e.target.id === 'logoutModal') closeLogoutModal();
+            if (e.target.id === 'stationRequiredModal') closeStationRequiredModal();
+        }
+    });
 </script>

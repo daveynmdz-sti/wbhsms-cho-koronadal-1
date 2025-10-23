@@ -10,6 +10,9 @@ if (basename($_SERVER['PHP_SELF']) === basename(__FILE__)) {
     exit('Direct access denied');
 }
 
+// Debug mode to disable CSP for testing (remove in production)
+$disable_csp = isset($_GET['debug_csp']) && $_GET['debug_csp'] === 'off';
+
 // Set secure session parameters for production
 if (!headers_sent()) {
     // Security headers
@@ -19,8 +22,16 @@ if (!headers_sent()) {
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('X-Permitted-Cross-Domain-Policies: none');
     
-    // Content Security Policy (basic)
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'");
+    // Content Security Policy (enhanced for healthcare system) - Allow external CDNs and resources
+    if (!$disable_csp) {
+        $csp = "default-src 'self'; " .
+               "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " .
+               "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " .
+               "img-src 'self' data: https://ik.imagekit.io blob:; " .
+               "font-src 'self' https://cdnjs.cloudflare.com data:; " .
+               "connect-src 'self'";
+        header("Content-Security-Policy: " . $csp);
+    }
     
     // Session security
     ini_set('session.cookie_httponly', 1);

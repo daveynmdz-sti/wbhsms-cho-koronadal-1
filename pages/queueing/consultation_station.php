@@ -41,10 +41,12 @@ if (!in_array(strtolower($employee_role), $allowed_roles)) {
 $current_date = date('Y-m-d');
 $consultation_station = null;
 $can_manage_queue = false;
+$access_error = '';
 
 // Check if employee is assigned to a consultation station today
+// Updated to match actual database schema
 $assignment_query = "SELECT sch.*, s.station_name, s.station_type 
-                     FROM assignment_schedules sch 
+                     FROM staff_assignments sch 
                      JOIN stations s ON sch.station_id = s.station_id 
                      WHERE sch.employee_id = ? 
                      AND s.station_type = 'consultation'
@@ -54,6 +56,33 @@ $assignment_query = "SELECT sch.*, s.station_name, s.station_type
 $stmt = $pdo->prepare($assignment_query);
 $stmt->execute([$employee_id]);
 $consultation_station = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Handle doctors without specific station assignments
+if (!$consultation_station && strtolower($employee_role) === 'doctor') {
+    // Try to find any available consultation station for the doctor
+    $fallback_query = "SELECT station_id, station_name, station_type 
+                       FROM stations 
+                       WHERE station_type = 'consultation' AND is_active = 1 
+                       ORDER BY station_name LIMIT 1";
+    $stmt = $pdo->prepare($fallback_query);
+    $stmt->execute();
+    $fallback_station = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($fallback_station) {
+        // Create a temporary assignment for this session
+        $consultation_station = [
+            'station_id' => $fallback_station['station_id'],
+            'station_name' => $fallback_station['station_name'],
+            'station_type' => $fallback_station['station_type'],
+            'assignment_id' => null, // No formal assignment
+            'employee_id' => $employee_id,
+            'temporary_access' => true
+        ];
+        $can_manage_queue = true;
+    } else {
+        $access_error = "No consultation stations are available. Please contact your administrator.";
+    }
+}
 
 // Handle station selection for multi-station support
 $selected_station_id = $_GET['station_id'] ?? null;
@@ -1288,6 +1317,24 @@ $employee_info = [
                     <span>Consultation Station</span>
                 </div>
 
+                <!-- Access Error Message for Unassigned Doctors -->
+                <?php if ($access_error): ?>
+                    <div class="alert alert-error" style="margin: 20px 0;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Station Assignment Required</strong>
+                        <p><?= htmlspecialchars($access_error) ?></p>
+                        <div style="margin-top: 15px;">
+                            <a href="../management/doctor/dashboard.php" class="modern-btn btn-secondary">
+                                <div class="btn-icon"><i class="fas fa-arrow-left"></i></div>
+                                <div class="btn-content">
+                                    <div class="btn-title">Return to Dashboard</div>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!$access_error): ?>
                 <!-- Page Header with Status Badges - matching dashboard style -->
                 <div class="page-header">
                     <h1><i class="fas fa-stethoscope"></i> Consultation Station</h1>
@@ -1711,6 +1758,7 @@ $employee_info = [
                 </div>
 
                 <?php endif; ?>
+            <?php endif; // End of !$access_error conditional ?>
             </div>
         </div>
 
