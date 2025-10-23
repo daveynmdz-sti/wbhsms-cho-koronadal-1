@@ -1,4 +1,4 @@
-<?php
+appointment-card<?php
 // Start output buffering at the very beginning
 ob_start();
 
@@ -956,7 +956,6 @@ try {
         }
 
         .appointment-id {
-            background: #0077b6;
             color: white;
             padding: 0.5rem 1rem;
             border-radius: 6px;

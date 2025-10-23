@@ -50,6 +50,56 @@ if (!in_array(strtolower($employee_role), $allowed_roles)) {
     exit();
 }
 
+// Dynamic back URL detection based on referrer
+$back_url = 'billing_management.php'; // Default fallback
+$referrer = $_SERVER['HTTP_REFERER'] ?? '';
+
+if (!empty($referrer)) {
+    // Parse the referrer URL to determine the source page
+    $parsed_url = parse_url($referrer);
+    $referrer_path = $parsed_url['path'] ?? '';
+    
+    // Check different possible sources
+    if (strpos($referrer_path, 'billing_station.php') !== false) {
+        // Coming from billing station - go back to billing station
+        $back_url = '../queueing/billing_station.php';
+    } elseif (strpos($referrer_path, 'cashier/dashboard.php') !== false) {
+        // Coming from cashier dashboard - go back to dashboard
+        $back_url = '../management/cashier/dashboard.php';
+    } elseif (strpos($referrer_path, 'billing_management.php') !== false) {
+        // Coming from billing management - stay with default
+        $back_url = 'billing_management.php';
+    } elseif (strpos($referrer_path, 'admin/dashboard.php') !== false) {
+        // Coming from admin dashboard
+        $back_url = '../management/admin/dashboard.php';
+    } elseif (strpos($referrer_path, 'create_invoice.php') !== false) {
+        // Coming from create invoice - go back to create invoice with preserved params
+        $back_url = 'create_invoice.php';
+    }
+}
+
+// Also check for explicit back_from parameter in URL
+if (isset($_GET['back_from'])) {
+    switch ($_GET['back_from']) {
+        case 'billing_station':
+            $back_url = '../queueing/billing_station.php';
+            break;
+        case 'cashier_dashboard':
+            $back_url = '../management/cashier/dashboard.php';
+            break;
+        case 'admin_dashboard':
+            $back_url = '../management/admin/dashboard.php';
+            break;
+        case 'create_invoice':
+            $back_url = 'create_invoice.php';
+            break;
+        case 'billing_management':
+        default:
+            $back_url = 'billing_management.php';
+            break;
+    }
+}
+
 // Include reusable topbar component
 require_once $root_path . '/includes/topbar.php';
 
@@ -1463,7 +1513,7 @@ if ($payment_success_data) {
 <body>
     <?php renderTopbar([
         'title' => 'Process Payment',
-        'back_url' => 'billing_management.php',
+        'back_url' => $back_url,
         'user_type' => 'employee'
     ]); ?>
 
@@ -1471,7 +1521,7 @@ if ($payment_success_data) {
         <?php
         // Render back button with modal
         renderBackButton([
-            'back_url' => 'billing_management.php',
+            'back_url' => $back_url,
             'button_text' => '← Back / Cancel',
             'modal_title' => 'Cancel Payment Processing?',
             'modal_message' => 'Are you sure you want to go back/cancel? Any unsaved changes will be lost.',
@@ -1867,7 +1917,7 @@ if ($payment_success_data) {
                                     <i class="fas fa-bolt"></i>
                                     <span>Direct Submit (Debug)</span>
                                 </button>
-                                <button type="button" class="btn btn-secondary btn-large" onclick="window.history.back();">
+                                <button type="button" class="btn btn-secondary btn-large" onclick="window.location.href='<?= htmlspecialchars($back_url) ?>';">
                                     <i class="fas fa-arrow-left"></i>
                                     <span>Cancel & Go Back</span>
                                 </button>
@@ -2200,7 +2250,7 @@ if ($payment_success_data) {
 
         // Go to dashboard
         function goToDashboard() {
-            window.location.href = 'billing_management.php';
+            window.location.href = '<?= htmlspecialchars($back_url) ?>';
         }
 
         // Process new payment

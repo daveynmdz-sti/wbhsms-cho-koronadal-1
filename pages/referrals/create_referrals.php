@@ -185,19 +185,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $final_referral_reason .= "\n\nRequested Service: " . $custom_service_name;
             }
             
+            // Determine referral status based on destination
+            $referral_status = 'active'; // Default status for internal referrals
+            if ($referred_to_facility_id === null && !empty($external_facility_name)) {
+                $referral_status = 'issued'; // Status for external referrals
+            }
+            
             // Insert referral
             $stmt = $conn->prepare("
                 INSERT INTO referrals (
                     referral_num, patient_id, referring_facility_id, referred_to_facility_id, 
                     external_facility_name, vitals_id, service_id, referral_reason, 
                     destination_type, referred_by, referral_date, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'active')
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
             ");
             $stmt->bind_param(
-                'siiisisssi',
+                'siiisisssis',
                 $referral_num, $patient_id, $employee_facility_id, $referred_to_facility_id,
                 $external_facility_name, $vitals_id, $final_service_id, $final_referral_reason,
-                $destination_type, $employee_id
+                $destination_type, $employee_id, $referral_status
             );
             $stmt->execute();
             

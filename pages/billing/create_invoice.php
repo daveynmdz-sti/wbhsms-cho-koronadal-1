@@ -47,6 +47,50 @@ if (!in_array(strtolower($employee_role), $allowed_roles)) {
     exit();
 }
 
+// Dynamic back URL detection based on referrer
+$back_url = 'billing_management.php'; // Default fallback
+$referrer = $_SERVER['HTTP_REFERER'] ?? '';
+
+if (!empty($referrer)) {
+    // Parse the referrer URL to determine the source page
+    $parsed_url = parse_url($referrer);
+    $referrer_path = $parsed_url['path'] ?? '';
+    
+    // Check different possible sources
+    if (strpos($referrer_path, 'billing_station.php') !== false) {
+        // Coming from billing station - go back to billing station
+        $back_url = '../queueing/billing_station.php';
+    } elseif (strpos($referrer_path, 'cashier/dashboard.php') !== false) {
+        // Coming from cashier dashboard - go back to dashboard
+        $back_url = '../management/cashier/dashboard.php';
+    } elseif (strpos($referrer_path, 'billing_management.php') !== false) {
+        // Coming from billing management - stay with default
+        $back_url = 'billing_management.php';
+    } elseif (strpos($referrer_path, 'admin/dashboard.php') !== false) {
+        // Coming from admin dashboard
+        $back_url = '../management/admin/dashboard.php';
+    }
+}
+
+// Also check for explicit back_from parameter in URL
+if (isset($_GET['back_from'])) {
+    switch ($_GET['back_from']) {
+        case 'billing_station':
+            $back_url = '../queueing/billing_station.php';
+            break;
+        case 'cashier_dashboard':
+            $back_url = '../management/cashier/dashboard.php';
+            break;
+        case 'admin_dashboard':
+            $back_url = '../management/admin/dashboard.php';
+            break;
+        case 'billing_management':
+        default:
+            $back_url = 'billing_management.php';
+            break;
+    }
+}
+
 // Include reusable topbar component
 require_once $root_path . '/includes/topbar.php';
 
@@ -597,7 +641,7 @@ try {
     // Render topbar
     renderTopbar([
         'title' => 'Create New Invoice',
-        'back_url' => 'billing_management.php',
+        'back_url' => $back_url,
         'user_type' => 'employee',
         'vendor_path' => $vendor_path . '/'
     ]);
@@ -607,7 +651,7 @@ try {
         <?php
         // Render back button with modal
         renderBackButton([
-            'back_url' => 'billing_management.php',
+            'back_url' => $back_url,
             'button_text' => '← Back / Cancel',
             'modal_title' => 'Cancel Creating Invoice?',
             'modal_message' => 'Are you sure you want to go back/cancel? Unsaved changes will be lost.',
@@ -855,7 +899,7 @@ try {
                         <button type="submit" class="btn btn-success" id="create-invoice-btn" disabled>
                             <i class="fas fa-plus"></i> Create Invoice
                         </button>
-                        <button type="button" class="btn btn-secondary" onclick="window.location.href='billing_management.php'">
+                        <button type="button" class="btn btn-secondary" onclick="window.location.href='<?= htmlspecialchars($back_url) ?>'">
                             <i class="fas fa-times"></i> Cancel
                         </button>
                     </div>
@@ -1226,7 +1270,7 @@ try {
 
         function goToProcessPayment() {
             const invoiceId = document.getElementById('success-invoice-id').textContent;
-            window.location.href = `process_payment.php?invoice_id=${invoiceId}`;
+            window.location.href = `process_payment.php?billing_id=${invoiceId}&back_from=create_invoice`;
         }
 
         function createNewInvoice() {

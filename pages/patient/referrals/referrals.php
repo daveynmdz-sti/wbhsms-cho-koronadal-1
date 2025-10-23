@@ -768,14 +768,6 @@ try {
                                     <span class="value"><?php echo htmlspecialchars($referral['referral_reason']); ?></span>
                                 </div>
                                 <?php endif; ?>
-                                
-                                <?php if (!empty($referral['validity_date'])): ?>
-                                <div class="info-row">
-                                    <i class="fas fa-clock"></i>
-                                    <strong>Valid Until:</strong>
-                                    <span class="value"><?php echo date('M j, Y', strtotime($referral['validity_date'])); ?></span>
-                                </div>
-                                <?php endif; ?>
                             </div>
                             
                             <div class="card-actions">
@@ -793,9 +785,9 @@ try {
                                     <i class="fas fa-print"></i> Print
                                 </button>
                                 
-                                <button type="button" class="btn btn-outline btn-outline-success btn-sm" onclick="downloadReferral(<?php echo $referral['referral_id']; ?>)">
+                                <!-- <button type="button" class="btn btn-outline btn-outline-success btn-sm" onclick="downloadReferral(<?php /*echo $referral['referral_id']; */?>)">
                                     <i class="fas fa-download"></i> Download
-                                </button>
+                                </button> -->
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -1015,7 +1007,7 @@ try {
             console.log('Referral ID:', referralId);
 
             try {
-                const response = await fetch(`../../../api/get_referral_details.php?referral_id=${referralId}`);
+                const response = await fetch(`../../../api/patient_referral_details.php?referral_id=${referralId}`);
                 console.log('Response status:', response.status);
                 console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
@@ -1059,7 +1051,7 @@ try {
             }
         }
 
-        // Print Referral Function (Using Admin API)
+        // Print Referral Function (Using HTML Print View)
         function printReferral(referralId) {
             console.log('Print referral:', referralId);
 
@@ -1068,19 +1060,19 @@ try {
                 return;
             }
 
-            // Open PDF in popup window for preview and printing (using admin API)
-            const pdfUrl = `../../../api/generate_referral_pdf.php?referral_id=${referralId}&display=inline`;
+            // Open print view in popup window
+            const printUrl = `../../../api/patient_referral_print.php?referral_id=${referralId}`;
             const popup = window.open(
-                pdfUrl,
+                printUrl,
                 'referralPrint',
-                'width=800,height=600,scrollbars=yes,resizable=yes'
+                'width=800,height=900,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no'
             );
 
             if (popup) {
                 popup.focus();
-                showNotification('PDF opened in popup. Use Ctrl+P to print.', 'success');
+                showNotification('Print view opened. Use Ctrl+P to print or click the Print button.', 'success');
             } else {
-                showNotification('Please allow popups to view PDF', 'error');
+                showNotification('Please allow popups to view print preview', 'error');
             }
         }
 
@@ -1094,19 +1086,19 @@ try {
             }
 
             try {
-                // Open PDF in popup window for preview and download
-                const pdfUrl = `../../../api/generate_referral_pdf.php?referral_id=${referralId}&display=inline`;
+                // Open print view in popup window (users can save as PDF from browser)
+                const printUrl = `../../../api/patient_referral_print.php?referral_id=${referralId}`;
                 const popup = window.open(
-                    pdfUrl,
+                    printUrl,
                     'referralDownload',
-                    'width=800,height=600,scrollbars=yes,resizable=yes'
+                    'width=800,height=900,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no'
                 );
 
                 if (popup) {
                     popup.focus();
-                    showNotification('PDF opened in popup. Use browser controls to download.', 'success');
+                    showNotification('Print view opened. Use Ctrl+P to print or save as PDF from browser.', 'success');
                 } else {
-                    showNotification('Please allow popups to view PDF', 'error');
+                    showNotification('Please allow popups to view print preview', 'error');
                 }
             } catch (error) {
                 console.error('Download error:', error);

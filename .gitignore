@@ -43,3 +43,18 @@ Icon?
 # Keep essential test files but ignore specific debug files
 # Note: testdb.php in root is kept for XAMPP users
 tests/mail_error.log
+
+# Temporary debug and diagnostic files
+debug_*.php
+*_diagnostic.php
+*_debug.php
+*_simulator.php
+quick_*.php
+test_*.php
+remote_diagnostic.php
+connection_test.php
+database_importer.php
+
+# Database backups (but keep main SQL files)
+database/backups/
+*.sql.backup

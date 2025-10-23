@@ -119,10 +119,6 @@ $vendor_path = $base_path . '/vendor/photo_controller.php';
             class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-calendar-check"></i> My Appointments
         </a>
-        <a href="<?= $nav_base ?>queueing/queue_status.php"
-            class="<?= $activePage === 'queue_status' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-ticket-alt"></i> My Queue Status
-        </a>
         <a href="<?= $nav_base ?>referrals/referrals.php"
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-medical"></i> Medical Referrals
@@ -139,9 +135,13 @@ $vendor_path = $base_path . '/vendor/photo_controller.php';
             class="<?= $activePage === 'laboratory' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-flask"></i> Laboratory
         </a>
-    <a href="<?= $nav_base ?>billing/billing.php"
+        <a href="<?= $nav_base ?>billing/billing.php"
             class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-invoice-dollar"></i> Billing
+        </a>
+        <a href="<?= $nav_base ?>queueing/queue_status.php"
+            class="<?= $activePage === 'queue_status' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-ticket-alt"></i> My Queue Status
         </a>
     </div>
 
@@ -180,13 +180,15 @@ $logoutUrl = '';
 
 if (strpos($_SERVER['PHP_SELF'], '/pages/patient/') !== false) {
     // Called from patient pages (most common case)
-    if (strpos($_SERVER['PHP_SELF'], '/pages/patient/appointment/') !== false || 
-            strpos($_SERVER['PHP_SELF'], '/pages/patient/billing/') !== false ||
+    if (
+        strpos($_SERVER['PHP_SELF'], '/pages/patient/appointment/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/patient/billing/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/patient/laboratory/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/patient/prescription/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/patient/profile/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/patient/queueing/') !== false ||
-        strpos($_SERVER['PHP_SELF'], '/pages/patient/referrals/') !== false) {
+        strpos($_SERVER['PHP_SELF'], '/pages/patient/referrals/') !== false
+    ) {
         // Called from subfolders within patient (3 levels deep)
         $logoutUrl = '../auth/logout.php';
     } else {

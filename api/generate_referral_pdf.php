@@ -1,6 +1,6 @@
 <?php
 /**
- * Generate Referral PDF
+ * Generate Referral PDF  
  * Creates a downloadable PDF of referral details
  */
 
@@ -8,16 +8,54 @@
 $root_path = dirname(__DIR__);
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
-require_once $root_path . '/vendor/autoload.php';
 
-// Use Dompdf
-use Dompdf\Dompdf;
-use Dompdf\Options;
+// Try to load Composer autoloader
+$dompdf_available = false;
+if (file_exists($root_path . '/vendor/autoload.php')) {
+    require_once $root_path . '/vendor/autoload.php';
+    $dompdf_available = class_exists('Dompdf\Dompdf') && class_exists('Dompdf\Options');
+}
+
+// If dompdf is not available, show user-friendly error page or redirect to HTML print
+if (!$dompdf_available) {
+    $referral_id = $_GET['referral_id'] ?? '';
+    $display = $_GET['display'] ?? 'inline';
+    
+    // Check if this is an AJAX request or API call
+    $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+    
+    if ($is_ajax) {
+        // Return JSON error response for AJAX requests
+        http_response_code(503);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => 'PDF generation is temporarily unavailable. Please use the print view instead.',
+            'fallback_url' => "patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display)
+        ]);
+        exit();
+    } else {
+        // Redirect to HTML print version with informational message
+        $message = urlencode("PDF generation is currently unavailable. Using print-friendly view instead.");
+        header("Location: patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display) . "&info_message=" . $message);
+        exit();
+    }
+}
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
+    exit();
+}
+
+// If dompdf is not available, redirect to HTML print view
+if (!$dompdf_available) {
+    $referral_id = $_GET['referral_id'] ?? '';
+    $display = $_GET['display'] ?? 'inline';
+    
+    // Redirect to HTML print version with appropriate parameters
+    header("Location: patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display));
     exit();
 }
 
@@ -469,14 +507,14 @@ try {
     </body>
     </html>';
 
-    // Configure Dompdf
-    $options = new Options();
+    // Configure Dompdf using fully qualified class names
+    $options = new \Dompdf\Options();
     $options->set('defaultFont', 'Times New Roman');
     $options->set('isRemoteEnabled', true);
     $options->set('isHtml5ParserEnabled', true);
 
     // Create Dompdf instance
-    $dompdf = new Dompdf($options);
+    $dompdf = new \Dompdf\Dompdf($options);
     $dompdf->loadHtml($html);
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();

@@ -126,15 +126,19 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
         </a>
         <a href="<?= $nav_base ?>billing/create_invoice.php"
             class="<?= $activePage === 'create_invoice' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-file-invoice"></i> Create Invoice
+            <i class="fas fa-file-invoice-dollar"></i> Create Invoice
         </a>
         <a href="<?= $nav_base ?>billing/process_payment.php"
             class="<?= $activePage === 'process_payment' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-credit-card"></i> Process Payment
+            <i class="fas fa-cash-register"></i> Process Payment
         </a>
         <a href="<?= $nav_base ?>billing/billing_reports.php"
             class="<?= $activePage === 'billing_reports' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-chart-line"></i> Billing Reports
+        </a>
+        <a href="<?= $nav_base ?>queueing/billing_station.php"
+            class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-list-ol"></i> Queue Management
         </a>
     </div>
 

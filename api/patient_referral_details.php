@@ -39,7 +39,7 @@ try {
     $stmt = $conn->prepare("
         SELECT r.referral_id, r.referral_num, r.patient_id, r.referral_reason, 
                r.destination_type, r.referred_to_facility_id, r.external_facility_name,
-               r.referral_date, r.status, r.referred_by, r.service_id, r.validity_date,
+               r.referral_date, r.status, r.referred_by, r.service_id,
                p.first_name, p.middle_name, p.last_name, p.username as patient_number,
                p.date_of_birth, p.sex, p.contact_number,
                b.barangay_name as barangay,
