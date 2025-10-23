@@ -10,6 +10,7 @@ $root_path = realpath(dirname(dirname(__DIR__)));
 
 // Include authentication and config
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'production_security.php';
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.php';
 
 // Check if employee is logged in
@@ -73,7 +74,6 @@ try {
                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
                b.barangay_name, d.district_name,
                doc.first_name as doctor_first_name, doc.last_name as doctor_last_name,
-               doc.specialization as doctor_specialization,
                s.name as service_name,
                -- Get linked vitals information
                v.vitals_id, v.systolic_bp, v.diastolic_bp, v.heart_rate, v.respiratory_rate,
@@ -677,9 +677,6 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                             <div class="info-value">
                                 <?php if ($consultation_data['doctor_first_name']): ?>
                                     Dr. <?= htmlspecialchars($consultation_data['doctor_first_name'] . ' ' . $consultation_data['doctor_last_name']) ?>
-                                    <?php if ($consultation_data['doctor_specialization']): ?>
-                                        <br><small>(<?= htmlspecialchars($consultation_data['doctor_specialization']) ?>)</small>
-                                    <?php endif; ?>
                                 <?php else: ?>
                                     Not assigned
                                 <?php endif; ?>

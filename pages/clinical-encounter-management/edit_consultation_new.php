@@ -109,12 +109,11 @@ try {
         exit();
     }
     
-    // Check if doctor can only edit their own consultations (unless admin)
-    if ($employee_role === 'doctor' && 
-        $consultation_data['consulted_by'] != $employee_id && 
-        $consultation_data['attending_employee_id'] != $employee_id) {
-        header('Location: view_consultation.php?id=' . $consultation_id . '&error=edit_permission_denied');
-        exit();
+    // Doctors and admins can edit any consultation
+    // Only restrict access for non-doctor/admin roles if needed
+    if (!in_array($employee_role, ['doctor', 'admin'])) {
+        // For future implementation: Add role-specific restrictions for nurses, etc.
+        // Currently allowing all authorized roles to edit consultations
     }
     
     $patient_data = $consultation_data;
