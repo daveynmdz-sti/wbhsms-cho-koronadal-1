@@ -11,16 +11,8 @@ require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
 // Check if user is logged in and has cashier/admin privileges
-if (!is_employee_logged_in()) {
-    header("Location: ../auth/employee_login.php");
-    exit();
-}
-
-$employee_role = get_employee_session('role');
-if (!in_array($employee_role, ['cashier', 'admin'])) {
-    header("Location: ../dashboard.php?error=Access denied");
-    exit();
-}
+require_employee_login();
+require_employee_role(['cashier', 'admin']);
 
 $employee_id = get_employee_session('employee_id');
 $employee_name = get_employee_session('first_name') . ' ' . get_employee_session('last_name');

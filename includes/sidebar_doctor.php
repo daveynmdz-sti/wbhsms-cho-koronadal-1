@@ -64,34 +64,31 @@ if (($needsName || $needsNo) && $employee_id) {
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <?php
-// Get the proper base URL by extracting the project folder from the request URI
+// Get the proper base URL by extracting the project folder from the script name
 $request_uri = $_SERVER['REQUEST_URI'];
 $script_name = $_SERVER['SCRIPT_NAME'];
 
 // Extract the base path (project folder) from the script name
 // For example: /wbhsms-cho-koronadal/pages/management/doctor/dashboard.php -> /wbhsms-cho-koronadal/
-if (preg_match('#^(.*?)/pages/#', $script_name, $matches)) {
-    $base_path = $matches[1];
+if (preg_match('#^(/[^/]+)/pages/#', $script_name, $matches)) {
+    $base_path = $matches[1] . '/';
 } else {
-    // Fallback: try to extract from REQUEST_URI
+    // Fallback: try to extract from REQUEST_URI - first segment should be project folder
     $uri_parts = explode('/', trim($request_uri, '/'));
-    if (count($uri_parts) > 0 && $uri_parts[0] !== 'pages') {
-        $base_path = '/' . $uri_parts[0];
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0] . '/';
     } else {
-        $base_path = '';
+        $base_path = '/';
     }
 }
 
-// Ensure base_path ends with / if it's not empty
-if ($base_path && !str_ends_with($base_path, '/')) {
-    $base_path .= '/';
-}
-
-$cssPath = $base_path . 'assets/css/sidebar.css';
-$vendorPath = $base_path . 'vendor/photo_controller.php';
+// Create absolute URL for vendor path to fix photo loading
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
 $nav_base = $base_path . 'pages/';
 ?>
-<link rel="stylesheet" href="<?= $cssPath ?>">
+<!-- CSS is included by the main page, not the sidebar -->
 
 <!-- Mobile topbar -->
 <div class="mobile-topbar">
@@ -119,36 +116,32 @@ $nav_base = $base_path . 'pages/';
             <i class="fas fa-home"></i> Dashboard
         </a>
         <a href="<?= $nav_base ?>management/doctor/patient_records_management.php"
-            class="<?= $activePage === 'medical_records' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-file-medical"></i> Patient Medical Records
+            class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-users"></i> Patient Records
         </a>
         <a href="<?= $nav_base ?>referrals/referrals_management.php"
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-share"></i> Referrals Management
-        </a>
-        <a href="<?= $nav_base ?>management/doctor/patient_consultations.php"
-            class="<?= $activePage === 'consultations' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-stethoscope"></i> Consultations
+            <i class="fas fa-share-square"></i> Referral Management
         </a>
         <a href="<?= $nav_base ?>clinical-encounter-management/index.php"
             class="<?= $activePage === 'clinical_encounters' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-notes-medical"></i> Clinical Encounters
-        </a>
-        <a href="<?= $nav_base ?>prescription-management/prescription_management.php"
-            class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
+            <i class="fas fa-stethoscope"></i> Clinical Encounters
         </a>
         <a href="<?= $nav_base ?>laboratory-management/lab_management.php"
             class="<?= $activePage === 'laboratory_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-flask"></i> Laboratory Management
         </a>
-        <a href="<?= $nav_base ?>management/doctor/patient_history.php"
-            class="<?= $activePage === 'patient_history' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-history"></i> Patient History
+        <a href="<?= $nav_base ?>prescription-management/prescription_management.php"
+            class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
+        </a>
+        <a href="<?= $nav_base ?>queueing/dashboard.php"
+            class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-list-ol"></i> Queue Management
         </a>
     </div>
 
-    <a href="<?= $nav_base ?>user/admin_profile.php"
+    <a href="<?= $nav_base ?>user/doctor_profile.php"
         class="<?= $activePage === 'profile' ? 'active' : '' ?>" aria-label="View profile">
         <div class="user-profile">
             <div class="user-info">
@@ -175,7 +168,7 @@ $nav_base = $base_path . 'pages/';
     </a>
 
     <div class="user-actions">
-        <a href="<?= $nav_base ?>user/admin_settings.php"><i class="fas fa-cog"></i> Settings</a>
+        <a href="<?= $nav_base ?>user/doctor_settings.php"><i class="fas fa-cog"></i> Settings</a>
         <a href="#" onclick="showLogoutModal(event)"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
 </nav>

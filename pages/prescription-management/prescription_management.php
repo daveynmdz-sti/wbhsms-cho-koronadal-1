@@ -13,11 +13,8 @@ include $root_path . '/config/db.php';
 // Use relative path for assets - more reliable than absolute URLs
 $assets_path = '../../assets';
 
-// Check if user is logged in
-if (!isset($_SESSION['employee_id'])) {
-    header("Location: ../auth/employee_login.php");
-    exit();
-}
+// Check if user is logged in - use the session system for proper redirect
+require_employee_login();
 
 // Set active page for sidebar highlighting
 $activePage = 'prescription_management';
@@ -942,7 +939,11 @@ try {
                                     </td>
                                     <td>
                                         <button class="action-btn btn-view" onclick="viewUpdatePrescription(<?= $prescription['prescription_id'] ?>)">
-                                            <i class="fas fa-edit"></i> View / Update
+                                            <?php if ($canUpdateMedications): ?>
+                                                <i class="fas fa-edit"></i> View / Update
+                                            <?php else: ?>
+                                                <i class="fas fa-eye"></i> View Details
+                                            <?php endif; ?>
                                         </button>
                                     </td>
                                 </tr>
@@ -1233,7 +1234,13 @@ try {
     <div id="viewUpdatePrescriptionModal" class="modal">
         <div class="modal-content" style="max-width: 95%; max-height: 95%;">
             <div class="modal-header">
-                <h3><i class="fas fa-prescription"></i> View / Update Prescription</h3>
+                <h3><i class="fas fa-prescription"></i> 
+                    <?php if ($canUpdateMedications): ?>
+                        View / Update Prescription
+                    <?php else: ?>
+                        View Prescription Details
+                    <?php endif; ?>
+                </h3>
                 <div class="modal-actions">
                     <button class="download-btn" onclick="downloadPrescriptionPDF()" title="Download PDF">
                         <i class="fas fa-download"></i> Download PDF

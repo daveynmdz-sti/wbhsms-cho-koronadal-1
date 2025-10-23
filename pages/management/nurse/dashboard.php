@@ -8,29 +8,9 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 
-// Authentication check - refactored to eliminate redirect loops
-// Check 1: Is the user logged in at all?
-if (!isset($_SESSION['employee_id']) || empty($_SESSION['employee_id'])) {
-    // User is not logged in - redirect to login
-    error_log('Nurse Dashboard: No session found, redirecting to login');
-    header('Location: ../auth/employee_login.php');
-    exit();
-}
-
-// Check 2: Does the user have the correct role?
-if (!isset($_SESSION['role']) || strtolower($_SESSION['role']) !== 'nurse') {
-    // User is logged in but has wrong role - log and redirect
-    error_log('Access denied to nurse dashboard - User: ' . $_SESSION['employee_id'] . ' with role: ' . 
-              ($_SESSION['role'] ?? 'none'));
-    
-    // Clear any redirect loop detection
-    unset($_SESSION['redirect_attempt']);
-    
-    // Return to login with access denied message
-    $_SESSION['flash'] = array('type' => 'error', 'msg' => 'Access denied. You do not have permission to view that page.');
-    header('Location: ../auth/employee_login.php?access_denied=1');
-    exit();
-}
+// Authentication check - use session system for proper redirects
+require_employee_login();
+require_employee_role(['nurse']);
 
 
 // Log session data for debugging

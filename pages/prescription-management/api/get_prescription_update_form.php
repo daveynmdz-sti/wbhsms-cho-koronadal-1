@@ -11,8 +11,8 @@ if (!isset($_SESSION['employee_id'])) {
     exit();
 }
 
-// Check permissions
-$canUpdateMedications = isset($_SESSION['role_id']) && in_array($_SESSION['role_id'], [1, 9]); // Admin or Pharmacist
+// Check permissions - Only Admin (1) and Pharmacist (4) can update medication statuses
+$canUpdateMedications = isset($_SESSION['role_id']) && in_array($_SESSION['role_id'], [1, 4]); // admin, pharmacist
 
 $prescription_id = isset($_GET['prescription_id']) ? intval($_GET['prescription_id']) : 0;
 

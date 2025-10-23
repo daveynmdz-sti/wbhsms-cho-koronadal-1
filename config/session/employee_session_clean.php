@@ -71,16 +71,34 @@ function clear_employee_session() {
 }
 
 /**
+ * Get the root path for relative URLs
+ * @return string
+ */
+function getEmployeeRootPath() {
+    // Calculate relative path from current script to root
+    $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+    $depth = substr_count($scriptPath, '/') - 1;
+    
+    if ($depth <= 0) {
+        return './';
+    }
+    
+    return str_repeat('../', $depth);
+}
+
+/**
  * Redirect to login if not authenticated
  * @param string $login_url
  */
 function require_employee_login($login_url = null) {
     if (!is_employee_logged_in()) {
         if ($login_url === null) {
-            $login_url = '/pages/management/auth/employee_login.php';
+            // Use relative path calculation instead of absolute path
+            $root_path = getEmployeeRootPath();
+            $login_url = $root_path . 'pages/management/auth/employee_login.php';
         }
         ob_end_clean();
-        error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
+        error_log('Redirecting to employee_login (relative path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
         header('Location: ' . $login_url);
         exit();
     }
@@ -105,8 +123,12 @@ function check_employee_role($allowed_roles) {
  * @param array $allowed_roles
  * @param string $access_denied_url
  */
-function require_employee_role($allowed_roles, $access_denied_url = '/wbhsms-cho-koronadal-1/pages/management/access_denied.php') {
+function require_employee_role($allowed_roles, $access_denied_url = null) {
     if (!check_employee_role($allowed_roles)) {
+        if ($access_denied_url === null) {
+            $root_path = getEmployeeRootPath();
+            $access_denied_url = $root_path . 'pages/management/access_denied.php';
+        }
         header('Location: ' . $access_denied_url);
         exit();
     }

@@ -45,8 +45,8 @@ if (!isset($_SESSION['employee_id'])) {
     exit();
 }
 
-// Check permissions - only Admin (role_id=1) and Pharmacist (role_id=9) can update
-if (!isset($_SESSION['role_id']) || !in_array($_SESSION['role_id'], [1, 9])) {
+// Check permissions - only Admin (role_id=1) and Pharmacist (role_id=4) can update
+if (!isset($_SESSION['role_id']) || !in_array($_SESSION['role_id'], [1, 4])) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Insufficient permissions']);
     exit();
