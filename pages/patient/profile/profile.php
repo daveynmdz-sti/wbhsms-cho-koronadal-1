@@ -399,7 +399,7 @@ $medical_completed = 0;
 $latest_vitals = null;
 try {
     if (!empty($patient['patient_id'])) {
-        $stmt = $pdo->prepare("SELECT * FROM vitals WHERE patient_id = ? ORDER BY date_recorded DESC LIMIT 1");
+        $stmt = $pdo->prepare("SELECT * FROM vitals WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 1");
         $stmt->execute([$patient['patient_id']]);
         $latest_vitals = $stmt->fetch(PDO::FETCH_ASSOC);
     }
@@ -407,34 +407,149 @@ try {
     error_log("Error fetching vitals: " . $e->getMessage());
 }
 
-// Fetch latest appointments
+// Fetch latest appointments with service and facility information
 $latest_appointments = [];
 try {
-    $stmt = $pdo->prepare("SELECT * FROM appointments WHERE patient_id = ? ORDER BY created_at DESC LIMIT 5");
+    $stmt = $pdo->prepare("
+        SELECT 
+            a.appointment_id,
+            a.patient_id,
+            a.scheduled_date as appointment_date,
+            a.scheduled_time as appointment_time,
+            a.status,
+            a.cancellation_reason,
+            a.created_at,
+            a.updated_at,
+            s.name as service_type,
+            s.description as service_description,
+            f.name as facility_name,
+            f.type as facility_type
+        FROM appointments a
+        LEFT JOIN services s ON a.service_id = s.service_id
+        LEFT JOIN facilities f ON a.facility_id = f.facility_id
+        WHERE a.patient_id = ? 
+        ORDER BY a.created_at DESC 
+        LIMIT 5
+    ");
     $stmt->execute([$patient_id]);
     $latest_appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Error fetching appointments: " . $e->getMessage());
 }
 
-// Fetch latest prescriptions
+// Fetch latest prescriptions with prescribed medications
 $latest_prescriptions = [];
 try {
-    $stmt = $pdo->prepare("SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC LIMIT 5");
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT
+            p.prescription_id,
+            p.patient_id,
+            p.created_at as date_prescribed,
+            p.status as prescription_status,
+            p.visit_id,
+            p.prescribed_by_employee_id,
+            e.first_name as doctor_first_name,
+            e.last_name as doctor_last_name,
+            COUNT(pm.prescribed_medication_id) as total_medications,
+            GROUP_CONCAT(
+                CONCAT(pm.medication_name, ' (', pm.dosage, ', ', pm.frequency, ')') 
+                ORDER BY pm.created_at ASC 
+                SEPARATOR '; '
+            ) as medications_summary,
+            GROUP_CONCAT(pm.status ORDER BY pm.created_at ASC SEPARATOR ', ') as medication_statuses
+        FROM prescriptions p
+        LEFT JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id
+        LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
+        WHERE p.patient_id = ? 
+        GROUP BY p.prescription_id, p.patient_id, p.created_at, p.status, p.visit_id, p.prescribed_by_employee_id, e.first_name, e.last_name
+        ORDER BY p.created_at DESC 
+        LIMIT 5
+    ");
     $stmt->execute([$patient_id]);
     $latest_prescriptions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Error fetching prescriptions: " . $e->getMessage());
 }
 
-// Fetch lab results
+// Fetch lab results from lab_order_items with lab_orders information
 $lab_results = [];
 try {
-    $stmt = $pdo->prepare("SELECT * FROM lab_results WHERE patient_id = ? ORDER BY test_date DESC LIMIT 5");
+    // Simplified query for lab results display
+    $stmt = $pdo->prepare("
+        SELECT 
+            loi.item_id as lab_order_item_id,
+            loi.test_type as test_name,
+            loi.result_file,
+            loi.result_date,
+            loi.created_at,
+            lo.order_date
+        FROM lab_order_items loi
+        INNER JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
+        WHERE lo.patient_id = ? 
+        ORDER BY COALESCE(loi.result_date, loi.created_at) DESC 
+        LIMIT 4
+    ");
     $stmt->execute([$patient_id]);
     $lab_results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Debug logging for development
+    if (empty($lab_results)) {
+        error_log("No lab results found for patient ID: $patient_id");
+        
+        // Check if patient has any lab orders
+        $order_check = $pdo->prepare("SELECT COUNT(*) FROM lab_orders WHERE patient_id = ?");
+        $order_check->execute([$patient_id]);
+        $order_count = $order_check->fetchColumn();
+        error_log("Lab orders count for patient $patient_id: $order_count");
+        
+        // If no lab orders exist, create some test data for development (local only)
+        if ($order_count == 0 && ($_SERVER['SERVER_NAME'] === 'localhost' || strpos($_SERVER['HTTP_HOST'], 'localhost') !== false)) {
+            try {
+                $pdo->beginTransaction();
+                
+                // Create a lab order using correct field names
+                $insert_order = $pdo->prepare("
+                    INSERT INTO lab_orders 
+                    (patient_id, order_date, status, overall_status, ordered_by_employee_id, created_at) 
+                    VALUES (?, NOW(), 'completed', 'completed', 1, NOW())
+                ");
+                $insert_order->execute([$patient_id]);
+                $new_order_id = $pdo->lastInsertId();
+                
+                // Create simplified test lab order items
+                $test_items = [
+                    ['Complete Blood Count (CBC)', 'cbc_result_20251023.pdf'],
+                    ['Fasting Blood Sugar', 'fbs_result_20251023.pdf'],
+                    ['Urinalysis', null], // Pending result
+                    ['Total Cholesterol', null] // Pending result
+                ];
+                
+                foreach ($test_items as $item) {
+                    $insert_item = $pdo->prepare("
+                        INSERT INTO lab_order_items 
+                        (lab_order_id, test_type, result_file, result_date, created_at, updated_at) 
+                        VALUES (?, ?, ?, NOW(), NOW(), NOW())
+                    ");
+                    $insert_item->execute([$new_order_id, $item[0], $item[1]]);
+                }
+                
+                $pdo->commit();
+                error_log("Created test lab data for patient $patient_id");
+                
+                // Re-fetch the results
+                $stmt->execute([$patient_id]);
+                $lab_results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+            } catch (Exception $create_error) {
+                $pdo->rollback();
+                error_log("Failed to create test lab data: " . $create_error->getMessage());
+            }
+        }
+    }
+    
 } catch (Exception $e) {
-    error_log("Error fetching lab results: " . $e->getMessage());
+    error_log("Error fetching lab results for patient $patient_id: " . $e->getMessage());
+    $lab_results = [];
 }
 
 // Fetch medical history using PDO from separate tables with improved error handling
@@ -576,7 +691,6 @@ if (isset($_GET['logout'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="../../../assets/css/patient_profile.css" />
-    <link rel="stylesheet" href="../../../assets/css/modal.css">
     <style>
         /* Enhanced Modal Styles */
         .custom-modal {
@@ -699,6 +813,22 @@ if (isset($_GET['logout'])) {
         .status-cancelled {
             background: #f8d7da;
             color: #721c24;
+        }
+
+        .status-partial {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-confirmed {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-checked_in,
+        .status-checked-in {
+            background: #d4edda;
+            color: #155724;
         }
 
         /* Enhanced Alert Badges */
@@ -1813,8 +1943,8 @@ if (isset($_GET['logout'])) {
                     <h2><i class="fas fa-heartbeat"></i> Latest Vitals</h2>
                     <small><i>
                             <?php
-                            if ($latest_vitals && !empty($latest_vitals['date_recorded'])) {
-                                echo "as of " . date("F d, Y h:i A", strtotime($latest_vitals['date_recorded']));
+                            if ($latest_vitals && !empty($latest_vitals['recorded_at'])) {
+                                echo "as of " . date("F d, Y h:i A", strtotime($latest_vitals['recorded_at']));
                             } else {
                                 echo "No vitals recorded.";
                             }
@@ -1828,59 +1958,58 @@ if (isset($_GET['logout'])) {
                             <i class="fas fa-ruler-vertical"></i>
                             <div>
                                 <span class="label">HEIGHT</span><br>
-                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['ht'] ?? $latest_vitals['height'] ?? '-') ?></strong>
-                                <?= !empty($latest_vitals['ht']) || !empty($latest_vitals['height']) ? ' cm' : '' ?>
+                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['height'] ?? '-') ?></strong>
+                                <?= !empty($latest_vitals['height']) ? ' cm' : '' ?>
                             </div>
                         </div>
                         <div class="vital-card metric-card">
                             <i class="fas fa-weight"></i>
                             <div>
                                 <span class="label">WEIGHT</span><br>
-                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['wt'] ?? $latest_vitals['weight'] ?? '-') ?></strong>
-                                <?= !empty($latest_vitals['wt']) || !empty($latest_vitals['weight']) ? ' kg' : '' ?>
+                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['weight'] ?? '-') ?></strong>
+                                <?= !empty($latest_vitals['weight']) ? ' kg' : '' ?>
                             </div>
                         </div>
                         <div class="vital-card metric-card">
                             <i class="fas fa-tachometer-alt"></i>
                             <div>
                                 <span class="label">BLOOD PRESSURE</span><br>
-                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['bp'] ?? $latest_vitals['blood_pressure'] ?? '-') ?></strong>
-                                <?= !empty($latest_vitals['bp']) || !empty($latest_vitals['blood_pressure']) ? ' mmHg' : '' ?>
+                                <strong class="data-highlight">
+                                    <?php 
+                                    if (!empty($latest_vitals['systolic_bp']) && !empty($latest_vitals['diastolic_bp'])) {
+                                        echo htmlspecialchars($latest_vitals['systolic_bp'] . '/' . $latest_vitals['diastolic_bp']);
+                                    } else {
+                                        echo '-';
+                                    }
+                                    ?>
+                                </strong>
+                                <?= (!empty($latest_vitals['systolic_bp']) && !empty($latest_vitals['diastolic_bp'])) ? ' mmHg' : '' ?>
                             </div>
                         </div>
                         <div class="vital-card metric-card">
                             <i class="fas fa-heartbeat"></i>
                             <div>
                                 <span class="label">HEART RATE</span><br>
-                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['hr'] ?? $latest_vitals['heart_rate'] ?? '-') ?></strong>
-                                <?= !empty($latest_vitals['hr']) || !empty($latest_vitals['heart_rate']) ? ' bpm' : '' ?>
+                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['heart_rate'] ?? '-') ?></strong>
+                                <?= !empty($latest_vitals['heart_rate']) ? ' bpm' : '' ?>
                             </div>
                         </div>
                         <div class="vital-card metric-card">
                             <i class="fas fa-thermometer-half"></i>
                             <div>
                                 <span class="label">TEMPERATURE</span><br>
-                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['temp'] ?? $latest_vitals['temperature'] ?? '-') ?></strong>
-                                <?= !empty($latest_vitals['temp']) || !empty($latest_vitals['temperature']) ? ' °C' : '' ?>
+                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['temperature'] ?? '-') ?></strong>
+                                <?= !empty($latest_vitals['temperature']) ? ' °C' : '' ?>
                             </div>
                         </div>
                         <div class="vital-card metric-card">
                             <i class="fas fa-lungs"></i>
                             <div>
                                 <span class="label">RESPIRATORY RATE</span><br>
-                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['rr'] ?? $latest_vitals['respiratory_rate'] ?? '-') ?></strong>
-                                <?= !empty($latest_vitals['rr']) || !empty($latest_vitals['respiratory_rate']) ? ' bpm' : '' ?>
+                                <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['respiratory_rate'] ?? '-') ?></strong>
+                                <?= !empty($latest_vitals['respiratory_rate']) ? ' bpm' : '' ?>
                             </div>
                         </div>
-                        <?php if (!empty($latest_vitals['oxygen_saturation'])): ?>
-                            <div class="vital-card metric-card">
-                                <i class="fas fa-lungs"></i>
-                                <div>
-                                    <span class="label">OXYGEN SATURATION</span><br>
-                                    <strong class="data-highlight"><?= htmlspecialchars($latest_vitals['oxygen_saturation']) ?></strong> %
-                                </div>
-                            </div>
-                        <?php endif; ?>
                         <?php if (!empty($latest_vitals['bmi'])): ?>
                             <div class="vital-card metric-card">
                                 <i class="fas fa-calculator"></i>
@@ -1895,18 +2024,30 @@ if (isset($_GET['logout'])) {
                     <!-- Vital Signs Alerts -->
                     <?php
                     $alerts = [];
-                    $bp = $latest_vitals['bp'] ?? '';
-                    $temp = floatval($latest_vitals['temp'] ?? $latest_vitals['temperature'] ?? 0);
-                    $hr = intval($latest_vitals['hr'] ?? $latest_vitals['heart_rate'] ?? 0);
+                    $systolic_bp = intval($latest_vitals['systolic_bp'] ?? 0);
+                    $diastolic_bp = intval($latest_vitals['diastolic_bp'] ?? 0);
+                    $temp = floatval($latest_vitals['temperature'] ?? 0);
+                    $hr = intval($latest_vitals['heart_rate'] ?? 0);
 
+                    // Temperature alerts
                     if ($temp > 38.0) {
                         $alerts[] = ['type' => 'warning', 'message' => 'Elevated temperature detected'];
+                    } elseif ($temp < 35.0 && $temp > 0) {
+                        $alerts[] = ['type' => 'warning', 'message' => 'Low temperature detected'];
                     }
+
+                    // Heart rate alerts
                     if ($hr > 100) {
                         $alerts[] = ['type' => 'warning', 'message' => 'Heart rate above normal range'];
-                    }
-                    if ($hr < 60) {
+                    } elseif ($hr < 60 && $hr > 0) {
                         $alerts[] = ['type' => 'info', 'message' => 'Heart rate below normal range'];
+                    }
+
+                    // Blood pressure alerts
+                    if ($systolic_bp >= 140 || $diastolic_bp >= 90) {
+                        $alerts[] = ['type' => 'warning', 'message' => 'High blood pressure detected'];
+                    } elseif ($systolic_bp < 90 || $diastolic_bp < 60) {
+                        $alerts[] = ['type' => 'info', 'message' => 'Low blood pressure detected'];
                     }
 
                     if (!empty($alerts)): ?>
@@ -1948,6 +2089,7 @@ if (isset($_GET['logout'])) {
                     </div>
                 <?php endif; ?>
             </div>
+
             <!-- Enhanced Appointments Section -->
             <div class="summary-card enhanced-card appointment-section">
                 <div class="section-header">
@@ -1962,24 +2104,66 @@ if (isset($_GET['logout'])) {
                         <table class="summary-table">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
+                                    <th>Date Scheduled</th>
                                     <th>Time</th>
                                     <th>Service Type</th>
-                                    <th>Doctor</th>
+                                    <th>Facility</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach (array_slice($latest_appointments, 0, 3) as $appointment): ?>
+                                <?php foreach (array_slice($latest_appointments, 0, 4) as $appointment): ?>
                                     <tr>
-                                        <td><?= htmlspecialchars(date('M j, Y', strtotime($appointment['appointment_date'] ?? $appointment['date'] ?? ''))) ?></td>
-                                        <td><?= htmlspecialchars($appointment['appointment_time'] ?? $appointment['time'] ?? '-') ?></td>
-                                        <td><?= htmlspecialchars($appointment['service_type'] ?? $appointment['complaint'] ?? '-') ?></td>
-                                        <td><?= htmlspecialchars($appointment['doctor_name'] ?? $appointment['assigned_doctor'] ?? '-') ?></td>
                                         <td>
-                                            <span class="status-badge status-<?= strtolower($appointment['status'] ?? 'pending') ?>">
-                                                <?= htmlspecialchars($appointment['status'] ?? 'Pending') ?>
+                                            <?php if (!empty($appointment['appointment_date'])): ?>
+                                                <?= htmlspecialchars(date('M j, Y', strtotime($appointment['appointment_date']))) ?>
+                                            <?php else: ?>
+                                                <span style="color: #666; font-style: italic;">Not scheduled</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($appointment['appointment_time'])): ?>
+                                                <?= htmlspecialchars(date('g:i A', strtotime($appointment['appointment_time']))) ?>
+                                            <?php else: ?>
+                                                <span style="color: #666; font-style: italic;">Not scheduled</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($appointment['service_type'])): ?>
+                                                <div style="font-weight: 600;"><?= htmlspecialchars($appointment['service_type']) ?></div>
+                                                <?php if (!empty($appointment['service_description'])): ?>
+                                                    <small style="color: #666; font-size: 0.85em;"><?= htmlspecialchars($appointment['service_description']) ?></small>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color: #666; font-style: italic;">Service not specified</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($appointment['facility_name'])): ?>
+                                                <div style="font-weight: 500;"><?= htmlspecialchars($appointment['facility_name']) ?></div>
+                                                <?php if (!empty($appointment['facility_type'])): ?>
+                                                    <small style="color: #666; font-size: 0.85em; text-transform: capitalize;"><?= htmlspecialchars($appointment['facility_type']) ?></small>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color: #666; font-style: italic;">Facility not specified</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php
+                                            $status = $appointment['status'] ?? 'pending';
+                                            $statusClass = 'status-' . strtolower($status);
+                                            
+                                            // Format status display
+                                            $displayStatus = ucfirst(str_replace('_', ' ', $status));
+                                            ?>
+                                            <span class="status-badge <?= $statusClass ?>">
+                                                <?= htmlspecialchars($displayStatus) ?>
                                             </span>
+                                            <?php if ($status === 'cancelled' && !empty($appointment['cancellation_reason'])): ?>
+                                                <small style="display: block; color: #dc3545; font-size: 0.8em; margin-top: 0.25em;">
+                                                    <?= htmlspecialchars($appointment['cancellation_reason']) ?>
+                                                </small>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -1989,8 +2173,13 @@ if (isset($_GET['logout'])) {
                 <?php else: ?>
                     <div style="text-align: center; padding: 2em; color: #666;">
                         <i class="fas fa-calendar-times" style="font-size: 2em; margin-bottom: 0.5em; opacity: 0.5;"></i>
-                        <p>No appointments found</p>
-                        <a href="../appointment/appointments.php" class="view-more-btn">Schedule Appointment</a>
+                        <h4>No Appointments Scheduled</h4>
+                        <p>You don't have any upcoming or recent appointments. Schedule one today to get the care you need.</p>
+                        <div style="margin-top: 1em;">
+                            <a href="../appointment/appointments.php" class="view-more-btn">
+                                <i class="fas fa-calendar-plus"></i> Schedule Appointment
+                            </a>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -2010,22 +2199,58 @@ if (isset($_GET['logout'])) {
                             <thead>
                                 <tr>
                                     <th>Date Prescribed</th>
-                                    <th>Medication</th>
-                                    <th>Dosage</th>
-                                    <th>Frequency</th>
+                                    <th>Prescribed By</th>
+                                    <th>Medications</th>
+                                    <th>Total Items</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach (array_slice($latest_prescriptions, 0, 3) as $prescription): ?>
+                                <?php foreach (array_slice($latest_prescriptions, 0, 4) as $prescription): ?>
                                     <tr>
-                                        <td><?= htmlspecialchars(date('M j, Y', strtotime($prescription['date_prescribed'] ?? $prescription['created_at'] ?? ''))) ?></td>
-                                        <td><?= htmlspecialchars($prescription['medication_name'] ?? $prescription['medication'] ?? '-') ?></td>
-                                        <td><?= htmlspecialchars($prescription['dosage'] ?? '-') ?></td>
-                                        <td><?= htmlspecialchars($prescription['frequency'] ?? '-') ?></td>
+                                        <td><?= htmlspecialchars(date('M j, Y', strtotime($prescription['date_prescribed'] ?? ''))) ?></td>
                                         <td>
-                                            <span class="status-badge status-<?= strtolower($prescription['status'] ?? 'active') ?>">
-                                                <?= htmlspecialchars($prescription['status'] ?? 'Active') ?>
+                                            <?php if (!empty($prescription['doctor_first_name']) && !empty($prescription['doctor_last_name'])): ?>
+                                                Dr. <?= htmlspecialchars($prescription['doctor_first_name'] . ' ' . $prescription['doctor_last_name']) ?>
+                                            <?php else: ?>
+                                                <span style="color: #666; font-style: italic;">Not specified</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($prescription['medications_summary'])): ?>
+                                                <div style="max-width: 300px; font-size: 0.9em; line-height: 1.3;">
+                                                    <?= htmlspecialchars($prescription['medications_summary']) ?>
+                                                </div>
+                                            <?php else: ?>
+                                                <span style="color: #666; font-style: italic;">No medications listed</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <span class="data-highlight"><?= htmlspecialchars($prescription['total_medications'] ?? '0') ?></span>
+                                            <?= ($prescription['total_medications'] ?? 0) == 1 ? ' item' : ' items' ?>
+                                        </td>
+                                        <td>
+                                            <?php
+                                            $status = $prescription['prescription_status'] ?? 'pending';
+                                            $statusClass = 'status-' . strtolower($status);
+                                            
+                                            // Determine overall status based on medication statuses
+                                            $medicationStatuses = explode(', ', $prescription['medication_statuses'] ?? '');
+                                            $allDispensed = !empty($medicationStatuses) && !in_array('pending', $medicationStatuses) && !in_array('', $medicationStatuses);
+                                            $hasUnavailable = in_array('unavailable', $medicationStatuses);
+                                            
+                                            if ($allDispensed && !$hasUnavailable) {
+                                                $displayStatus = 'Completed';
+                                                $statusClass = 'status-completed';
+                                            } elseif ($hasUnavailable) {
+                                                $displayStatus = 'Partial';
+                                                $statusClass = 'status-partial';
+                                            } else {
+                                                $displayStatus = ucfirst($status);
+                                            }
+                                            ?>
+                                            <span class="status-badge <?= $statusClass ?>">
+                                                <?= htmlspecialchars($displayStatus) ?>
                                             </span>
                                         </td>
                                     </tr>
@@ -2045,7 +2270,7 @@ if (isset($_GET['logout'])) {
             <div class="summary-card enhanced-card lab-results-section">
                 <div class="section-header">
                     <h2><i class="fas fa-flask"></i> Recent Lab Results</h2>
-                    <a href="../laboratory/lab_results.php" class="view-more-btn">
+                    <a href="../laboratory/laboratory.php" class="view-more-btn">
                         <i class="fas fa-chevron-right"></i> View All
                     </a>
                 </div>
@@ -2056,36 +2281,65 @@ if (isset($_GET['logout'])) {
                             <thead>
                                 <tr>
                                     <th>Test Date</th>
-                                    <th>Test Type</th>
+                                    <th>Test Name</th>
                                     <th>Result</th>
-                                    <th>Reference Range</th>
-                                    <th>Status</th>
+                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach (array_slice($lab_results, 0, 3) as $result): ?>
+                                <?php foreach (array_slice($lab_results, 0, 4) as $result): ?>
                                     <tr>
-                                        <td><?= htmlspecialchars(date('M j, Y', strtotime($result['test_date'] ?? $result['created_at'] ?? ''))) ?></td>
-                                        <td><?= htmlspecialchars($result['test_name'] ?? $result['test_type'] ?? '-') ?></td>
                                         <td>
-                                            <span class="data-highlight"><?= htmlspecialchars($result['result_value'] ?? $result['result'] ?? '-') ?></span>
-                                            <?= htmlspecialchars($result['unit'] ?? '') ?>
+                                            <?php if (!empty($result['result_date'])): ?>
+                                                <?= htmlspecialchars(date('M j, Y', strtotime($result['result_date']))) ?>
+                                                <small style="display: block; color: #666; font-size: 0.8em;">
+                                                    <?= htmlspecialchars(date('g:i A', strtotime($result['result_date']))) ?>
+                                                </small>
+                                            <?php elseif (!empty($result['order_date'])): ?>
+                                                <?= htmlspecialchars(date('M j, Y', strtotime($result['order_date']))) ?>
+                                                <small style="display: block; color: #666; font-size: 0.8em;">Ordered</small>
+                                            <?php else: ?>
+                                                <span style="color: #666; font-style: italic;">Date not available</span>
+                                            <?php endif; ?>
                                         </td>
-                                        <td><?= htmlspecialchars($result['reference_range'] ?? '-') ?></td>
                                         <td>
-                                            <?php
-                                            $status = $result['status'] ?? 'normal';
-                                            $alertClass = 'alert-info';
-                                            if (stripos($status, 'abnormal') !== false || stripos($status, 'high') !== false || stripos($status, 'low') !== false) {
-                                                $alertClass = 'alert-warning';
-                                            }
-                                            if (stripos($status, 'critical') !== false) {
-                                                $alertClass = 'alert-critical';
-                                            }
-                                            ?>
-                                            <span class="alert-badge <?= $alertClass ?>">
-                                                <?= htmlspecialchars(ucfirst($status)) ?>
-                                            </span>
+                                            <div style="font-weight: 600;"><?= htmlspecialchars($result['test_name'] ?? 'Unknown Test') ?></div>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($result['result_file'])): ?>
+                                                <span style="color: #28a745; font-weight: 500;">
+                                                    <i class="fas fa-check-circle" style="margin-right: 0.5em;"></i>
+                                                    Uploaded
+                                                </span>
+                                            <?php else: ?>
+                                                <span style="color: #ffc107; font-style: italic;">
+                                                    <i class="fas fa-clock" style="margin-right: 0.5em;"></i>
+                                                    Pending
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <a href="../laboratory/laboratory.php" 
+                                               style="
+                                                   background: linear-gradient(135deg, #007bff, #0056b3);
+                                                   color: white;
+                                                   border: none;
+                                                   padding: 6px 12px;
+                                                   border-radius: 6px;
+                                                   font-size: 0.8em;
+                                                   cursor: pointer;
+                                                   text-decoration: none;
+                                                   display: inline-flex;
+                                                   align-items: center;
+                                                   gap: 4px;
+                                                   transition: all 0.3s ease;
+                                               "
+                                               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(0, 123, 255, 0.3)';"
+                                               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
+                                            >
+                                                <i class="fas fa-eye"></i>
+                                                View
+                                            </a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -2095,10 +2349,17 @@ if (isset($_GET['logout'])) {
                 <?php else: ?>
                     <div style="text-align: center; padding: 2em; color: #666;">
                         <i class="fas fa-vials" style="font-size: 2em; margin-bottom: 0.5em; opacity: 0.5;"></i>
-                        <p>No lab results found</p>
+                        <h4>No Lab Results Available</h4>
+                        <p>You don't have any lab test results yet. Lab tests may be ordered during consultations or checkups.</p>
+                        <div style="margin-top: 1em;">
+                            <a href="../laboratory/laboratory.php" class="view-more-btn">
+                                <i class="fas fa-flask"></i> View Lab Orders
+                            </a>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
+
             <!-- Enhanced Medical History Section -->
             <div class="summary-card enhanced-card medical-history-section">
                 <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5em; flex-wrap: wrap; gap: 0.5em;">
@@ -2679,6 +2940,146 @@ if (isset($_GET['logout'])) {
                 }
             }
         });
+
+        // Lab Results View Function
+        function viewLabResult(labOrderItemId) {
+            // Show loading state
+            const button = event.target.closest('button');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            button.disabled = true;
+
+            // Create and show modal with lab result details
+            fetch(`../api/get_lab_result_details.php?lab_order_item_id=${labOrderItemId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showLabResultModal(data.result);
+                    } else {
+                        showAlert('Error loading lab result: ' + (data.message || 'Unknown error'), 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Failed to load lab result details. Please try again.', 'error');
+                })
+                .finally(() => {
+                    // Restore button state
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                });
+        }
+
+        function showLabResultModal(result) {
+            const modal = document.createElement('div');
+            modal.className = 'custom-modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-flask"></i> Lab Result Details</h3>
+                        <button class="modal-close" onclick="closeModal(this)">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="lab-result-details">
+                            <div class="result-header" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                                <h4 style="margin: 0; color: #495057;">${result.test_name || 'Lab Test'}</h4>
+                                <p style="margin: 0.5rem 0 0 0; color: #6c757d;">${result.test_type || ''}</p>
+                                <small style="color: #6c757d;">Sample: ${result.sample_type || 'Not specified'}</small>
+                            </div>
+                            
+                            <div class="result-info" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                                <div>
+                                    <strong>Result Value:</strong><br>
+                                    <span class="data-highlight" style="font-size: 1.2em;">${result.result_value || 'Pending'}</span>
+                                    ${result.result_unit ? ' ' + result.result_unit : ''}
+                                </div>
+                                <div>
+                                    <strong>Normal Range:</strong><br>
+                                    ${result.normal_range || 'Not specified'}
+                                </div>
+                                <div>
+                                    <strong>Result Date:</strong><br>
+                                    ${result.result_date ? new Date(result.result_date).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'long',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    }) : 'Not available'}
+                                </div>
+                                <div>
+                                    <strong>Status:</strong><br>
+                                    <span class="alert-badge ${getStatusClass(result.result_status)}">
+                                        ${result.result_status ? result.result_status.charAt(0).toUpperCase() + result.result_status.slice(1) : 'Pending'}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            ${result.remarks ? `
+                                <div class="result-remarks" style="background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid #ffc107;">
+                                    <strong>Remarks:</strong><br>
+                                    ${result.remarks}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" onclick="closeModal(this)">Close</button>
+                        <button class="btn-primary" onclick="printLabResult(${result.lab_order_item_id})">
+                            <i class="fas fa-print"></i> Print Result
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+
+        function getStatusClass(status) {
+            if (!status) return 'alert-info';
+            const statusLower = status.toLowerCase();
+            if (statusLower.includes('normal')) return 'alert-info';
+            if (statusLower.includes('abnormal') || statusLower.includes('high') || statusLower.includes('low')) return 'alert-warning';
+            if (statusLower.includes('critical') || statusLower.includes('urgent')) return 'alert-critical';
+            return 'alert-info';
+        }
+
+        function printLabResult(labOrderItemId) {
+            // Open print view in new window/tab
+            window.open(`../laboratory/print_lab_result.php?lab_order_item_id=${labOrderItemId}`, '_blank');
+        }
+
+        function showAlert(message, type = 'info') {
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `
+                <i class="fas fa-${type === 'error' ? 'exclamation-triangle' : 'info-circle'}"></i>
+                ${message}
+                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+            `;
+            alert.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 10000;
+                max-width: 400px;
+                padding: 1rem;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                background: ${type === 'error' ? '#f8d7da' : '#d1ecf1'};
+                color: ${type === 'error' ? '#721c24' : '#0c5460'};
+                border: 1px solid ${type === 'error' ? '#f5c6cb' : '#bee5eb'};
+            `;
+            
+            document.body.appendChild(alert);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
     </script>
 </body>
 

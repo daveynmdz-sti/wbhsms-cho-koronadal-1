@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Image Cropper</title>
+    <link rel="stylesheet" href="../vendor/cropper-modal.css">
+    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 50px auto; 
+            padding: 20px; 
+        }
+        .test-container { 
+            border: 2px dashed #ccc; 
+            padding: 30px; 
+            text-align: center; 
+            border-radius: 10px; 
+        }
+        .preview-img { 
+            max-width: 200px; 
+            max-height: 200px; 
+            border: 2px solid #ddd; 
+            border-radius: 50%; 
+            margin: 20px 0; 
+        }
+        input[type="file"] { 
+            margin: 10px 0; 
+        }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        button:disabled { 
+            background: #ccc; 
+            cursor: not-allowed; 
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h2>Profile Photo Cropper Test</h2>
+        <p>Select an image to test the cropping functionality</p>
+        
+        <input type="file" id="profilePhotoInput" accept="image/*" />
+        
+        <div>
+            <img id="profilePhotoPreview" src="https://ik.imagekit.io/wbhsmslogo/user.png?updatedAt=1750423429172" 
+                 alt="Profile Preview" class="preview-img" />
+        </div>
+        
+        <button id="savePhotoBtn" disabled>Save Photo</button>
+        <button onclick="resetTest()">Reset</button>
+        
+        <div id="status" style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+            <strong>Status:</strong> Select an image to start
+        </div>
+    </div>
+
+    <script src="../vendor/profile-photo-cropper.js"></script>
+    <script>
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML = '<strong>Status:</strong> ' + message;
+        }
+        
+        function resetTest() {
+            document.getElementById('profilePhotoInput').value = '';
+            document.getElementById('profilePhotoPreview').src = 'https://ik.imagekit.io/wbhsmslogo/user.png?updatedAt=1750423429172';
+            document.getElementById('savePhotoBtn').disabled = true;
+            updateStatus('Select an image to start');
+        }
+        
+        // Monitor file input changes
+        document.getElementById('profilePhotoInput').addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                updateStatus('Image selected, cropper should open...');
+            }
+        });
+        
+        // Monitor save button
+        document.getElementById('savePhotoBtn').addEventListener('click', function() {
+            if (!this.disabled) {
+                updateStatus('Photo cropped and ready! (In real form, this would submit to server)');
+            }
+        });
+        
+        updateStatus('Cropper ready - select an image file');
+    </script>
+</body>
+</html>

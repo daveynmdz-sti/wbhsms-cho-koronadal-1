@@ -46,25 +46,19 @@ try {
             b.total_amount,
             b.paid_amount,
             b.discount_amount,
-            b.philhealth_coverage,
+            b.discount_type,
+            b.net_amount,
             b.payment_status,
             b.billing_date,
-            b.due_date,
+            b.notes,
             b.created_at,
             b.updated_at,
-            b.receipt_id,
-            r.receipt_number,
-            r.payment_date,
-            r.payment_method,
-            r.payment_amount as receipt_payment_amount,
-            r.notes as payment_notes,
             p.first_name,
             p.last_name,
-            p.patient_number,
-            p.phone_number,
+            p.username as patient_number,
+            p.contact_number as phone_number,
             p.email
         FROM billing b
-        LEFT JOIN receipts r ON b.receipt_id = r.receipt_id
         LEFT JOIN patients p ON b.patient_id = p.patient_id
         WHERE b.billing_id = ? AND b.patient_id = ?
     ";
@@ -85,18 +79,18 @@ try {
     // Get billing items (line items)
     $items_sql = "
         SELECT 
-            bi.item_id,
+            bi.billing_item_id,
             bi.service_item_id,
             bi.quantity,
-            bi.unit_price,
+            bi.item_price as unit_price,
             bi.subtotal,
             si.item_name,
-            si.description,
-            si.category
+            si.unit,
+            si.service_id
         FROM billing_items bi
-        LEFT JOIN service_items si ON bi.service_item_id = si.service_item_id
+        LEFT JOIN service_items si ON bi.service_item_id = si.item_id
         WHERE bi.billing_id = ?
-        ORDER BY bi.item_id
+        ORDER BY bi.billing_item_id
     ";
     
     $stmt = $pdo->prepare($items_sql);
@@ -107,55 +101,35 @@ try {
     $formatted_invoice = [
         'billing_id' => intval($invoice['billing_id']),
         'visit_id' => $invoice['visit_id'] ? intval($invoice['visit_id']) : null,
-        'patient' => [
-            'patient_id' => intval($invoice['patient_id']),
-            'patient_number' => $invoice['patient_number'],
-            'name' => $invoice['first_name'] . ' ' . $invoice['last_name'],
-            'phone' => $invoice['phone_number'],
-            'email' => $invoice['email']
-        ],
-        'amounts' => [
-            'subtotal' => floatval(array_sum(array_column($items, 'subtotal'))),
-            'discount_amount' => floatval($invoice['discount_amount']),
-            'philhealth_coverage' => floatval($invoice['philhealth_coverage']),
-            'total_amount' => floatval($invoice['total_amount']),
-            'paid_amount' => floatval($invoice['paid_amount']),
-            'balance_due' => floatval($invoice['total_amount'] - $invoice['paid_amount'])
-        ],
+        'patient_id' => intval($invoice['patient_id']),
+        'patient_name' => trim($invoice['first_name'] . ' ' . $invoice['last_name']),
+        'patient_number' => $invoice['patient_number'],
+        'phone_number' => $invoice['phone_number'],
+        'email' => $invoice['email'] ?: 'Not provided',
+        'billing_date' => $invoice['billing_date'],
+        'total_amount' => floatval($invoice['total_amount']),
+        'discount_amount' => floatval($invoice['discount_amount']),
+        'discount_type' => $invoice['discount_type'],
+        'net_amount' => floatval($invoice['net_amount']),
+        'paid_amount' => floatval($invoice['paid_amount']),
+        'balance_due' => floatval($invoice['total_amount'] - $invoice['paid_amount']),
         'payment_status' => $invoice['payment_status'],
-        'dates' => [
-            'billing_date' => $invoice['billing_date'],
-            'due_date' => $invoice['due_date'],
-            'payment_date' => $invoice['payment_date'],
-            'created_at' => $invoice['created_at'],
-            'updated_at' => $invoice['updated_at']
-        ],
-        'receipt' => $invoice['receipt_id'] ? [
-            'receipt_id' => intval($invoice['receipt_id']),
-            'receipt_number' => $invoice['receipt_number'],
-            'payment_amount' => floatval($invoice['receipt_payment_amount']),
-            'payment_method' => $invoice['payment_method'],
-            'payment_date' => $invoice['payment_date'],
-            'notes' => $invoice['payment_notes']
-        ] : null,
+        'notes' => $invoice['notes'],
+        'created_at' => $invoice['created_at'],
+        'updated_at' => $invoice['updated_at'],
+        'has_receipt' => $invoice['payment_status'] === 'paid',
+        'payment_history' => [], // Will be populated if needed
         'items' => array_map(function($item) {
             return [
-                'item_id' => intval($item['item_id']),
+                'billing_item_id' => intval($item['billing_item_id']),
                 'service_item_id' => intval($item['service_item_id']),
-                'name' => $item['item_name'],
-                'description' => $item['description'],
-                'category' => $item['category'],
+                'service_name' => $item['item_name'] ?: 'Service',
+                'description' => $item['item_name'] . ' (' . $item['unit'] . ')',
                 'quantity' => floatval($item['quantity']),
                 'unit_price' => floatval($item['unit_price']),
-                'subtotal' => floatval($item['subtotal'])
+                'amount' => floatval($item['subtotal'])
             ];
-        }, $items),
-        'status_info' => [
-            'is_paid' => $invoice['payment_status'] === 'paid',
-            'is_overdue' => $invoice['payment_status'] === 'unpaid' && $invoice['due_date'] < date('Y-m-d'),
-            'has_receipt' => !empty($invoice['receipt_id']),
-            'is_exempted' => $invoice['payment_status'] === 'exempted'
-        ]
+        }, $items)
     ];
     
     // Return successful response

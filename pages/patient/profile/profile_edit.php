@@ -212,10 +212,13 @@ $profile_photo_url = !empty($patient['profile_photo']) ? 'images/' . $patient['p
     <link rel="stylesheet" href="../../../assets/css/profile-edit-responsive.css" />
     <link rel="stylesheet" href="../../../assets/css/profile-edit.css" />
     <link rel="stylesheet" href="../../../assets/css/edit.css">
-    <link rel="stylesheet" href="../../../vendor/cropper-modal.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
-    <script src="../../../vendor/profile-photo-cropper.js"></script>
+    
+    <!-- Cropper.js CSS (MUST be loaded first) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    
+    <!-- Custom cropper modal CSS -->
+    <link rel="stylesheet" href="../../../vendor/cropper-modal.css">
 </head>
 
 <body>
@@ -284,7 +287,7 @@ $profile_photo_url = !empty($patient['profile_photo']) ? 'images/' . $patient['p
                     <h3><i class="fas fa-camera"></i> Profile Photo</h3>
                     <div class="photo-upload-container">
                         <div class="photo-preview">
-                            <img src="../../vendor/photo_controller.php?patient_id=<?= urlencode($patient_id) ?>" alt="Profile Photo"
+                            <img src="../../../vendor/photo_controller.php?patient_id=<?= urlencode($patient_id) ?>" alt="Profile Photo"
                                 id="profilePhotoPreview" class="profile-photo-img"
                                 onerror="this.onerror=null;this.src='https://ik.imagekit.io/wbhsmslogo/user.png?updatedAt=1750423429172';" />
                         </div>
@@ -745,24 +748,8 @@ $profile_photo_url = !empty($patient['profile_photo']) ? 'images/' . $patient['p
                 });
             }
 
-            // Enable Save Photo button only when a valid file is set
-            const fileInput = document.getElementById('profilePhotoInput');
-            const saveBtn = document.getElementById('savePhotoBtn');
-            if (fileInput && saveBtn) {
-                fileInput.addEventListener('change', function() {
-                    saveBtn.disabled = !fileInput.files || !fileInput.files[0];
-                });
-            }
-            // Prevent form submit if no file
-            const photoForm = document.getElementById('profilePhotoForm');
-            if (photoForm && saveBtn) {
-                photoForm.addEventListener('submit', function(e) {
-                    if (!fileInput.files || !fileInput.files[0]) {
-                        e.preventDefault();
-                        alert('Please select and crop a photo before saving.');
-                    }
-                });
-            }
+            // Photo upload functionality is handled by profile-photo-cropper.js
+            // The cropper script will manage file input, validation, and save button state
 
             // Conditional field visibility for patient status
             const pwdCheckbox = document.getElementById('pwdCheckbox');
@@ -791,6 +778,12 @@ $profile_photo_url = !empty($patient['profile_photo']) ? 'images/' . $patient['p
             }
         });
     </script>
+
+    <!-- Cropper.js Library (Load BEFORE custom cropper script) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    
+    <!-- Custom cropper functionality -->
+    <script src="../../../vendor/profile-photo-cropper.js"></script>
 </body>
 
 </html>

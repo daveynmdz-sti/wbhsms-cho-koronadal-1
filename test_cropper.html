@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile Photo Cropper Test</title>
+    
+    <!-- Cropper.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    
+    <!-- Custom cropper modal CSS -->
+    <link rel="stylesheet" href="vendor/cropper-modal.css">
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .features-list {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Profile Photo Cropper Test</h1>
+    
+    <div class="test-section">
+        <h3>Test Instructions:</h3>
+        <ol>
+            <li>Click "Choose File" and select an image (JPEG, PNG, or GIF, max 10MB)</li>
+            <li>The cropper modal should appear automatically</li>
+            <li>Drag to move the image, use handles to resize the crop area</li>
+            <li>Click "Crop Image" to confirm</li>
+            <li>The preview should update and Save button should be enabled</li>
+            <li>Success message should appear in top-right corner</li>
+        </ol>
+        <p><strong>Expected Features:</strong></p>
+        <ul>
+            <li>✅ File validation with user-friendly error messages</li>
+            <li>✅ Responsive cropper modal with 1:1 aspect ratio</li>
+            <li>✅ Real-time preview updates</li>
+            <li>✅ Professional user notifications (no browser alerts)</li>
+            <li>✅ Comprehensive error handling and logging</li>
+        </ul>
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <label for="profilePhotoInput" style="display: block; margin-bottom: 10px; font-weight: bold;">
+            Select Profile Photo:
+        </label>
+        <input type="file" id="profilePhotoInput" accept="image/*" 
+               style="margin-bottom: 20px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <label style="display: block; margin-bottom: 10px; font-weight: bold;">Preview:</label>
+        <img id="profilePhotoPreview" src="https://via.placeholder.com/150x150?text=No+Image" 
+             style="width: 150px; height: 150px; border: 2px solid #ccc; border-radius: 8px; object-fit: cover;">
+    </div>
+    
+    <button id="savePhotoBtn" disabled 
+            style="padding: 12px 24px; margin-top: 20px; background: #6c757d; color: white; 
+                   border: none; border-radius: 4px; cursor: not-allowed; transition: all 0.3s;">
+        💾 Save Photo
+    </button>
+    
+    <div class="features-list">
+        <h4>Console Logging:</h4>
+        <p>Open browser developer tools (F12) to see detailed logging of all cropper operations.</p>
+        <p><strong>Key Features Implemented:</strong></p>
+        <ul>
+            <li>🔍 File validation (type and size checking)</li>
+            <li>🖼️ 1:1 aspect ratio cropping with Cropper.js</li>
+            <li>📱 Responsive modal design</li>
+            <li>💬 Custom notification system (no browser alerts)</li>
+            <li>🔄 Real-time preview updates</li>
+            <li>📝 Comprehensive error handling and logging</li>
+            <li>💾 Form integration ready for server upload</li>
+        </ul>
+    </div>
+
+    <!-- Cropper.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    
+    <!-- Custom cropper functionality -->
+    <script src="vendor/profile-photo-cropper.js"></script>
+    
+    <script>
+        // Test save button functionality
+        document.getElementById('savePhotoBtn').addEventListener('click', function() {
+            const fileInput = document.getElementById('profilePhotoInput');
+            if (fileInput.files.length > 0) {
+                console.log('Save button clicked - cropped file ready:', fileInput.files[0]);
+                
+                // Show success with custom notification system
+                const showMessage = window.showUserMessage || function(msg, type) {
+                    const alert = document.createElement('div');
+                    alert.style.cssText = `
+                        position: fixed; top: 20px; right: 20px; z-index: 99999;
+                        padding: 15px 20px; background: #d4edda; border: 1px solid #c3e6cb;
+                        color: #155724; border-radius: 8px; font-weight: 500;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    `;
+                    alert.textContent = msg;
+                    document.body.appendChild(alert);
+                    setTimeout(() => alert.remove(), 5000);
+                };
+                
+                showMessage(`✅ Cropped image ready for upload!\nFile: ${fileInput.files[0].name}\nSize: ${(fileInput.files[0].size / 1024).toFixed(2)} KB`, 'success');
+            } else {
+                const showMessage = window.showUserMessage || function(msg, type) {
+                    const alert = document.createElement('div');
+                    alert.style.cssText = `
+                        position: fixed; top: 20px; right: 20px; z-index: 99999;
+                        padding: 15px 20px; background: #f8d7da; border: 1px solid #f5c6cb;
+                        color: #721c24; border-radius: 8px; font-weight: 500;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    `;
+                    alert.textContent = msg;
+                    document.body.appendChild(alert);
+                    setTimeout(() => alert.remove(), 5000);
+                };
+                showMessage('❌ No file selected or cropped yet.', 'error');
+            }
+        });
+    </script>
+</body>
+</html>
