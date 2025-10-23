@@ -2346,7 +2346,7 @@ try {
                                                     <span>View</span>
                                                 </button>
                                                 <?php if (
-                                                    in_array($employee_role, ['doctor', 'admin', 'records_officer']) ||
+                                                    in_array($employee_role, ['doctor', 'admin']) ||
                                                     ($encounter['status'] == 'ongoing' && $employee_role == 'nurse')
                                                 ): ?>
                                                     <a href="edit_consultation_new.php?id=<?= $encounter['encounter_id'] ?>"
@@ -2725,9 +2725,9 @@ try {
                         printBtn.style.display = 'inline-flex';
                         downloadBtn.style.display = 'inline-flex';
 
-                        // Show edit button if user has permission
+                        // Show edit button if user has permission (records officers excluded)
                         const userRole = '<?= $employee_role ?>';
-                        const authorizedRoles = ['doctor', 'admin', 'records_officer'];
+                        const authorizedRoles = ['doctor', 'admin'];
                         const isOngoing = data.consultation.status === 'ongoing';
                         const isNurse = userRole === 'nurse';
 

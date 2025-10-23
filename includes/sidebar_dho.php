@@ -118,25 +118,17 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'dashboard' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-home"></i> Dashboard
         </a>
-                <a href="<?= $nav_base ?>management/dho/patient_records_management.php"
-            class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
+        <a href="<?= $nav_base ?>management/dho/patient_records_management.php"
+            class="<?= $activePage === 'patients' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-users"></i> Patient Records
         </a>
-        <a href="<?= $nav_base ?>clinical-encounter-management/index.php"
-            class="<?= $activePage === 'clinical_encounters' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-notes-medical"></i> Clinical Encounters
+        <a href="<?= $nav_base ?>management/dho/appointments_management.php"
+            class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-calendar-check"></i> Appointments Management
         </a>
         <a href="<?= $nav_base ?>referrals/referrals_management.php"
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-share"></i> Referral Management
-        </a>
-        <a href="<?= $nav_base ?>management/dho/reports.php"
-            class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-chart-bar"></i> Reports & Analytics
-        </a>
-        <a href="#"
-            class="<?= $activePage === 'notifications' ? 'active' : '' ?> disabled" role="menuitem">
-            <i class="fas fa-bell"></i> Notifications
+            <i class="fas fa-share"></i> Referrals Management
         </a>
     </div>
 

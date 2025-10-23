@@ -1361,8 +1361,8 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                                                 </td>
                                                 <td>
                                                     <div class="action-buttons">
-                                                        <a href="../../../patient/profile/profile.php?patient_id=<?php echo $patient['patient_id']; ?>&view_mode=bhw" 
-                                                        class="action-btn btn-info" title="View Profile (BHW Mode)">
+                                                        <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>" 
+                                                        class="action-btn btn-info" title="View Profile">
                                                             <i class="fas fa-eye"></i>
                                                         </a>
                                                         <button type="button" class="action-btn btn-primary view-contact" 

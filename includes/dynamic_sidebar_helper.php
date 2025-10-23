@@ -11,8 +11,30 @@
  * @param string $root_path - Path to the root directory
  */
 function includeDynamicSidebar($activePage, $root_path) {
-    // Get user role from session
-    $role = strtolower($_SESSION['role'] ?? 'admin');
+    // Get user role from session - use role_id if role name not available
+    $role = null;
+    
+    // First try to get role name directly
+    if (!empty($_SESSION['role'])) {
+        $role = strtolower($_SESSION['role']);
+    } 
+    // If no role name, map from role_id
+    elseif (!empty($_SESSION['role_id'])) {
+        $roleMap = [
+            1 => 'admin',
+            2 => 'doctor', 
+            3 => 'nurse',
+            4 => 'pharmacist',
+            5 => 'dho',
+            6 => 'bhw',
+            7 => 'records_officer',
+            8 => 'cashier',
+            9 => 'laboratory_tech'
+        ];
+        $role = $roleMap[$_SESSION['role_id']] ?? 'admin';
+    } else {
+        $role = 'admin'; // Default fallback
+    }
     
     // Map roles to their sidebar files
     $sidebar_file = $root_path . '/includes/sidebar_' . $role . '.php';
@@ -37,7 +59,25 @@ function includeDynamicSidebar($activePage, $root_path) {
  */
 function getRoleDashboardUrl($role = null) {
     if ($role === null) {
-        $role = strtolower($_SESSION['role'] ?? 'admin');
+        // Get role from session, preferring role name over role_id mapping
+        if (!empty($_SESSION['role'])) {
+            $role = strtolower($_SESSION['role']);
+        } elseif (!empty($_SESSION['role_id'])) {
+            $roleMap = [
+                1 => 'admin',
+                2 => 'doctor', 
+                3 => 'nurse',
+                4 => 'pharmacist',
+                5 => 'dho',
+                6 => 'bhw',
+                7 => 'records_officer',
+                8 => 'cashier',
+                9 => 'laboratory_tech'
+            ];
+            $role = $roleMap[$_SESSION['role_id']] ?? 'admin';
+        } else {
+            $role = 'admin';
+        }
     }
     
     return "../management/{$role}/dashboard.php";

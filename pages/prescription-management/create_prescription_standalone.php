@@ -14,7 +14,7 @@ if (!isset($_SESSION['employee_id'])) {
 }
 
 // Define role-based permissions for prescription creation
-$canCreatePrescriptions = in_array($_SESSION['role_id'], [1, 2, 4]); // admin, doctor, pharmacist
+$canCreatePrescriptions = in_array($_SESSION['role_id'], [1, 2]); // admin, doctor ONLY - pharmacists cannot create prescriptions
 
 if (!$canCreatePrescriptions) {
     $role_id = $_SESSION['role_id'];

@@ -1,5 +1,6 @@
 <?php
-// appointments_management.php - Admin Side
+// appointments_management.php - Records Officer Side
+// Role-specific appointments management for Records Officers
 ob_start(); // Start output buffering to prevent any accidental output
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -15,7 +16,7 @@ header('Pragma: no-cache');
 header('Expires: 0');
 
 // Include employee session configuration - Use absolute path resolution
-$root_path = dirname(dirname(dirname(dirname(__DIR__))));
+$root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/employee_session.php';
 
 // If user is not logged in, bounce to login
@@ -33,7 +34,7 @@ if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
     if (ob_get_level()) {
         ob_end_clean(); // Clear buffer before redirect
     }
-    header('Location: ../dashboard.php');
+    header('Location: dashboard.php');
     exit();
 }
 
@@ -49,11 +50,6 @@ if (!isset($conn) || $conn->connect_error) {
 
 $employee_id = $_SESSION['employee_id'];
 $employee_role = $_SESSION['role'];
-
-// Define role-based permissions for appointments management
-$canCancelAppointments = !in_array(strtolower($employee_role), ['records_officer']); // Records officers cannot cancel
-$canEditAppointments = !in_array(strtolower($employee_role), ['records_officer']); // Records officers cannot edit
-$canViewAppointments = true; // All authorized roles can view
 
 // Handle status updates and actions
 $message = '';
@@ -294,7 +290,7 @@ function getSortIcon($column, $current_sort, $current_direction) {
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CHO Koronadal — Appointments Management</title>
+    <title>CHO Koronadal — Records Officer Appointments Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
     <!-- CSS Files - loaded by sidebar -->
@@ -1086,19 +1082,19 @@ function getSortIcon($column, $current_sort, $current_direction) {
 
         <?php
         $activePage = 'appointments';
-        include $root_path . '/includes/sidebar_admin.php';
+        include $root_path . '/includes/sidebar_records_officer.php';
         ?>
 
         <div class="content-wrapper">
             <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
-            <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="../records_officer/dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
             <i class="fas fa-chevron-right"></i>
             <span>Appointments Management</span>
         </div>
 
         <div class="page-header">
-            <h1><i class="fas fa-calendar-alt"></i> Appointments Management</h1>
+            <h1><i class="fas fa-calendar-alt"></i> Records Officer - Appointments Management</h1>
         </div>
 
         <?php if (!empty($message)): ?>
@@ -1280,7 +1276,7 @@ function getSortIcon($column, $current_sort, $current_direction) {
                                                 class="btn btn-sm btn-primary" title="View Details">
                                                 <i class="fas fa-eye"></i>
                                             </button>
-                                            <?php if (in_array($appointment['status'], ['confirmed', 'checked_in']) && $canCancelAppointments): ?>
+                                            <?php if (in_array($appointment['status'], ['confirmed', 'checked_in'])): ?>
                                                 <button onclick="cancelAppointment(<?php echo $appointment['appointment_id']; ?>)"
                                                     class="btn btn-sm btn-danger" title="Cancel Appointment">
                                                     <i class="fas fa-times"></i>

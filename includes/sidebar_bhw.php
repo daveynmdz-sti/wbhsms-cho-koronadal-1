@@ -122,22 +122,22 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'patients' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-users"></i> Patient Records
         </a>
-        <a href="<?= $nav_base ?>clinical-encounter-management/index.php"
-            class="<?= $activePage === 'clinical_encounters' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-notes-medical"></i> Clinical Encounters
+        <a href="<?= $nav_base ?>management/bhw/appointments_management.php"
+            class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-calendar-check"></i> Appointments Management
         </a>
         <a href="<?= $nav_base ?>referrals/referrals_management.php"
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-share"></i> Referrals Management
         </a>
-        <a href="<?= $nav_base ?>management/bhw/reports.php"
+        <!--<a href="<?= $nav_base ?>management/bhw/reports.php"
             class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-chart-pie"></i> Reports
-        </a>
-        <a href="#"
+        </a>-->
+        <!--<a href="#"
             class="<?= $activePage === 'notifications' ? 'active' : '' ?> disabled" role="menuitem">
             <i class="fas fa-bell"></i> Notifications
-        </a>
+        </a>-->
     </div>
 
     <a href="<?= $nav_base ?>user/admin_profile.php"
@@ -179,9 +179,11 @@ $logoutUrl = '';
 // Determine the correct path based on current location
 if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     // We're in a management page
-    if (strpos($_SERVER['PHP_SELF'], '/pages/management/bhw/') !== false ||
+    if (
+        strpos($_SERVER['PHP_SELF'], '/pages/management/bhw/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/management/admin/') !== false ||
-        strpos($_SERVER['PHP_SELF'], '/pages/management/dho/') !== false) {
+        strpos($_SERVER['PHP_SELF'], '/pages/management/dho/') !== false
+    ) {
         // From role-specific pages (3 levels deep)
         $logoutUrl = '../auth/employee_logout.php';
     } else {
@@ -196,16 +198,16 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     $request_uri = $_SERVER['REQUEST_URI'];
-    
+
     // Extract base path from REQUEST_URI for production compatibility
     $uri_parts = explode('/', trim($request_uri, '/'));
     $base_path = '';
-    
+
     // Check if we're in a project subfolder (local development)
     if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
         $base_path = '/' . $uri_parts[0];
     }
-    
+
     $logoutUrl = $base_path . '/pages/management/auth/employee_logout.php';
 }
 ?>

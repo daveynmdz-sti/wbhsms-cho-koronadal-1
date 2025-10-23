@@ -18,10 +18,10 @@ if (!is_employee_logged_in()) {
 $employee_id = get_employee_session('employee_id');
 $employee_role = get_employee_session('role');
 
-// Check if role is authorized (doctors, pharmacists, and admins can prescribe)
-$authorized_roles = ['doctor', 'pharmacist', 'admin'];
+// Check if role is authorized (ONLY doctors and admins can prescribe - NOT pharmacists)
+$authorized_roles = ['doctor', 'admin'];
 if (!in_array(strtolower($employee_role), $authorized_roles)) {
-    echo '<div class="alert alert-error">Only doctors, pharmacists, and administrators are authorized to create prescriptions.</div>';
+    echo '<div class="alert alert-error">Only doctors and administrators are authorized to create prescriptions. Pharmacists can only dispense existing prescriptions.</div>';
     exit();
 }
 

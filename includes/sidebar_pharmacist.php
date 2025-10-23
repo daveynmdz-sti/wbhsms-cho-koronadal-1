@@ -122,30 +122,12 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
-        <a href="<?= $nav_base ?>management/pharmacist/medication_dispensing.php"
-            class="<?= $activePage === 'dispensing' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-pills"></i> Dispensing
+        
+        <a href="<?= $nav_base ?>queueing/pharmacy_station.php"
+            class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-list-ol"></i> Queue Management
         </a>
-        <a href="<?= $nav_base ?>management/pharmacist/inventory.php"
-            class="<?= $activePage === 'inventory' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-boxes"></i> Inventory
-        </a>
-        <a href="<?= $nav_base ?>management/pharmacist/drug_information.php"
-            class="<?= $activePage === 'drug_info' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-info-circle"></i> Drug Information
-        </a>
-        <a href="<?= $nav_base ?>management/pharmacist/patient_counseling.php"
-            class="<?= $activePage === 'counseling' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-comments"></i> Patient Counseling
-        </a>
-        <a href="<?= $nav_base ?>management/pharmacist/reports.php"
-            class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-chart-bar"></i> Reports
-        </a>
-        <a href="<?= $nav_base ?>management/pharmacist/quality_control.php"
-            class="<?= $activePage === 'quality_control' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-shield-alt"></i> Quality Control
-        </a>
+
     </div>
 
     <a href="<?= $nav_base ?>user/admin_profile.php"

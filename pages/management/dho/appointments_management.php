@@ -1,5 +1,6 @@
 <?php
-// appointments_management.php - Admin Side
+// appointments_management.php - DHO Side
+// Role-specific appointments management for DHO (District Health Office)
 ob_start(); // Start output buffering to prevent any accidental output
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -15,7 +16,7 @@ header('Pragma: no-cache');
 header('Expires: 0');
 
 // Include employee session configuration - Use absolute path resolution
-$root_path = dirname(dirname(dirname(dirname(__DIR__))));
+$root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/employee_session.php';
 
 // If user is not logged in, bounce to login
@@ -28,12 +29,12 @@ if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
 }
 
 // Check if role is authorized
-$authorized_roles = ['admin', 'dho', 'bhw', 'doctor', 'nurse', 'records_officer'];
+$authorized_roles = ['admin', 'dho', 'bhw', 'doctor', 'nurse'];
 if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
     if (ob_get_level()) {
         ob_end_clean(); // Clear buffer before redirect
     }
-    header('Location: ../dashboard.php');
+    header('Location: dashboard.php');
     exit();
 }
 
@@ -50,10 +51,28 @@ if (!isset($conn) || $conn->connect_error) {
 $employee_id = $_SESSION['employee_id'];
 $employee_role = $_SESSION['role'];
 
-// Define role-based permissions for appointments management
-$canCancelAppointments = !in_array(strtolower($employee_role), ['records_officer']); // Records officers cannot cancel
-$canEditAppointments = !in_array(strtolower($employee_role), ['records_officer']); // Records officers cannot edit
-$canViewAppointments = true; // All authorized roles can view
+// Get employee facility assignment and district for jurisdiction restrictions
+$employee_facility_query = "SELECT f.district 
+                           FROM employees e 
+                           JOIN facilities f ON e.facility_id = f.facility_id 
+                           WHERE e.employee_id = ?";
+$facility_stmt = $conn->prepare($employee_facility_query);
+$facility_stmt->bind_param("i", $employee_id);
+$facility_stmt->execute();
+$facility_result = $facility_stmt->get_result();
+$employee_facility = $facility_result->fetch_assoc();
+$facility_stmt->close();
+
+$employee_district = $employee_facility['district'] ?? null;
+
+// DHO role restrictions: Must have district assignment
+if ($employee_role === 'dho' && !$employee_district) {
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Location: dashboard.php?error=no_district_assignment');
+    exit();
+}
 
 // Handle status updates and actions
 $message = '';
@@ -81,18 +100,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$employee || !password_verify($employee_password, $employee['password'])) {
                     $error = "Invalid password. Please try again.";
                 } else {
-                    // Update appointment status to cancelled
-                    $stmt = $conn->prepare("UPDATE appointments SET status = 'cancelled', cancellation_reason = ? WHERE appointment_id = ?");
-                    $stmt->bind_param("si", $cancel_reason, $appointment_id);
-                    if ($stmt->execute()) {
-                        // Log the cancellation
-                        $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, (SELECT patient_id FROM appointments WHERE appointment_id = ?), 'cancelled', 'confirmed', 'cancelled', ?, 'employee', ?)");
-                        $log_stmt->bind_param("iisi", $appointment_id, $appointment_id, $cancel_reason, $employee_id);
-                        $log_stmt->execute();
-
-                        $message = "Appointment cancelled successfully.";
+                    // Check jurisdiction restrictions before allowing cancellation
+                    $can_cancel = true;
+                    $jurisdiction_error = "";
+                    
+                    if ($employee_role === 'dho' && $employee_district) {
+                        // DHO can only cancel appointments at facilities in their district
+                        $district_check_stmt = $conn->prepare("SELECT COUNT(*) as count FROM appointments a 
+                                                               JOIN facilities f ON a.facility_id = f.facility_id 
+                                                               WHERE a.appointment_id = ? AND f.district = ?");
+                        $district_check_stmt->bind_param("is", $appointment_id, $employee_district);
+                        $district_check_stmt->execute();
+                        $district_result = $district_check_stmt->get_result();
+                        $district_data = $district_result->fetch_assoc();
+                        $district_check_stmt->close();
+                        
+                        if ($district_data['count'] == 0) {
+                            $can_cancel = false;
+                            $jurisdiction_error = "Access denied: You can only manage appointments within your assigned district.";
+                        }
+                    }
+                    
+                    if (!$can_cancel) {
+                        $error = $jurisdiction_error;
                     } else {
-                        $error = "Failed to cancel appointment. Please try again.";
+                        // Update appointment status to cancelled
+                        $stmt = $conn->prepare("UPDATE appointments SET status = 'cancelled', cancellation_reason = ? WHERE appointment_id = ?");
+                        $stmt->bind_param("si", $cancel_reason, $appointment_id);
+                        if ($stmt->execute()) {
+                            // Log the cancellation
+                            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, (SELECT patient_id FROM appointments WHERE appointment_id = ?), 'cancelled', 'confirmed', 'cancelled', ?, 'employee', ?)");
+                            $log_stmt->bind_param("iisi", $appointment_id, $appointment_id, $cancel_reason, $employee_id);
+                            $log_stmt->execute();
+
+                            $message = "Appointment cancelled successfully.";
+                        } else {
+                            $error = "Failed to cancel appointment. Please try again.";
+                        }
                     }
                 }
                 $stmt->close();
@@ -143,6 +187,13 @@ if (!empty($facility_filter)) {
 if (!empty($date_filter)) {
     $where_conditions[] = "DATE(a.scheduled_date) = ?";
     $params[] = $date_filter;
+    $param_types .= 's';
+}
+
+// Add jurisdiction restrictions based on employee role
+if ($employee_role === 'dho' && $employee_district) {
+    $where_conditions[] = "f.district = ?";
+    $params[] = $employee_district;
     $param_types .= 's';
 }
 
@@ -245,9 +296,16 @@ try {
         $stats_types .= 's';
     }
 
+    // Add jurisdiction restrictions for stats query based on employee role
+    if ($employee_role === 'dho' && $employee_district) {
+        $stats_where_conditions[] = "f.district = ?";
+        $stats_params[] = $employee_district;
+        $stats_types .= 's';
+    }
+
     $stats_where = !empty($stats_where_conditions) ? 'WHERE ' . implode(' AND ', $stats_where_conditions) : '';
 
-    $stmt = $conn->prepare("SELECT status, COUNT(*) as count FROM appointments a $stats_where GROUP BY status");
+    $stmt = $conn->prepare("SELECT status, COUNT(*) as count FROM appointments a LEFT JOIN facilities f ON a.facility_id = f.facility_id $stats_where GROUP BY status");
     if (!empty($stats_params) && !empty($stats_types)) {
         $stmt->bind_param($stats_types, ...$stats_params);
     }
@@ -267,7 +325,14 @@ try {
 // Fetch facilities for dropdown
 $facilities = [];
 try {
-    $stmt = $conn->prepare("SELECT facility_id, name, district FROM facilities WHERE status = 'active' ORDER BY name ASC");
+    if ($employee_role === 'dho' && $employee_district) {
+        // DHO: Filter facilities by district
+        $stmt = $conn->prepare("SELECT facility_id, name, district FROM facilities WHERE status = 'active' AND district = ? ORDER BY name ASC");
+        $stmt->bind_param("s", $employee_district);
+    } else {
+        // Other roles: All active facilities
+        $stmt = $conn->prepare("SELECT facility_id, name, district FROM facilities WHERE status = 'active' ORDER BY name ASC");
+    }
     $stmt->execute();
     $result = $stmt->get_result();
     $facilities = $result->fetch_all(MYSQLI_ASSOC);
@@ -294,7 +359,7 @@ function getSortIcon($column, $current_sort, $current_direction) {
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CHO Koronadal — Appointments Management</title>
+    <title>CHO Koronadal — DHO Appointments Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
     <!-- CSS Files - loaded by sidebar -->
@@ -1086,19 +1151,19 @@ function getSortIcon($column, $current_sort, $current_direction) {
 
         <?php
         $activePage = 'appointments';
-        include $root_path . '/includes/sidebar_admin.php';
+        include $root_path . '/includes/sidebar_dho.php';
         ?>
 
         <div class="content-wrapper">
             <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
-            <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
             <i class="fas fa-chevron-right"></i>
             <span>Appointments Management</span>
         </div>
 
         <div class="page-header">
-            <h1><i class="fas fa-calendar-alt"></i> Appointments Management</h1>
+            <h1><i class="fas fa-calendar-alt"></i> DHO - Appointments Management</h1>
         </div>
 
         <?php if (!empty($message)): ?>
@@ -1280,7 +1345,7 @@ function getSortIcon($column, $current_sort, $current_direction) {
                                                 class="btn btn-sm btn-primary" title="View Details">
                                                 <i class="fas fa-eye"></i>
                                             </button>
-                                            <?php if (in_array($appointment['status'], ['confirmed', 'checked_in']) && $canCancelAppointments): ?>
+                                            <?php if (in_array($appointment['status'], ['confirmed', 'checked_in'])): ?>
                                                 <button onclick="cancelAppointment(<?php echo $appointment['appointment_id']; ?>)"
                                                     class="btn btn-sm btn-danger" title="Cancel Appointment">
                                                     <i class="fas fa-times"></i>

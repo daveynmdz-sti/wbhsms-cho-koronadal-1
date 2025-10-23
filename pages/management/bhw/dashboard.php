@@ -593,7 +593,7 @@ $stats = [
             <p>Welcome to your barangay health worker dashboard. Monitor household health, track immunizations, manage referrals, and coordinate community health programs in your assigned area.</p>
         </section>
 
-        <!-- Statistics Cards -->
+        <!-- Statistics Cards 
         <section class="stats-section">
             <h2 class="section-heading"><i class="fas fa-chart-pie"></i> Community Health Metrics</h2>
             
@@ -646,9 +646,9 @@ $stats = [
                     </div>
                 </div>
             </div>
-        </section>
+        </section>-->
 
-        <!-- Quick Actions -->
+        <!-- Quick Actions 
         <section class="quick-actions-section">
             <h2 class="section-heading"><i class="fas fa-bolt"></i> Quick Actions</h2>
             
@@ -707,7 +707,7 @@ $stats = [
                     <div class="action-arrow"><i class="fas fa-chevron-right"></i></div>
                 </a>
             </div>
-        </section>
+        </section>-->
 
         <!-- BHW Information Section -->
         <section class="info-section animate-on-scroll" data-animation="fade-up" data-delay="100">

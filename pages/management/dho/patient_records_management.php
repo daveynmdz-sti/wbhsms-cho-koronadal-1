@@ -1323,8 +1323,8 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                                                 </td>
                                                 <td>
                                                     <div class="action-buttons">
-                                                        <a href="../../../patient/profile/profile.php?patient_id=<?php echo $patient['patient_id']; ?>&view_mode=dho" 
-                                                        class="action-btn btn-info" title="View Profile (DHO Mode)">
+                                                        <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>" 
+                                                        class="action-btn btn-info" title="View Profile">
                                                             <i class="fas fa-eye"></i>
                                                         </a>
                                                         <button type="button" class="action-btn btn-primary view-contact" 

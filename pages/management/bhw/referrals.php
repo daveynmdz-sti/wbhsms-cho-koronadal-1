@@ -23,7 +23,7 @@ if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
     exit();
 }
 
-// Redirect to central referrals management system
-header('Location: ../../referrals/referrals_management.php');
+// Redirect to central referrals management system using root path resolution
+header('Location: ' . $root_path . '/pages/referrals/referrals_management.php');
 exit();
 ?>

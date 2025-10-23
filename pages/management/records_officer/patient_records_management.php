@@ -19,8 +19,8 @@ if (!isset($_SESSION['employee_id'])) {
 // Set active page for sidebar highlighting
 $activePage = 'patient_records';
 
-// Define role-based permissions - Records Officer specific
-$canEdit = ($_SESSION['role'] === 'records_officer'); // Records Officer can edit patient records
+// Define role-based permissions - Records Officer specific (VIEW ONLY)
+$canEdit = false; // Records Officers can ONLY view, print, and download - NO editing allowed
 $canView = ($_SESSION['role'] === 'records_officer');
 
 if (!$canView) {
@@ -253,7 +253,7 @@ $sql = "SELECT p.patient_id, p.username, p.status,
                     THEN CONCAT(' ', p.middle_name) 
                     ELSE '' END) as full_name,
         p.first_name, p.last_name, p.middle_name, p.date_of_birth, 
-        p.gender, p.contact_number, p.email_address, 
+        p.sex, p.contact_number, p.email_address, 
         p.profile_photo, p.created_at, 
         b.barangay_name, b.barangay_id
         FROM patients p 
@@ -334,7 +334,7 @@ $result = $stmt->get_result();
 $barangaySql = "SELECT barangay_id, barangay_name FROM barangay ORDER BY barangay_name";
 $barangayResult = $conn->query($barangaySql);
 
-// Handle status update (Records Officers can update patient status)
+// Handle status update (Records Officers CANNOT update - view only)
 if ($_POST['action'] === 'update_status' && $canEdit) {
     $patient_id = intval($_POST['patient_id']);
     $new_status = $_POST['status'] === 'active' ? 'active' : 'inactive';
@@ -1036,7 +1036,7 @@ if ($_POST['action'] === 'update_status' && $canEdit) {
                                                 <?php echo date('M d, Y', strtotime($patient['date_of_birth'])); ?> 
                                                 (<?php echo date_diff(date_create($patient['date_of_birth']), date_create('today'))->y; ?> years)
                                             </p>
-                                            <p><i class="fas fa-venus-mars"></i> <?php echo ucfirst($patient['gender']); ?></p>
+                                            <p><i class="fas fa-venus-mars"></i> <?php echo ucfirst($patient['sex']); ?></p>
                                         </div>
                                     </div>
                                 </td>
@@ -1081,7 +1081,7 @@ if ($_POST['action'] === 'update_status' && $canEdit) {
                                                 data-last-name="<?php echo htmlspecialchars($patient['last_name']); ?>"
                                                 data-middle-name="<?php echo htmlspecialchars($patient['middle_name'] ?? ''); ?>"
                                                 data-dob="<?php echo $patient['date_of_birth']; ?>"
-                                                data-gender="<?php echo $patient['gender']; ?>"
+                                                data-gender="<?php echo $patient['sex']; ?>"
                                                 data-contact="<?php echo htmlspecialchars($patient['contact_number'] ?? ''); ?>"
                                                 data-email="<?php echo htmlspecialchars($patient['email_address'] ?? ''); ?>"
                                                 data-barangay="<?php echo htmlspecialchars($patient['barangay_name']); ?>"
@@ -1090,6 +1090,23 @@ if ($_POST['action'] === 'update_status' && $canEdit) {
                                                 data-photo="<?php echo !empty($patient['profile_photo']) ? 'data:image/jpeg;base64,' . base64_encode($patient['profile_photo']) : $assets_path . '/images/user-default.png'; ?>">
                                             <i class="fas fa-eye"></i> View
                                         </button>
+                                        
+                                        <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>" 
+                                           class="btn btn-primary btn-sm" 
+                                           title="View Full Profile">
+                                            <i class="fas fa-file-medical"></i> Full Profile
+                                        </a>
+                                        
+                                        <?php if ($canEdit): ?>
+                                            <button class="btn btn-toggle btn-sm"
+                                                    onclick="toggleStatus(<?php echo $patient['patient_id']; ?>, '<?php echo $patient['status']; ?>')">
+                                                <?php if ($patient['status'] === 'active'): ?>
+                                                    <i class="fas fa-toggle-on"></i> Active
+                                                <?php else: ?>
+                                                    <i class="fas fa-toggle-off"></i> Inactive
+                                                <?php endif; ?>
+                                            </button>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>

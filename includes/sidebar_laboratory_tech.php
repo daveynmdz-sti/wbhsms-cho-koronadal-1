@@ -122,9 +122,13 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'laboratory_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-flask"></i> Laboratory Management
         </a>
-        <a href="<?= $nav_base ?>management/laboratory_tech/reports.php"
-            class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-chart-bar"></i> Reports
+        <a href="<?= $nav_base ?>laboratory-management/create_lab_order.php"
+            class="<?= $activePage === 'create_lab_order' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-plus-circle"></i> Create Lab Order
+        </a>
+        <a href="<?= $nav_base ?>queueing/lab_station.php"
+            class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-list-ol"></i> Queue Management
         </a>
     </div>
 

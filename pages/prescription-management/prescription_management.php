@@ -20,9 +20,9 @@ require_employee_login();
 $activePage = 'prescription_management';
 
 // Define role-based permissions for prescription management using role_id
-$canViewPrescriptions = in_array($_SESSION['role_id'], [1, 2, 3, 4]); // admin, doctor, nurse, pharmacist
+$canViewPrescriptions = in_array($_SESSION['role_id'], [1, 2, 3, 4, 7]); // admin, doctor, nurse, pharmacist, records_officer
 $canDispensePrescriptions = in_array($_SESSION['role_id'], [1, 4]); // admin, pharmacist
-$canCreatePrescriptions = in_array($_SESSION['role_id'], [1, 2, 4]); // admin, doctor, pharmacist
+$canCreatePrescriptions = in_array($_SESSION['role_id'], [1, 2]); // admin, doctor ONLY - pharmacists cannot create prescriptions
 $canUpdateMedications = in_array($_SESSION['role_id'], [1, 4]); // admin, pharmacist
 
 if (!$canViewPrescriptions) {

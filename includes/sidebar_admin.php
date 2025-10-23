@@ -127,14 +127,6 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-calendar-check"></i> Appointments Management
         </a>
-        <a href="<?= $nav_base ?>management/admin/user-management/employee_list.php"
-            class="<?= $activePage === 'user_management' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-users-cog"></i> Employee Management
-        </a>
-        <a href="<?= $nav_base ?>management/admin/staff-management/staff_assignments.php"
-            class="<?= $activePage === 'staff_assignments' ? 'active' : '' ?>" role="menuitem">
-            <i class="fa-solid fa-person-booth"></i> Station Assignment
-        </a>
         <!-- Clinical Encounter Management -->
         <a href="<?= $nav_base ?>clinical-encounter-management/index.php"
             class="<?= $activePage === 'clinical_encounters' ? 'active' : '' ?>" role="menuitem">
@@ -148,7 +140,7 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
-    <a href="<?= $nav_base ?>management/admin/billing/billing_overview.php"
+        <a href="<?= $nav_base ?>management/admin/billing/billing_overview.php"
             class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-invoice-dollar"></i> Billing Management
         </a>
@@ -160,10 +152,18 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Queue Management
         </a>
-        <a href="#"
+        <a href="<?= $nav_base ?>management/admin/staff-management/staff_assignments.php"
+            class="<?= $activePage === 'staff_assignments' ? 'active' : '' ?>" role="menuitem">
+            <i class="fa-solid fa-person-booth"></i> Station Assignment
+        </a>
+        <a href="<?= $nav_base ?>management/admin/user-management/employee_list.php"
+            class="<?= $activePage === 'user_management' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-users-cog"></i> Employee Management
+        </a>
+        <!--<a href="#"
             class="<?= $activePage === 'notifications' ? 'active' : '' ?> disabled" role="menuitem">
             <i class="fas fa-bell"></i> Notifications
-        </a>
+        </a>-->
     </div>
 
     <a href="<?= $nav_base ?>user/admin_profile.php"

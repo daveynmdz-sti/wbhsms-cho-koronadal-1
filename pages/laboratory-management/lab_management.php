@@ -24,9 +24,9 @@ if (!isset($_SESSION['employee_id'])) {
 $activePage = 'laboratory_management';
 
 // Define role-based permissions using role_id
-$canViewLab = in_array($_SESSION['role_id'], [1, 2, 3, 9]); // admin, doctor, nurse, laboratory_tech
+$canViewLab = in_array($_SESSION['role_id'], [1, 2, 3, 7, 9]); // admin, doctor, nurse, records_officer, laboratory_tech
 $canUploadResults = in_array($_SESSION['role_id'], [1, 9]); // admin, laboratory_tech
-$canCreateOrders = in_array($_SESSION['role_id'], [1, 2, 3, 9]); // admin, doctor, nurse, laboratory_tech
+$canCreateOrders = in_array($_SESSION['role_id'], [1, 2, 3, 9]); // admin, doctor, nurse, laboratory_tech (records officers cannot create)
 
 if (!$canViewLab) {
     $role_id = $_SESSION['role_id'];

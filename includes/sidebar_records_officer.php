@@ -122,33 +122,30 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-user-injured"></i> Patient Records
         </a>
-        <a href="<?= $nav_base ?>management/records_officer/medical_records.php"
-            class="<?= $activePage === 'medical_records' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-file-medical"></i> Medical Records
+        <a href="<?= $nav_base ?>referrals/referrals_management.php"
+            class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-share"></i> Referrals Management
         </a>
+        <a href="<?= $nav_base ?>management/records_officer/appointments_management.php"
+            class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-calendar-check"></i> Appointments Management
+        </a>
+        <!-- Clinical Encounter Management -->
         <a href="<?= $nav_base ?>clinical-encounter-management/index.php"
             class="<?= $activePage === 'clinical_encounters' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-notes-medical"></i> Clinical Encounters
+            <i class="fas fa-stethoscope"></i> Clinical Encounters
         </a>
-        <a href="<?= $nav_base ?>management/records_officer/data_entry.php"
-            class="<?= $activePage === 'data_entry' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-keyboard"></i> Data Entry
+        <a href="<?= $nav_base ?>laboratory-management/lab_management.php"
+            class="<?= $activePage === 'laboratory_management' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-flask"></i> Laboratory Management
         </a>
-        <a href="<?= $nav_base ?>management/records_officer/filing_system.php"
-            class="<?= $activePage === 'filing' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-archive"></i> Filing System
+        <a href="<?= $nav_base ?>prescription-management/prescription_management.php"
+            class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
-        <a href="<?= $nav_base ?>management/records_officer/document_scanning.php"
-            class="<?= $activePage === 'scanning' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-scanner"></i> Document Scanning
-        </a>
-        <a href="<?= $nav_base ?>management/records_officer/reports.php"
-            class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-chart-bar"></i> Reports
-        </a>
-        <a href="<?= $nav_base ?>management/records_officer/audit_trail.php"
-            class="<?= $activePage === 'audit' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-search"></i> Audit Trail
+        <a href="<?= $nav_base ?>management/admin/billing/billing_overview.php"
+            class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-file-invoice-dollar"></i> Billing Management
         </a>
     </div>
 
@@ -185,22 +182,8 @@ $nav_base = $base_path . 'pages/';
 </nav>
 
 <?php
-// Generate correct logout URL based on current file location
-$logoutUrl = '';
-
-if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
-    // Called from /pages/management/ (3 levels deep)
-    $logoutUrl = '../../../pages/management/auth/employee_logout.php';
-} elseif (strpos($_SERVER['PHP_SELF'], '/pages/patient/profile/') !== false) {
-    // Called from /pages/patient/profile/ (admin viewing patient)
-    $logoutUrl = '../../../pages/management/auth/employee_logout.php';
-} elseif (strpos($_SERVER['PHP_SELF'], '/pages/') !== false) {
-    // Called from /pages/ (2 levels deep)
-    $logoutUrl = '../../pages/management/auth/employee_logout.php';
-} else {
-    // Default fallback (1 level deep)
-    $logoutUrl = '../pages/management/auth/employee_logout.php';
-}
+// Generate correct logout URL using the same base path logic as navigation
+$logoutUrl = $base_path . 'pages/management/auth/employee_logout.php';
 ?>
 
 <!-- Hidden logout form with CSRF protection -->

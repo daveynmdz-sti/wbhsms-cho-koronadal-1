@@ -118,46 +118,46 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'dashboard' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-home"></i> Dashboard
         </a>
-        <a href="<?= $nav_base ?>management/nurse/patient_care.php"
-            class="<?= $activePage === 'patient_care' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-user-nurse"></i> Patient Care
+        <a href="<?= $nav_base ?>management/nurse/patient_records_management.php"
+            class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-users"></i> Patient Records
+        </a>
+        <a href="<?= $nav_base ?>referrals/referrals_management.php"
+            class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-share-square"></i> Referral Management
         </a>
         <a href="<?= $nav_base ?>clinical-encounter-management/index.php"
             class="<?= $activePage === 'clinical_encounters' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-notes-medical"></i> Clinical Encounters
-        </a>
-        <a href="<?= $nav_base ?>management/nurse/vital_signs.php"
-            class="<?= $activePage === 'vital_signs' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-heartbeat"></i> Vital Signs
-        </a>
-        <a href="<?= $nav_base ?>management/nurse/medications.php"
-            class="<?= $activePage === 'medications' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-pills"></i> Medications
-        </a>
-        <a href="<?= $nav_base ?>prescription-management/prescription_management.php"
-            class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
+            <i class="fas fa-stethoscope"></i> Clinical Encounters
         </a>
         <a href="<?= $nav_base ?>laboratory-management/lab_management.php"
             class="<?= $activePage === 'laboratory_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-flask"></i> Laboratory Management
         </a>
-        <a href="<?= $nav_base ?>management/nurse/immunizations.php"
-            class="<?= $activePage === 'immunizations' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-syringe"></i> Immunizations
+        <a href="<?= $nav_base ?>prescription-management/prescription_management.php"
+            class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
-        <a href="<?= $nav_base ?>management/nurse/appointments.php"
-            class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-calendar-check"></i> Appointments
-        </a>
-        <a href="<?= $nav_base ?>management/nurse/patient_records_management.php"
-            class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-file-medical"></i> Patient Records
-        </a>
-        <a href="<?= $nav_base ?>management/nurse/triage.php"
-            class="<?= $activePage === 'triage' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-clipboard-list"></i> Triage
-        </a>
+        <?php if ($hasStationAssignment): ?>
+            <a href="<?= $nav_base ?>queueing/consultation_station.php"
+                class="<?= $activePage === 'queueing' || $activePage === 'queue_management' ? 'active' : '' ?>"
+                role="menuitem">
+                <i class="fas fa-list-ol"></i> Queue Management
+                <?php if ($assignedStationName): ?>
+                    <small style="display:block;font-size:11px;color:#b3d9ff;margin-top:2px;">
+                        <i class="fas fa-clinic-medical" style="margin-right:3px;"></i><?= htmlspecialchars($assignedStationName) ?>
+                    </small>
+                <?php endif; ?>
+            </a>
+        <?php else: ?>
+            <a href="#" onclick="showStationRequiredModal(event)"
+                class="disabled" role="menuitem" style="opacity:0.5;cursor:not-allowed;">
+                <i class="fas fa-list-ol"></i> Queue Management
+                <small style="display:block;font-size:11px;color:#ff6b6b;margin-top:2px;">
+                    <i class="fas fa-exclamation-triangle" style="margin-right:3px;"></i>Station assignment required
+                </small>
+            </a>
+        <?php endif; ?>
     </div>
 
     <a href="<?= $nav_base ?>user/admin_profile.php"
@@ -199,9 +199,11 @@ $logoutUrl = '';
 // Determine the correct path based on current location
 if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     // We're in a management page
-    if (strpos($_SERVER['PHP_SELF'], '/pages/management/nurse/') !== false ||
+    if (
+        strpos($_SERVER['PHP_SELF'], '/pages/management/nurse/') !== false ||
         strpos($_SERVER['PHP_SELF'], '/pages/management/admin/') !== false ||
-        strpos($_SERVER['PHP_SELF'], '/pages/management/doctor/') !== false) {
+        strpos($_SERVER['PHP_SELF'], '/pages/management/doctor/') !== false
+    ) {
         // From role-specific pages (3 levels deep)
         $logoutUrl = '../auth/employee_logout.php';
     } else {
@@ -216,21 +218,17 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     $request_uri = $_SERVER['REQUEST_URI'];
-    
+
     // Extract base path from REQUEST_URI for production compatibility
     $uri_parts = explode('/', trim($request_uri, '/'));
     $base_path = '';
-    
+
     // Check if we're in a project subfolder (local development)
     if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
         $base_path = '/' . $uri_parts[0];
     }
-    
+
     $logoutUrl = $base_path . '/pages/management/auth/employee_logout.php';
-}
-?>
-    // Default fallback (1 level deep)
-    $logoutUrl = '../pages/management/auth/employee_logout.php';
 }
 ?>
 

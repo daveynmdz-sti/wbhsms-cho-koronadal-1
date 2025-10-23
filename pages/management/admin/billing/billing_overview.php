@@ -13,16 +13,30 @@ if (!is_employee_logged_in()) {
 }
 
 $employee_role = get_employee_session('role');
-if (!in_array($employee_role, ['admin'])) {
+if (!in_array($employee_role, ['admin', 'records_officer'])) {
     header("Location: ../dashboard.php?error=Access denied");
     exit();
 }
 
+// Define role-based permissions for billing management
+$canEditBilling = in_array($employee_role, ['admin']); // Only admin can edit billing
+$canViewBilling = in_array($employee_role, ['admin', 'records_officer']); // Admin and records officers can view
+
 $employee_id = get_employee_session('employee_id');
 $employee_name = get_employee_session('employee_name', 'Unknown User');
 
-// Include sidebar for admin
-include '../../../../includes/sidebar_admin.php';
+// Set active page for sidebar highlighting
+$activePage = 'billing';
+
+// Include appropriate sidebar based on user role
+if ($employee_role === 'admin') {
+    include '../../../../includes/sidebar_admin.php';
+} elseif ($employee_role === 'records_officer') {
+    include '../../../../includes/sidebar_records_officer.php';
+} else {
+    // Fallback to admin sidebar for other roles
+    include '../../../../includes/sidebar_admin.php';
+}
 
 $message = isset($_GET['message']) ? htmlspecialchars($_GET['message']) : '';
 $error = isset($_GET['error']) ? htmlspecialchars($_GET['error']) : '';
@@ -839,7 +853,11 @@ try {
     <section class="billing-overview">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
-            <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+            <?php if ($employee_role === 'records_officer'): ?>
+                <a href="../../records_officer/dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+            <?php else: ?>
+                <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+            <?php endif; ?>
             <span> / </span>
             <span style="color: #0077b6; font-weight: 600;">Billing System Overview</span>
         </div>
@@ -847,9 +865,11 @@ try {
         <div class="page-header">
             <h1><i class="fas fa-file-invoice-dollar" style="margin-right: 0.5rem;"></i>Billing System Overview</h1>
             <div class="action-buttons">
-                <a href="../../cashier/billing_reports.php" class="btn btn-secondary">
-                    <i class="fas fa-chart-bar"></i> Financial Reports
-                </a>
+                <?php if ($employee_role === 'admin'): ?>
+                    <a href="../../cashier/billing_reports.php" class="btn btn-secondary">
+                        <i class="fas fa-chart-bar"></i> Financial Reports
+                    </a>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -929,7 +949,12 @@ try {
             <div class="billing-panel">
                 <div class="panel-header">
                     <div class="panel-title">
-                        <i class="fas fa-file-invoice"></i> Invoice Management (Admin View)
+                        <i class="fas fa-file-invoice"></i> Invoice Management 
+                        <?php if ($employee_role === 'admin'): ?>
+                            (Admin View)
+                        <?php elseif ($employee_role === 'records_officer'): ?>
+                            (Records Officer View)
+                        <?php endif; ?>
                     </div>
                 </div>
 

@@ -32,6 +32,78 @@ if (!isset($conn) || $conn->connect_error) {
 $employee_id = $_SESSION['employee_id'];
 $employee_role = $_SESSION['role'];
 
+// Define role-based permissions for referrals management
+$canCreateReferrals = true; // All authorized roles can create referrals
+$canEditReferrals = !in_array(strtolower($employee_role), ['records_officer']); // Records officers cannot edit existing referrals
+$canViewReferrals = true; // All authorized roles can view
+
+// DHO and BHW Access Control - Get jurisdiction restrictions
+$jurisdiction_restriction = '';
+$jurisdiction_params = [];
+$jurisdiction_param_types = '';
+
+if (strtolower($employee_role) === 'dho') {
+    try {
+        // Get DHO's district_id from their facility assignment
+        $dho_district_sql = "SELECT f.district_id 
+                             FROM employees e 
+                             JOIN facilities f ON e.facility_id = f.facility_id 
+                             WHERE e.employee_id = ? AND e.role_id = 5";
+        $dho_district_stmt = $conn->prepare($dho_district_sql);
+        $dho_district_stmt->bind_param("i", $employee_id);
+        $dho_district_stmt->execute();
+        $dho_district_result = $dho_district_stmt->get_result();
+
+        if ($dho_district_result->num_rows === 0) {
+            die('Error: Access denied - No facility assignment found for DHO.');
+        }
+
+        $dho_district = $dho_district_result->fetch_assoc()['district_id'];
+        $dho_district_stmt->close();
+
+        // Add district restriction to queries
+        $jurisdiction_restriction = " AND b.district_id = ?";
+        $jurisdiction_params[] = $dho_district;
+        $jurisdiction_param_types .= 'i';
+
+        error_log("DHO referrals access: Employee ID $employee_id restricted to district $dho_district");
+
+    } catch (Exception $e) {
+        error_log("DHO referrals access control error: " . $e->getMessage());
+        die('Error: Access validation failed.');
+    }
+} elseif (strtolower($employee_role) === 'bhw') {
+    try {
+        // Get BHW's barangay_id from their facility assignment
+        $bhw_barangay_sql = "SELECT f.barangay_id 
+                             FROM employees e 
+                             JOIN facilities f ON e.facility_id = f.facility_id 
+                             WHERE e.employee_id = ? AND e.role_id = 6";
+        $bhw_barangay_stmt = $conn->prepare($bhw_barangay_sql);
+        $bhw_barangay_stmt->bind_param("i", $employee_id);
+        $bhw_barangay_stmt->execute();
+        $bhw_barangay_result = $bhw_barangay_stmt->get_result();
+
+        if ($bhw_barangay_result->num_rows === 0) {
+            die('Error: Access denied - No facility assignment found for BHW.');
+        }
+
+        $bhw_barangay = $bhw_barangay_result->fetch_assoc()['barangay_id'];
+        $bhw_barangay_stmt->close();
+
+        // Add barangay restriction to queries
+        $jurisdiction_restriction = " AND p.barangay_id = ?";
+        $jurisdiction_params[] = $bhw_barangay;
+        $jurisdiction_param_types .= 'i';
+
+        error_log("BHW referrals access: Employee ID $employee_id restricted to barangay $bhw_barangay");
+
+    } catch (Exception $e) {
+        error_log("BHW referrals access control error: " . $e->getMessage());
+        die('Error: Access validation failed.');
+    }
+}
+
 // Handle status updates and actions
 $message = '';
 $error = '';
@@ -153,11 +225,17 @@ try {
         LEFT JOIN employees e ON r.referred_by = e.employee_id
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         $where_clause
+        $jurisdiction_restriction
     ";
 
     $count_stmt = $conn->prepare($count_sql);
-    if (!empty($params)) {
-        $count_stmt->bind_param($param_types, ...$params);
+    
+    // Combine all parameters for count query
+    $count_params = array_merge($params, $jurisdiction_params);
+    $count_param_types = $param_types . $jurisdiction_param_types;
+    
+    if (!empty($count_params)) {
+        $count_stmt->bind_param($count_param_types, ...$count_params);
     }
     $count_stmt->execute();
     $count_result = $count_stmt->get_result();
@@ -179,19 +257,24 @@ try {
         LEFT JOIN employees e ON r.referred_by = e.employee_id
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         $where_clause
+        $jurisdiction_restriction
         ORDER BY r.referral_date DESC
         LIMIT ? OFFSET ?
     ";
 
     $stmt = $conn->prepare($sql);
 
-    // Add pagination parameters
-    $params[] = $per_page;
-    $params[] = $offset;
-    $param_types .= 'ii';
+    // Combine all parameters for main query
+    $all_params = array_merge($params, $jurisdiction_params);
+    $all_param_types = $param_types . $jurisdiction_param_types;
 
-    if (!empty($params)) {
-        $stmt->bind_param($param_types, ...$params);
+    // Add pagination parameters
+    $all_params[] = $per_page;
+    $all_params[] = $offset;
+    $all_param_types .= 'ii';
+
+    if (!empty($all_params)) {
+        $stmt->bind_param($all_param_types, ...$all_params);
     }
 
     $stmt->execute();
@@ -215,7 +298,21 @@ $stats = [
 ];
 
 try {
-    $stmt = $conn->prepare("SELECT status, COUNT(*) as count FROM referrals GROUP BY status");
+    // Statistics query with jurisdiction restrictions
+    $stats_sql = "
+        SELECT r.status, COUNT(*) as count 
+        FROM referrals r
+        LEFT JOIN patients p ON r.patient_id = p.patient_id
+        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+        WHERE 1=1
+        $jurisdiction_restriction
+        GROUP BY r.status
+    ";
+    
+    $stmt = $conn->prepare($stats_sql);
+    if (!empty($jurisdiction_params)) {
+        $stmt->bind_param($jurisdiction_param_types, ...$jurisdiction_params);
+    }
     $stmt->execute();
     $result = $stmt->get_result();
     while ($row = $result->fetch_assoc()) {
@@ -1722,9 +1819,11 @@ try {
 
         <div class="page-header">
             <h1><i class="fas fa-share"></i> Referrals Management</h1>
+            <?php if ($canCreateReferrals): ?>
             <a href="create_referrals.php" class="btn btn-primary">
                 <i class="fas fa-plus"></i> Create Referral
             </a>
+            <?php endif; ?>
         </div>
 
         <?php if (!empty($message)): ?>
@@ -1830,7 +1929,9 @@ try {
                         <i class="fas fa-share"></i>
                         <h3>No Referrals Found</h3>
                         <p>No referrals match your current search criteria.</p>
+                        <?php if ($canCreateReferrals): ?>
                         <a href="create_referrals.php" class="btn btn-primary">Create First Referral</a>
+                        <?php endif; ?>
                     </div>
                 <?php else: ?>
                     <!-- Desktop/Tablet Table View -->
@@ -2155,6 +2256,7 @@ try {
             </div>
 
             <div class="referral-modal-actions">
+                <?php if ($canEditReferrals): ?>
                 <!-- Edit Button - Show for Active status -->
                 <button type="button" class="modal-btn modal-btn-warning edit-btn-hidden" onclick="editReferral()" id="editReferralBtn">
                     <i class="fas fa-edit"></i> Edit
@@ -2169,6 +2271,7 @@ try {
                 <button type="button" class="modal-btn modal-btn-success edit-btn-hidden" onclick="reinstateReferral(currentReferralId)" id="reinstateReferralBtn">
                     <i class="fas fa-redo"></i> Reinstate
                 </button>
+                <?php endif; ?>
 
                 <!-- Print Button - Always available -->
                 <button type="button" class="modal-btn modal-btn-primary" onclick="printReferral(currentReferralId)" id="printReferralBtn">

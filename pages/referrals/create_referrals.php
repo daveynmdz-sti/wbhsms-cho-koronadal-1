@@ -53,6 +53,74 @@ try {
     $error_message = "Unable to retrieve employee facility information.";
 }
 
+// DHO and BHW Access Control - Get jurisdiction restrictions for patient search
+$jurisdiction_restriction = '';
+$jurisdiction_params = [];
+$jurisdiction_param_types = '';
+$employee_role = strtolower($_SESSION['role']);
+
+if ($employee_role === 'dho') {
+    try {
+        // Get DHO's district_id from their facility assignment
+        $dho_district_sql = "SELECT f.district_id 
+                             FROM employees e 
+                             JOIN facilities f ON e.facility_id = f.facility_id 
+                             WHERE e.employee_id = ? AND e.role_id = 5";
+        $dho_district_stmt = $conn->prepare($dho_district_sql);
+        $dho_district_stmt->bind_param("i", $employee_id);
+        $dho_district_stmt->execute();
+        $dho_district_result = $dho_district_stmt->get_result();
+
+        if ($dho_district_result->num_rows === 0) {
+            die('Error: Access denied - No facility assignment found for DHO.');
+        }
+
+        $dho_district = $dho_district_result->fetch_assoc()['district_id'];
+        $dho_district_stmt->close();
+
+        // Add district restriction to patient search
+        $jurisdiction_restriction = " AND b.district_id = ?";
+        $jurisdiction_params[] = $dho_district;
+        $jurisdiction_param_types .= 'i';
+
+        error_log("DHO create referrals access: Employee ID $employee_id restricted to district $dho_district");
+
+    } catch (Exception $e) {
+        error_log("DHO create referrals access control error: " . $e->getMessage());
+        die('Error: Access validation failed.');
+    }
+} elseif ($employee_role === 'bhw') {
+    try {
+        // Get BHW's barangay_id from their facility assignment
+        $bhw_barangay_sql = "SELECT f.barangay_id 
+                             FROM employees e 
+                             JOIN facilities f ON e.facility_id = f.facility_id 
+                             WHERE e.employee_id = ? AND e.role_id = 6";
+        $bhw_barangay_stmt = $conn->prepare($bhw_barangay_sql);
+        $bhw_barangay_stmt->bind_param("i", $employee_id);
+        $bhw_barangay_stmt->execute();
+        $bhw_barangay_result = $bhw_barangay_stmt->get_result();
+
+        if ($bhw_barangay_result->num_rows === 0) {
+            die('Error: Access denied - No facility assignment found for BHW.');
+        }
+
+        $bhw_barangay = $bhw_barangay_result->fetch_assoc()['barangay_id'];
+        $bhw_barangay_stmt->close();
+
+        // Add barangay restriction to patient search
+        $jurisdiction_restriction = " AND p.barangay_id = ?";
+        $jurisdiction_params[] = $bhw_barangay;
+        $jurisdiction_param_types .= 'i';
+
+        error_log("BHW create referrals access: Employee ID $employee_id restricted to barangay $bhw_barangay");
+
+    } catch (Exception $e) {
+        error_log("BHW create referrals access control error: " . $e->getMessage());
+        die('Error: Access validation failed.');
+    }
+}
+
 // Handle form submissions
 $success_message = '';
 $error_message = '';
@@ -268,23 +336,41 @@ if ($search_query || $first_name || $last_name || $barangay_filter) {
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
         $where_clause
         AND p.status = 'active'
+        $jurisdiction_restriction
         ORDER BY p.last_name, p.first_name
         LIMIT 5
     ";
     
-    if (!empty($params)) {
+    if (!empty($params) || !empty($jurisdiction_params)) {
+        // Combine search parameters with jurisdiction parameters
+        $all_params = array_merge($params, $jurisdiction_params);
+        $all_param_types = $param_types . $jurisdiction_param_types;
+        
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param($param_types, ...$params);
+        if (!empty($all_params)) {
+            $stmt->bind_param($all_param_types, ...$all_params);
+        }
         $stmt->execute();
         $result = $stmt->get_result();
         $patients = $result->fetch_all(MYSQLI_ASSOC);
     }
 }
 
-// Get barangays for filter dropdown
+// Get barangays for filter dropdown - restricted by jurisdiction
 $barangays = [];
 try {
-    $stmt = $conn->prepare("SELECT barangay_name FROM barangay WHERE status = 'active' ORDER BY barangay_name ASC");
+    if ($employee_role === 'dho' && !empty($jurisdiction_params)) {
+        // DHO can only see barangays in their district
+        $stmt = $conn->prepare("SELECT barangay_name FROM barangay WHERE status = 'active' AND district_id = ? ORDER BY barangay_name ASC");
+        $stmt->bind_param('i', $jurisdiction_params[0]); // district_id
+    } elseif ($employee_role === 'bhw' && !empty($jurisdiction_params)) {
+        // BHW can only see their own barangay
+        $stmt = $conn->prepare("SELECT barangay_name FROM barangay WHERE status = 'active' AND barangay_id = ? ORDER BY barangay_name ASC");
+        $stmt->bind_param('i', $jurisdiction_params[0]); // barangay_id
+    } else {
+        // Other roles can see all active barangays
+        $stmt = $conn->prepare("SELECT barangay_name FROM barangay WHERE status = 'active' ORDER BY barangay_name ASC");
+    }
     $stmt->execute();
     $result = $stmt->get_result();
     $barangays = $result->fetch_all(MYSQLI_ASSOC);

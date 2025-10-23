@@ -1299,8 +1299,8 @@ $barangayResult = $conn->query($barangaySql);
                                                 </td>
                                                 <td>
                                                     <div class="action-buttons">
-                                                        <a href="../../../patient/profile/profile.php?patient_id=<?php echo $patient['patient_id']; ?>&view_mode=doctor" 
-                                                        class="action-btn btn-info" title="View Profile (Doctor Mode)">
+                                                        <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>" 
+                                                        class="action-btn btn-info" title="View Profile">
                                                             <i class="fas fa-eye"></i>
                                                         </a>
                                                         <button type="button" class="action-btn btn-primary view-contact" 
