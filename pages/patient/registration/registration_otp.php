@@ -82,7 +82,7 @@ if ($isPost) {
 
     // ---- OTP valid -> insert patient
     $regData = $_SESSION['registration'];
-    $hashedPassword = password_hash($regData['password'], PASSWORD_DEFAULT);
+    $hashedPassword = $regData['password']; // Already hashed in register_patient.php
     
     // Map philhealth_type from form values to database ENUM values
     $mappedPhilhealthType = null;
