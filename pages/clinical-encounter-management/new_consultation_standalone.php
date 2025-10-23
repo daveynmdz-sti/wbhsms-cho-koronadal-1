@@ -18,6 +18,7 @@ header('Expires: 0');
 // Include employee session configuration
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
+require_once $root_path . '/config/production_security.php';
 require_once $root_path . '/config/db.php';
 
 // Check database connection
@@ -266,7 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 array("options" => array("min_range" => 1.0, "max_range" => 500.0)));
             $height = filter_input(INPUT_POST, 'height', FILTER_VALIDATE_FLOAT,
                 array("options" => array("min_range" => 30.0, "max_range" => 250.0)));
-            $vitals_remarks = filter_var(trim($_POST['vitals_remarks'] ?? ''), FILTER_SANITIZE_STRING);
+            $vitals_remarks = sanitize_input($_POST['vitals_remarks'] ?? '');
             
             // Limit remarks length
             if (strlen($vitals_remarks) > 500) {
@@ -358,11 +359,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Consultation data with validation
             $service_id = filter_input(INPUT_POST, 'service_id', FILTER_VALIDATE_INT);
-            $chief_complaint = filter_var(trim($_POST['chief_complaint'] ?? ''), FILTER_SANITIZE_STRING);
-            $diagnosis = filter_var(trim($_POST['diagnosis'] ?? ''), FILTER_SANITIZE_STRING);
-            $treatment_plan = filter_var(trim($_POST['treatment_plan'] ?? ''), FILTER_SANITIZE_STRING);
-            $follow_up_date = filter_input(INPUT_POST, 'follow_up_date', FILTER_SANITIZE_STRING);
-            $remarks = filter_var(trim($_POST['remarks'] ?? ''), FILTER_SANITIZE_STRING);
+            $chief_complaint = sanitize_input($_POST['chief_complaint'] ?? '');
+            $diagnosis = sanitize_input($_POST['diagnosis'] ?? '');
+            $treatment_plan = sanitize_input($_POST['treatment_plan'] ?? '');
+            $follow_up_date = sanitize_input($_POST['follow_up_date'] ?? '');
+            $remarks = sanitize_input($_POST['remarks'] ?? '');
             $consultation_status = in_array($_POST['consultation_status'] ?? '', ['ongoing', 'completed', 'follow_up_required']) 
                 ? $_POST['consultation_status'] : 'ongoing';
             

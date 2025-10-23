@@ -4,6 +4,12 @@ error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
+// Security headers
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 // Include patient session configuration
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/patient_session.php';
@@ -44,9 +50,9 @@ if (!isset($_SESSION['patient_id'])) {
 require_once $root_path . '/config/db.php';
 
 $patient_id = $_SESSION['patient_id'];
-$consultation_id = isset($_GET['consultation_id']) ? $_GET['consultation_id'] : null;
+$consultation_id = filter_input(INPUT_GET, 'consultation_id', FILTER_VALIDATE_INT);
 
-if (!$consultation_id || !is_numeric($consultation_id)) {
+if (!$consultation_id || $consultation_id <= 0) {
     logConsultationDetailsError("Invalid consultation ID provided", [
         'consultation_id' => $consultation_id,
         'patient_id' => $patient_id
@@ -306,11 +312,27 @@ try {
             <div class="detail-grid">
                 <div class="detail-item">
                     <label>Visit Date:</label>
-                    <span><?php echo date('F j, Y', strtotime($consultation['visit_date'])); ?></span>
+                    <span>
+                        <?php 
+                        if (!empty($consultation['visit_date'])) {
+                            echo date('F j, Y', strtotime($consultation['visit_date'])); 
+                        } else {
+                            echo '<span style="color: #6c757d; font-style: italic;">Not recorded</span>';
+                        }
+                        ?>
+                    </span>
                 </div>
                 <div class="detail-item">
                     <label>Visit Time:</label>
-                    <span><?php echo date('g:i A', strtotime($consultation['visit_time'])); ?></span>
+                    <span>
+                        <?php 
+                        if (!empty($consultation['visit_time'])) {
+                            echo date('g:i A', strtotime($consultation['visit_time'])); 
+                        } else {
+                            echo '<span style="color: #6c757d; font-style: italic;">Not recorded</span>';
+                        }
+                        ?>
+                    </span>
                 </div>
                 <div class="detail-item">
                     <label>Attending Doctor:</label>

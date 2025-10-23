@@ -2,13 +2,26 @@
 // pages/management/admin/staff-management/staff_assignments.php
 // Admin interface for assigning staff to stations and managing station status
 
+// Start output buffering to prevent header issues
+ob_start();
+
+// Security headers - must be sent before any output
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 // Include employee session configuration - Use absolute path resolution
 $root_path = dirname(dirname(dirname(dirname(__DIR__))));
 require_once $root_path . '/config/session/employee_session.php';
+require_once $root_path . '/config/production_security.php';
 
 // If user is not logged in, bounce to login
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
-    ob_end_clean();
+    // Clean output buffer if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
     header('Location: /pages/management/auth/employee_login.php');
     exit();
@@ -16,6 +29,10 @@ if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
 
 // Check if role is authorized for admin functions
 if (strtolower($_SESSION['role']) !== 'admin') {
+    // Clean output buffer if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Location: ../dashboard.php');
     exit();
 }
@@ -23,10 +40,24 @@ if (strtolower($_SESSION['role']) !== 'admin') {
 require_once $root_path . '/config/db.php';
 require_once $root_path . '/utils/queue_management_service.php';
 
-// Initialize queue management service
-$queueService = new QueueManagementService($pdo);
+// Initialize queue management service with error handling
+try {
+    $queueService = new QueueManagementService($pdo);
+} catch (Exception $e) {
+    error_log('Queue service initialization error in staff_assignments.php: ' . $e->getMessage());
+    // Clean output buffer if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Location: ../dashboard.php?error=service_unavailable');
+    exit();
+}
 
-$date = $_GET['date'] ?? date('Y-m-d');
+// Validate and sanitize date input
+$date = sanitize_input($_GET['date'] ?? '') ?: date('Y-m-d');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+    $date = date('Y-m-d');
+}
 $message = '';
 $error = '';
 
@@ -107,6 +138,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Redirect to prevent form resubmission only if there's a success message
     if ($message && empty($error)) {
+        // Clean output buffer if it exists
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Location: staff_assignments.php?date=' . urlencode($date));
         exit();
     }
@@ -1362,3 +1397,9 @@ $activePage = 'staff_assignments';
     </div>
 </body>
 </html>
+<?php
+// Flush output buffer at the end
+if (ob_get_level()) {
+    ob_end_flush();
+}
+?>

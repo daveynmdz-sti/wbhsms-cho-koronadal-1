@@ -1228,7 +1228,7 @@ try {
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-primary" onclick="window.location.href='appointments.php'">
-                    <i class="fas fa-calendar-check"></i> Go to Appointments & Referrals
+                    <i class="fas fa-calendar-check"></i> Go Back to My Appointments
                 </button>
             </div>
         </div>
@@ -2445,6 +2445,9 @@ try {
             max-width: 600px;
             position: relative;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
         }
 
         .modal-header {
@@ -2466,6 +2469,8 @@ try {
 
         .modal-body {
             padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
         }
 
         .modal-footer {
@@ -2475,6 +2480,7 @@ try {
             justify-content: flex-end;
             gap: 0.5rem;
             border-radius: 0 0 15px 15px;
+            flex-shrink: 0;
         }
 
         .close {
@@ -2541,6 +2547,46 @@ try {
             border-radius: 15px;
             padding: 1.5rem;
             margin-bottom: 1.5rem;
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+
+        /* Custom scrollbar for referral summary card */
+        .referral-summary-card::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .referral-summary-card::-webkit-scrollbar-track {
+            background: #f1f3f4;
+            border-radius: 10px;
+        }
+
+        .referral-summary-card::-webkit-scrollbar-thumb {
+            background: #0077b6;
+            border-radius: 10px;
+        }
+
+        .referral-summary-card::-webkit-scrollbar-thumb:hover {
+            background: #023e8a;
+        }
+
+        /* Custom scrollbar for modal body */
+        .modal-body::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .modal-body::-webkit-scrollbar-track {
+            background: #f1f3f4;
+            border-radius: 10px;
+        }
+
+        .modal-body::-webkit-scrollbar-thumb {
+            background: #0077b6;
+            border-radius: 10px;
+        }
+
+        .modal-body::-webkit-scrollbar-thumb:hover {
+            background: #023e8a;
         }
 
         .summary-section {
@@ -2797,6 +2843,16 @@ try {
 
         /* Mobile Responsive */
         @media (max-width: 768px) {
+            .modal-content {
+                margin: 2% 1rem;
+                max-height: 95vh;
+            }
+            
+            .referral-summary-card {
+                max-height: 40vh;
+                padding: 1rem;
+            }
+            
             .patient-header-card {
                 flex-direction: column;
                 text-align: center;

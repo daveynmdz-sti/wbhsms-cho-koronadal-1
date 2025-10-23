@@ -32,12 +32,17 @@ if (!headers_sent()) {
 // Set production-safe error reporting
 $is_production = !in_array($_SERVER['SERVER_NAME'] ?? '', ['localhost', '127.0.0.1']);
 
-if ($is_production) {
-    // Production: Log errors but don't display them
+// Check environment variables for production detection
+$env_is_production = (getenv('ENVIRONMENT') === 'production') || 
+                    (isset($_SERVER['SERVER_ADDR']) && $_SERVER['SERVER_ADDR'] === '31.97.106.60') ||
+                    (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], '31.97.106.60') !== false);
+
+if ($is_production || $env_is_production) {
+    // Production: Log errors but don't display them, suppress deprecation warnings
     ini_set('display_errors', 0);
     ini_set('display_startup_errors', 0);
     ini_set('log_errors', 1);
-    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE);
 } else {
     // Development: Show errors for debugging
     ini_set('display_errors', 1);
@@ -56,7 +61,8 @@ if (!function_exists('sanitize_string')) {
      */
     function sanitize_string($input, $max_length = 1000) {
         if (is_null($input)) return '';
-        $sanitized = filter_var(trim($input), FILTER_SANITIZE_STRING);
+        // Replace deprecated FILTER_SANITIZE_STRING with htmlspecialchars
+        $sanitized = htmlspecialchars(trim($input), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         return substr($sanitized, 0, $max_length);
     }
 }
@@ -90,6 +96,23 @@ if (!function_exists('validate_float')) {
             return null;
         }
         return $result;
+    }
+}
+
+if (!function_exists('sanitize_input')) {
+    /**
+     * Modern replacement for deprecated FILTER_SANITIZE_STRING
+     * @param mixed $input The input to sanitize
+     * @param int $max_length Maximum allowed length
+     * @return string Sanitized string
+     */
+    function sanitize_input($input, $max_length = 1000) {
+        if (is_null($input)) return '';
+        // Trim whitespace and convert to string
+        $input = trim((string) $input);
+        // Remove or encode potentially harmful characters
+        $sanitized = htmlspecialchars($input, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return substr($sanitized, 0, $max_length);
     }
 }
 

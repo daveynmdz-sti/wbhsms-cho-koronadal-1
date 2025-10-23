@@ -10,6 +10,7 @@ $root_path = realpath(dirname(dirname(__DIR__)));
 
 // Include authentication and config
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'production_security.php';
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.php';
 
 // Check if employee is logged in
@@ -60,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Save Vitals
     if (isset($_POST['save_vitals']) && in_array($employee_role, ['nurse', 'doctor'])) {
         // Validate and sanitize inputs
-        $blood_pressure = filter_var(trim($_POST['blood_pressure'] ?? ''), FILTER_SANITIZE_STRING);
+        $blood_pressure = sanitize_input($_POST['blood_pressure'] ?? '');
         $heart_rate = filter_input(INPUT_POST, 'heart_rate', FILTER_VALIDATE_INT, 
             array("options" => array("min_range" => 30, "max_range" => 300)));
         $temperature = filter_input(INPUT_POST, 'temperature', FILTER_VALIDATE_FLOAT,
@@ -118,10 +119,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Save Consultation
     if (isset($_POST['save_consultation']) && $employee_role === 'doctor') {
         // Validate and sanitize inputs
-        $chief_complaint = filter_var(trim($_POST['chief_complaint'] ?? ''), FILTER_SANITIZE_STRING);
-        $diagnosis = filter_var(trim($_POST['diagnosis'] ?? ''), FILTER_SANITIZE_STRING);
-        $treatment_plan = filter_var(trim($_POST['treatment_plan'] ?? ''), FILTER_SANITIZE_STRING);
-        $remarks = filter_var(trim($_POST['remarks'] ?? ''), FILTER_SANITIZE_STRING);
+        $chief_complaint = sanitize_input($_POST['chief_complaint'] ?? '');
+        $diagnosis = sanitize_input($_POST['diagnosis'] ?? '');
+        $treatment_plan = sanitize_input($_POST['treatment_plan'] ?? '');
+        $remarks = sanitize_input($_POST['remarks'] ?? '');
         $consultation_status = in_array($_POST['consultation_status'] ?? '', ['pending', 'completed', 'follow_up_required']) 
             ? $_POST['consultation_status'] : 'pending';
         

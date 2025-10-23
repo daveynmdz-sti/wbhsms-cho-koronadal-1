@@ -10,6 +10,7 @@ $root_path = realpath(dirname(dirname(__DIR__)));
 
 // Include authentication and config
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'production_security.php';
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.php';
 
 // Check if employee is logged in
@@ -61,17 +62,17 @@ $error_message = '';
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_consultation'])) {
     // Validate and sanitize inputs
-    $chief_complaint = filter_var(trim($_POST['chief_complaint'] ?? ''), FILTER_SANITIZE_STRING);
-    $diagnosis = filter_var(trim($_POST['diagnosis'] ?? ''), FILTER_SANITIZE_STRING);
-    $treatment_plan = filter_var(trim($_POST['treatment_plan'] ?? ''), FILTER_SANITIZE_STRING);
-    $remarks = filter_var(trim($_POST['remarks'] ?? ''), FILTER_SANITIZE_STRING);
+    $chief_complaint = sanitize_input($_POST['chief_complaint'] ?? '');
+    $diagnosis = sanitize_input($_POST['diagnosis'] ?? '');
+    $treatment_plan = sanitize_input($_POST['treatment_plan'] ?? '');
+    $remarks = sanitize_input($_POST['remarks'] ?? '');
     $consultation_status = in_array($_POST['consultation_status'] ?? '', ['pending', 'completed', 'follow_up_required']) 
         ? $_POST['consultation_status'] : 'pending';
     $follow_up_date = null;
     
     // Handle follow-up date with validation
     if (isset($_POST['has_followup']) && $_POST['has_followup'] === '1' && !empty($_POST['follow_up_date'])) {
-        $follow_up_date = filter_input(INPUT_POST, 'follow_up_date', FILTER_SANITIZE_STRING);
+        $follow_up_date = sanitize_input($_POST['follow_up_date'] ?? '');
         // Validate date format
         if ($follow_up_date && !DateTime::createFromFormat('Y-m-d', $follow_up_date)) {
             $error_message = "Invalid follow-up date format.";

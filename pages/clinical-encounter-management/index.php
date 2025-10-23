@@ -71,12 +71,12 @@ $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT, array("options" => 
 $offset = ($page - 1) * $records_per_page;
 
 // Search and filter parameters with sanitization
-$patient_id_filter = filter_var($_GET['patient_id'] ?? '', FILTER_SANITIZE_STRING);
-$first_name_filter = filter_var($_GET['first_name'] ?? '', FILTER_SANITIZE_STRING);
-$last_name_filter = filter_var($_GET['last_name'] ?? '', FILTER_SANITIZE_STRING);
+$patient_id_filter = htmlspecialchars(trim($_GET['patient_id'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+$first_name_filter = htmlspecialchars(trim($_GET['first_name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+$last_name_filter = htmlspecialchars(trim($_GET['last_name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 $status_filter = in_array($_GET['status'] ?? '', ['pending', 'completed', 'cancelled', 'follow_up_required']) ? $_GET['status'] : '';
-$date_from = filter_input(INPUT_GET, 'date_from', FILTER_SANITIZE_STRING);
-$date_to = filter_input(INPUT_GET, 'date_to', FILTER_SANITIZE_STRING);
+$date_from = htmlspecialchars(trim($_GET['date_from'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+$date_to = htmlspecialchars(trim($_GET['date_to'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 $doctor_filter = filter_input(INPUT_GET, 'doctor', FILTER_VALIDATE_INT);
 
 // Validate date formats if provided

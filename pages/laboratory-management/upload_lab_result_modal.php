@@ -8,6 +8,7 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 
 require_once '../../config/session/employee_session.php';
+require_once '../../config/production_security.php';
 require_once '../../config/db.php';
 
 // Check authorization
@@ -32,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         error_log("Upload modal POST request received for item_id: $item_id");
         
         // Validate required field with length limits
-        $result_text = filter_var(trim($_POST['result_text'] ?? ''), FILTER_SANITIZE_STRING);
+        $result_text = sanitize_input($_POST['result_text'] ?? '');
         if (empty($result_text)) {
             error_log("Upload failed: result_text is empty");
             echo json_encode(['success' => false, 'message' => 'Result text is required']);
@@ -47,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Combine results and remarks like in working version
         $remarks = "Results: " . $result_text;
         if (!empty($_POST['remarks'])) {
-            $additional_remarks = filter_var(trim($_POST['remarks']), FILTER_SANITIZE_STRING);
+            $additional_remarks = sanitize_input($_POST['remarks'] ?? '');
             if (strlen($additional_remarks) > 500) {
                 echo json_encode(['success' => false, 'message' => 'Additional remarks cannot exceed 500 characters']);
                 exit;

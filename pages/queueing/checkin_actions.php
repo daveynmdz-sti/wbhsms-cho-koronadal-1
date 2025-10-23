@@ -9,6 +9,7 @@
 
 // Include employee session configuration first
 require_once '../../config/session/employee_session.php';
+require_once '../../config/production_security.php';
 require_once '../../config/db.php';
 require_once '../../utils/queue_management_service.php';
 
@@ -58,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Get and validate action parameter
-$action = filter_input(INPUT_POST, 'action', FILTER_SANITIZE_STRING);
+$action = sanitize_input($_POST['action'] ?? '');
 
 if (empty($action)) {
     echo json_encode([
@@ -122,8 +123,8 @@ if ($action === 'flag_patient') {
     try {
         // Validate required fields
         $patient_id = filter_input(INPUT_POST, 'patient_id', FILTER_VALIDATE_INT);
-        $flag_type = filter_input(INPUT_POST, 'flag_type', FILTER_SANITIZE_STRING);
-        $remarks = filter_input(INPUT_POST, 'remarks', FILTER_SANITIZE_STRING);
+        $flag_type = sanitize_input($_POST['flag_type'] ?? '');
+        $remarks = sanitize_input($_POST['remarks'] ?? '');
         $appointment_id = filter_input(INPUT_POST, 'appointment_id', FILTER_VALIDATE_INT); // Optional
         
         // Validate required fields
@@ -188,7 +189,7 @@ if ($action === 'cancel_appointment') {
     try {
         // Validate required fields
         $appointment_id = filter_input(INPUT_POST, 'appointment_id', FILTER_VALIDATE_INT);
-        $reason = filter_input(INPUT_POST, 'reason', FILTER_SANITIZE_STRING);
+        $reason = sanitize_input($_POST['reason'] ?? '');
         
         if (!$appointment_id || $appointment_id <= 0) {
             echo json_encode([

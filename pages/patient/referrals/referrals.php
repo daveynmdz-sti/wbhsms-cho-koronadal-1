@@ -620,8 +620,8 @@ try {
                     <span class="hide-on-mobile">View Appointments</span>
                 </a>
                 <button class="btn btn-primary" onclick="downloadReferralHistory()">
-                    <i class="fas fa-download"></i>
-                    <span class="hide-on-mobile">Download History</span>
+                    <i class="fas fa-file-export"></i>
+                    <span class="hide-on-mobile">Export All</span>
                 </button>
             </div>
         </div>
@@ -792,6 +792,10 @@ try {
                                 <button type="button" class="btn btn-outline btn-outline-secondary btn-sm" onclick="printReferral(<?php echo $referral['referral_id']; ?>)">
                                     <i class="fas fa-print"></i> Print
                                 </button>
+                                
+                                <button type="button" class="btn btn-outline btn-outline-success btn-sm" onclick="downloadReferral(<?php echo $referral['referral_id']; ?>)">
+                                    <i class="fas fa-download"></i> Download
+                                </button>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -799,6 +803,42 @@ try {
             </div>
         </div>
     </section>
+
+    <!-- View Referral Modal (Copied from Admin) -->
+    <div id="viewReferralModal" class="referral-confirmation-modal">
+        <div class="referral-modal-content">
+            <div class="referral-modal-header">
+                <button type="button" class="referral-modal-close" onclick="closeReferralModal()">&times;</button>
+                <div class="icon">
+                    <i class="fas fa-eye"></i>
+                </div>
+                <h3>Referral Details</h3>
+                <p class="modal-description">Complete information about this referral</p>
+            </div>
+
+            <div class="referral-modal-body">
+                <div id="referralDetailsContent">
+                    <!-- Content will be loaded via JavaScript -->
+                    <div class="modal-loading">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p>Loading referral details...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="referral-modal-actions">
+                <!-- Print Button - Always available -->
+                <button type="button" class="modal-btn modal-btn-primary" onclick="printReferral(currentReferralId)" id="printReferralBtn">
+                    <i class="fas fa-print"></i> Print
+                </button>
+
+                <!-- Download Button - Always available -->
+                <button type="button" class="modal-btn modal-btn-success" onclick="downloadReferral(currentReferralId)" id="downloadReferralBtn">
+                    <i class="fas fa-download"></i> Download PDF
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // Filter functionality for referrals
@@ -967,27 +1007,359 @@ try {
             });
         }
 
-        // View referral details
-        function viewReferralDetails(referralId) {
-            // TODO: Implement detailed view modal or page
-            alert('View referral details for ID: ' + referralId + '\n\nThis will show complete referral information including validity and usage status.');
+        // View Referral Function (Copied from Admin) 
+        let currentReferralId = null;
+
+        async function viewReferralDetails(referralId) {
+            console.log('=== VIEW REFERRAL DEBUG START ===');
+            console.log('Referral ID:', referralId);
+
+            try {
+                const response = await fetch(`../../../api/get_referral_details.php?referral_id=${referralId}`);
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+                const text = await response.text();
+                console.log('Raw response:', text);
+
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseError) {
+                    console.error('JSON parse error:', parseError);
+                    showNotification('Invalid response format from server', 'error');
+                    return;
+                }
+
+                console.log('Parsed data:', data);
+
+                if (data.success && data.referral) {
+                    console.log('Success! Referral data received:', data.referral);
+                    currentReferralId = referralId; // Set current referral ID for modal actions
+                    populateReferralModal(data.referral);
+                    openModal('viewReferralModal');
+                } else {
+                    console.error('API Error:', data.error || 'Unknown error');
+                    showNotification(data.error || 'Failed to load referral details', 'error');
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                showNotification('Network error: ' + error.message, 'error');
+            }
+
+            console.log('=== VIEW REFERRAL DEBUG END ===');
         }
 
         // Book appointment from referral
         function bookFromReferral(referralId) {
-            window.location.href = '../appointment/book_appointment.php?referral_id=' + referralId;
+            // Check if booking page exists, otherwise show message
+            if (confirm('Navigate to appointment booking with this referral?')) {
+                const bookingUrl = '../appointment/book_appointment.php?referral_id=' + referralId;
+                window.location.href = bookingUrl;
+            }
         }
 
-        // Print referral
+        // Print Referral Function (Using Admin API)
         function printReferral(referralId) {
-            // TODO: Implement print functionality
-            alert('Print referral for ID: ' + referralId + '\n\nThis will generate a printable referral document.');
+            console.log('Print referral:', referralId);
+
+            if (!referralId) {
+                showNotification('Invalid referral ID', 'error');
+                return;
+            }
+
+            // Open PDF in popup window for preview and printing (using admin API)
+            const pdfUrl = `../../../api/generate_referral_pdf.php?referral_id=${referralId}&display=inline`;
+            const popup = window.open(
+                pdfUrl,
+                'referralPrint',
+                'width=800,height=600,scrollbars=yes,resizable=yes'
+            );
+
+            if (popup) {
+                popup.focus();
+                showNotification('PDF opened in popup. Use Ctrl+P to print.', 'success');
+            } else {
+                showNotification('Please allow popups to view PDF', 'error');
+            }
         }
 
-        // Download referral history
+        // Download individual referral as PDF
+        function downloadReferral(referralId) {
+            console.log('Download referral:', referralId);
+
+            if (!referralId) {
+                showNotification('Invalid referral ID', 'error');
+                return;
+            }
+
+            try {
+                // Open PDF in popup window for preview and download
+                const pdfUrl = `../../../api/generate_referral_pdf.php?referral_id=${referralId}&display=inline`;
+                const popup = window.open(
+                    pdfUrl,
+                    'referralDownload',
+                    'width=800,height=600,scrollbars=yes,resizable=yes'
+                );
+
+                if (popup) {
+                    popup.focus();
+                    showNotification('PDF opened in popup. Use browser controls to download.', 'success');
+                } else {
+                    showNotification('Please allow popups to view PDF', 'error');
+                }
+            } catch (error) {
+                console.error('Download error:', error);
+                showNotification('Download failed: ' + error.message, 'error');
+            }
+        }
+
+        // Export all referrals as CSV
         function downloadReferralHistory() {
-            // TODO: Implement download functionality
-            alert('Download referral history functionality will be implemented here.');
+            console.log('Exporting all referrals as CSV...');
+
+            try {
+                // Create download link for CSV format
+                const downloadUrl = '../../../api/download_referral_history.php?format=csv';
+                const downloadLink = document.createElement('a');
+                downloadLink.href = downloadUrl;
+                downloadLink.download = 'referral_history.csv';
+                downloadLink.style.display = 'none';
+                
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                showNotification('CSV export started', 'success');
+            } catch (error) {
+                console.error('Download error:', error);
+                showNotification('Download failed: ' + error.message, 'error');
+            }
+        }
+
+        // Modal Management Functions (Copied from Admin)
+        function openModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+
+                // Add show class for referral confirmation modal
+                if (modalId === 'viewReferralModal') {
+                    modal.classList.add('show');
+                }
+            }
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'none';
+                document.body.style.overflow = 'auto';
+
+                // Remove show class for referral confirmation modal
+                if (modalId === 'viewReferralModal') {
+                    modal.classList.remove('show');
+                }
+
+                // Reset form if exists
+                const form = modal.querySelector('form');
+                if (form) form.reset();
+            }
+        }
+
+        // Alias for referral modal close
+        function closeReferralModal() {
+            closeModal('viewReferralModal');
+        }
+
+        // Populate Referral Modal (Copied from Admin)
+        function populateReferralModal(referral) {
+            console.log('Populating modal with referral:', referral);
+
+            const modalBody = document.getElementById('referralDetailsContent');
+            if (!modalBody) {
+                console.error('Modal body not found');
+                return;
+            }
+
+            let vitalsSection = '';
+            if (referral.vitals && Object.keys(referral.vitals).length > 0) {
+                const vitals = referral.vitals;
+                vitalsSection = `
+                    <div class="summary-section">
+                        <div class="summary-title">
+                            <i class="fas fa-heartbeat"></i>
+                            Vital Signs
+                        </div>
+                        <div class="vitals-summary">
+                            ${vitals.blood_pressure ? `<div class="vital-item"><div class="vital-value">${vitals.blood_pressure}</div><div class="vital-label">Blood Pressure</div></div>` : ''}
+                            ${vitals.temperature ? `<div class="vital-item"><div class="vital-value">${vitals.temperature}°C</div><div class="vital-label">Temperature</div></div>` : ''}
+                            ${vitals.heart_rate ? `<div class="vital-item"><div class="vital-value">${vitals.heart_rate} bpm</div><div class="vital-label">Heart Rate</div></div>` : ''}
+                            ${vitals.respiratory_rate ? `<div class="vital-item"><div class="vital-value">${vitals.respiratory_rate}/min</div><div class="vital-label">Respiratory Rate</div></div>` : ''}
+                            ${vitals.weight ? `<div class="vital-item"><div class="vital-value">${vitals.weight} kg</div><div class="vital-label">Weight</div></div>` : ''}
+                            ${vitals.height ? `<div class="vital-item"><div class="vital-value">${vitals.height} cm</div><div class="vital-label">Height</div></div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            const modalContent = `
+                <div class="referral-summary-card">
+                    <div class="summary-section">
+                        <div class="summary-title">
+                            <i class="fas fa-user"></i>
+                            Patient Information
+                        </div>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <div class="summary-label">Full Name</div>
+                                <div class="summary-value highlight">${referral.patient_name || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Patient ID</div>
+                                <div class="summary-value">${referral.patient_number || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Age</div>
+                                <div class="summary-value">${referral.age || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Gender</div>
+                                <div class="summary-value">${referral.gender || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Barangay</div>
+                                <div class="summary-value">${referral.barangay || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Contact Number</div>
+                                <div class="summary-value">${referral.contact_number || 'N/A'}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="summary-section">
+                        <div class="summary-title">
+                            <i class="fas fa-share"></i>
+                            Referral Details
+                        </div>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <div class="summary-label">Referral Number</div>
+                                <div class="summary-value highlight">${referral.referral_num || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Status</div>
+                                <div class="summary-value">${referral.status || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Referred To</div>
+                                <div class="summary-value">${referral.facility_name || referral.external_facility_name || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Date Issued</div>
+                                <div class="summary-value">${formatDate(referral.referral_date) || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Issued By</div>
+                                <div class="summary-value">${referral.issuer_name || 'N/A'}</div>
+                            </div>
+                        </div>
+                        <div class="summary-item" style="margin-top: 1rem;">
+                            <div class="summary-label">Reason for Referral</div>
+                            <div class="summary-value reason">${referral.referral_reason || 'N/A'}</div>
+                        </div>
+                    </div>
+
+                    ${vitalsSection}
+                </div>
+            `;
+
+            modalBody.innerHTML = modalContent;
+        }
+
+        // Utility function for date formatting
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            return date.toLocaleString('en-PH', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Custom notification system
+        function showNotification(message, type = 'info') {
+            // Remove existing notifications
+            document.querySelectorAll('.notification-snackbar').forEach(n => n.remove());
+
+            const notification = document.createElement('div');
+            notification.className = `notification-snackbar notification-${type}`;
+
+            const icon = type === 'success' ? 'fas fa-check-circle' :
+                type === 'error' ? 'fas fa-exclamation-circle' :
+                type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle';
+
+            notification.innerHTML = `
+                <i class="${icon}"></i>
+                <span>${message}</span>
+                <button type="button" class="notification-close" onclick="this.parentElement.remove();">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+
+            // Style the notification
+            Object.assign(notification.style, {
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                padding: '1rem 1.5rem',
+                borderRadius: '8px',
+                color: 'white',
+                fontWeight: '500',
+                zIndex: '9999',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                minWidth: '300px',
+                maxWidth: '500px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                animation: 'slideInRight 0.3s ease'
+            });
+
+            // Set background color
+            const colors = {
+                success: '#28a745',
+                error: '#dc3545',
+                warning: '#ffc107',
+                info: '#17a2b8'
+            };
+            notification.style.background = colors[type] || colors.info;
+
+            document.body.appendChild(notification);
+
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.style.animation = 'slideOutRight 0.3s ease';
+                    setTimeout(() => notification.remove(), 300);
+                }
+            }, 5000);
+        }
+
+        // Close modals when clicking outside (Admin style)
+        window.onclick = function(event) {
+            const modals = document.querySelectorAll('.modal, .referral-confirmation-modal');
+            modals.forEach(modal => {
+                if (event.target === modal) {
+                    const modalId = modal.id;
+                    closeModal(modalId);
+                }
+            });
         }
 
         // Initialize page
@@ -1031,6 +1403,496 @@ try {
 
         .alert i {
             font-size: 1.1rem;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal-content-small {
+            background: white;
+            border-radius: 12px;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-content-large {
+            background: white;
+            border-radius: 12px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: background 0.3s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .modal-body {
+            padding: 2rem;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 1rem 2rem;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .referral-summary {
+            font-size: 0.95rem;
+        }
+
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #f8f9fa;
+        }
+
+        .summary-header h4 {
+            margin: 0;
+            color: #0077b6;
+            font-size: 1.4rem;
+        }
+
+        .details-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .details-section h4 {
+            color: #0077b6;
+            margin: 0 0 1rem 0;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .details-section h4 i {
+            background: #e3f2fd;
+            padding: 0.4rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .detail-grid > div {
+            padding: 0.5rem 0;
+        }
+
+        .vitals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .vital-item {
+            background: white;
+            padding: 0.75rem;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        /* Notification Styles */
+        .notification-snackbar {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 300px;
+            max-width: 500px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .notification-success { background: #28a745; }
+        .notification-error { background: #dc3545; }
+        .notification-warning { background: #ffc107; color: #212529; }
+        .notification-info { background: #17a2b8; }
+
+        .notification-close {
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            padding: 0.25rem;
+            margin-left: auto;
+            border-radius: 3px;
+        }
+
+        .notification-close:hover {
+            opacity: 0.8;
+        }
+
+        /* Admin Modal Styles (Copied from referrals_management.php) */
+        .referral-confirmation-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .referral-confirmation-modal.show {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .referral-modal-content {
+            background: white;
+            border-radius: 20px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            animation: slideInUp 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .referral-modal-header {
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            position: relative;
+        }
+
+        .referral-modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: background 0.3s;
+        }
+
+        .referral-modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .referral-modal-header .icon {
+            background: rgba(255, 255, 255, 0.2);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 2rem;
+        }
+
+        .referral-modal-header h3 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .modal-description {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+
+        .referral-modal-body {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .referral-summary-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+
+        .summary-section {
+            background: white;
+            margin-bottom: 1.5rem;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary-title {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            color: #0077b6;
+            border-bottom: 2px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .summary-title i {
+            background: #e3f2fd;
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+        }
+
+        .summary-grid {
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .summary-item {
+            padding: 0.75rem 0;
+        }
+
+        .summary-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .summary-value {
+            color: #212529;
+            font-size: 1rem;
+            word-wrap: break-word;
+        }
+
+        .summary-value.highlight {
+            color: #0077b6;
+            font-weight: 600;
+        }
+
+        .summary-value.reason {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #0077b6;
+            font-style: italic;
+            margin-top: 0.5rem;
+        }
+
+        .vitals-summary {
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .vital-item {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #e9ecef;
+        }
+
+        .vital-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0077b6;
+            margin-bottom: 0.25rem;
+        }
+
+        .vital-label {
+            font-size: 0.85rem;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .referral-modal-actions {
+            padding: 1.5rem 2rem;
+            background: #f8f9fa;
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .modal-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .modal-btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .modal-btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .modal-btn-primary {
+            background: #0077b6;
+            color: white;
+        }
+
+        .modal-btn-primary:hover {
+            background: #005f91;
+            transform: translateY(-2px);
+        }
+
+        .modal-btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .modal-btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .modal-loading {
+            text-align: center;
+            padding: 3rem;
+        }
+
+        /* Animations */
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes slideOutRight {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(100%); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .modal-content-large {
+                margin: 0.5rem;
+                max-height: 95vh;
+            }
+
+            .modal-header {
+                padding: 1rem 1.5rem;
+            }
+
+            .modal-body {
+                padding: 1.5rem;
+            }
+
+            .modal-footer {
+                padding: 1rem 1.5rem;
+                flex-direction: column;
+            }
+
+            .modal-footer .btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .vitals-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .notification-snackbar {
+                left: 1rem;
+                right: 1rem;
+                min-width: auto;
+            }
         }
     </style>
 

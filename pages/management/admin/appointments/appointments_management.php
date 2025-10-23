@@ -4,6 +4,12 @@ ob_start(); // Start output buffering to prevent any accidental output
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// Security headers
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
@@ -14,6 +20,9 @@ require_once $root_path . '/config/session/employee_session.php';
 
 // If user is not logged in, bounce to login
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
+    if (ob_get_level()) {
+        ob_end_clean(); // Clear buffer before redirect
+    }
     header('Location: ../auth/employee_login.php');
     exit();
 }
@@ -21,6 +30,9 @@ if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
 // Check if role is authorized
 $authorized_roles = ['admin', 'dho', 'bhw', 'doctor', 'nurse'];
 if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
+    if (ob_get_level()) {
+        ob_end_clean(); // Clear buffer before redirect
+    }
     header('Location: ../dashboard.php');
     exit();
 }
@@ -90,6 +102,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $facility_filter = $_GET['facility_id'] ?? '';
 $date_filter = $_GET['appointment_date'] ?? '';
 
+// Sorting parameters
+$sort_column = $_GET['sort'] ?? 'scheduled_date';
+$sort_direction = $_GET['dir'] ?? 'ASC';
+
+// Validate sort parameters
+$allowed_columns = [
+    'patient_name' => 'p.last_name',
+    'patient_id' => 'p.username',
+    'scheduled_date' => 'a.scheduled_date',
+    'scheduled_time' => 'a.scheduled_time',
+    'status' => 'a.status',
+    'facility_name' => 'f.name',
+    'created_at' => 'a.created_at'
+];
+
+$sort_column = array_key_exists($sort_column, $allowed_columns) ? $sort_column : 'scheduled_date';
+$sort_direction = in_array(strtoupper($sort_direction), ['ASC', 'DESC']) ? strtoupper($sort_direction) : 'ASC';
+
 // Pagination parameters
 $page = max(1, intval($_GET['page'] ?? 1));
 $per_page = in_array(intval($_GET['per_page'] ?? 25), [10, 25, 50, 100]) ? intval($_GET['per_page'] ?? 25) : 25;
@@ -134,6 +164,17 @@ try {
 
     $total_pages = ceil($total_records / $per_page);
 
+    // Build ORDER BY clause
+    $order_by = $allowed_columns[$sort_column] . ' ' . $sort_direction;
+    
+    // Add secondary sort for consistency
+    if ($sort_column !== 'scheduled_date') {
+        $order_by .= ', a.scheduled_date ASC';
+    }
+    if ($sort_column !== 'scheduled_time' && $sort_column !== 'scheduled_date') {
+        $order_by .= ', a.scheduled_time ASC';
+    }
+
     $sql = "
      SELECT a.appointment_id, a.scheduled_date, a.scheduled_time, a.status, a.service_id,
          a.cancellation_reason, a.created_at, a.updated_at,
@@ -148,7 +189,7 @@ try {
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN services s ON a.service_id = s.service_id
         $where_clause
-        ORDER BY a.scheduled_date ASC, a.scheduled_time ASC
+        ORDER BY $order_by
         LIMIT ? OFFSET ?
     ";
 
@@ -228,6 +269,18 @@ try {
     $stmt->close();
 } catch (Exception $e) {
     $error = "Failed to fetch facilities: " . $e->getMessage();
+}
+
+// Helper function to generate sort icons
+function getSortIcon($column, $current_sort, $current_direction) {
+    if ($column === $current_sort) {
+        if ($current_direction === 'ASC') {
+            return '<i class="fas fa-sort-up sort-icon active"></i>';
+        } else {
+            return '<i class="fas fa-sort-down sort-icon active"></i>';
+        }
+    }
+    return '<i class="fas fa-sort sort-icon"></i>';
 }
 ?>
 <!DOCTYPE html>
@@ -488,6 +541,32 @@ try {
             font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+        }
+
+        .table th.sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.3s ease;
+        }
+
+        .table th.sortable:hover {
+            background: linear-gradient(135deg, #005577, #001d3d);
+        }
+
+        .sort-icon {
+            margin-left: 5px;
+            opacity: 0.6;
+            font-size: 12px;
+            transition: opacity 0.3s ease;
+        }
+
+        .sort-icon.active {
+            opacity: 1;
+            color: #ffd700;
+        }
+
+        .table th.sortable:hover .sort-icon {
+            opacity: 0.9;
         }
 
         .table tbody tr:hover {
@@ -1117,12 +1196,30 @@ try {
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Patient</th>
-                                <th>Patient ID</th>
-                                <th>Date</th>
-                                <th>Time Slot</th>
-                                <th>Status</th>
-                                <th>Facility</th>
+                                <th class="sortable" onclick="sortTable('patient_name')">
+                                    Patient 
+                                    <?php echo getSortIcon('patient_name', $sort_column, $sort_direction); ?>
+                                </th>
+                                <th class="sortable" onclick="sortTable('patient_id')">
+                                    Patient ID 
+                                    <?php echo getSortIcon('patient_id', $sort_column, $sort_direction); ?>
+                                </th>
+                                <th class="sortable" onclick="sortTable('scheduled_date')">
+                                    Date 
+                                    <?php echo getSortIcon('scheduled_date', $sort_column, $sort_direction); ?>
+                                </th>
+                                <th class="sortable" onclick="sortTable('scheduled_time')">
+                                    Time Slot 
+                                    <?php echo getSortIcon('scheduled_time', $sort_column, $sort_direction); ?>
+                                </th>
+                                <th class="sortable" onclick="sortTable('status')">
+                                    Status 
+                                    <?php echo getSortIcon('status', $sort_column, $sort_direction); ?>
+                                </th>
+                                <th class="sortable" onclick="sortTable('facility_name')">
+                                    Facility 
+                                    <?php echo getSortIcon('facility_name', $sort_column, $sort_direction); ?>
+                                </th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -1213,8 +1310,13 @@ try {
                         </div>
                     </div>
                     <div class="pagination-controls">
+                        <?php 
+                        // Preserve all current parameters for pagination links
+                        $pagination_params = $_GET;
+                        ?>
+                        
                         <?php if ($page > 1): ?>
-                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="pagination-btn prev">
+                            <a href="?<?php echo http_build_query(array_merge($pagination_params, ['page' => $page - 1])); ?>" class="pagination-btn prev">
                                 <i class="fas fa-chevron-left"></i> Previous
                             </a>
                         <?php endif; ?>
@@ -1224,14 +1326,14 @@ try {
                         $end = min($total_pages, $page + 2);
 
                         if ($start > 1): ?>
-                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="pagination-btn">1</a>
+                            <a href="?<?php echo http_build_query(array_merge($pagination_params, ['page' => 1])); ?>" class="pagination-btn">1</a>
                             <?php if ($start > 2): ?>
                                 <span class="pagination-ellipsis">...</span>
                             <?php endif; ?>
                         <?php endif; ?>
 
                         <?php for ($i = $start; $i <= $end; $i++): ?>
-                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>"
+                            <a href="?<?php echo http_build_query(array_merge($pagination_params, ['page' => $i])); ?>"
                                 class="pagination-btn <?php echo $i == $page ? 'active' : ''; ?>">
                                 <?php echo $i; ?>
                             </a>
@@ -1241,11 +1343,11 @@ try {
                             <?php if ($end < $total_pages - 1): ?>
                                 <span class="pagination-ellipsis">...</span>
                             <?php endif; ?>
-                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="pagination-btn"><?php echo $total_pages; ?></a>
+                            <a href="?<?php echo http_build_query(array_merge($pagination_params, ['page' => $total_pages])); ?>" class="pagination-btn"><?php echo $total_pages; ?></a>
                         <?php endif; ?>
 
                         <?php if ($page < $total_pages): ?>
-                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="pagination-btn next">
+                            <a href="?<?php echo http_build_query(array_merge($pagination_params, ['page' => $page + 1])); ?>" class="pagination-btn next">
                                 Next <i class="fas fa-chevron-right"></i>
                             </a>
                         <?php endif; ?>
@@ -1483,6 +1585,28 @@ try {
             window.location.href = url.toString();
         }
 
+        // Sorting function
+        function sortTable(column) {
+            const url = new URL(window.location);
+            const currentSort = url.searchParams.get('sort') || 'scheduled_date';
+            const currentDir = url.searchParams.get('dir') || 'ASC';
+            
+            let newDir = 'ASC';
+            
+            // If clicking the same column, toggle direction
+            if (currentSort === column) {
+                newDir = currentDir === 'ASC' ? 'DESC' : 'ASC';
+            }
+            
+            // Update URL parameters
+            url.searchParams.set('sort', column);
+            url.searchParams.set('dir', newDir);
+            url.searchParams.set('page', '1'); // Reset to first page
+            
+            // Navigate to new URL
+            window.location.href = url.toString();
+        }
+
         // Auto-dismiss alerts
         document.addEventListener('DOMContentLoaded', function() {
             const alerts = document.querySelectorAll('.alert');
@@ -1551,5 +1675,9 @@ try {
 </body>
 
 </html>
-<?php ob_end_flush(); // End output buffering and send output 
+<?php 
+// Safe output buffer handling
+if (ob_get_level()) {
+    ob_end_flush(); // End output buffering and send output only if buffer exists
+}
 ?>
