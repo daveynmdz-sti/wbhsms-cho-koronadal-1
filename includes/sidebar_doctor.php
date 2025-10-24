@@ -338,11 +338,28 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
 <!-- Station Assignment Required Modal -->
 <div id="stationRequiredModal" class="modal-overlay" style="display:none;">
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="stationRequiredTitle">
-        <h2 id="stationRequiredTitle"><i class="fas fa-exclamation-triangle"></i> Station Assignment Required</h2>
+        <h2 id="stationRequiredTitle">
+            <i class="fas fa-exclamation-triangle" style="color:#ff6b6b;margin-right:8px;"></i>
+            Station Assignment Required
+        </h2>
         <p>Queue Management is not available because you are not currently assigned to any consultation station.</p>
         <p>Please contact your administrator to assign you to a consultation station to access queue management functions.</p>
         <div class="modal-actions">
             <button type="button" onclick="closeStationRequiredModal()" class="btn btn-primary">Understood</button>
+        </div>
+    </div>
+</div>
+
+<!-- Error Modal -->
+<div id="errorModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="errorTitle">
+        <h2 id="errorTitle">
+            <i class="fas fa-exclamation-triangle" style="color:#ff6b6b;margin-right:8px;"></i>
+            <span id="errorTitleText">Error</span>
+        </h2>
+        <p id="errorMessage">An error occurred. Please try again.</p>
+        <div class="modal-actions">
+            <button type="button" onclick="closeErrorModal()" class="btn btn-primary">OK</button>
         </div>
     </div>
 </div>
@@ -392,6 +409,22 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
 
     function closeStationRequiredModal() {
         const modal = document.getElementById('stationRequiredModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    function showErrorModal(title, message) {
+        closeNav();
+        const titleElement = document.getElementById('errorTitleText');
+        const messageElement = document.getElementById('errorMessage');
+        const modal = document.getElementById('errorModal');
+        
+        if (titleElement) titleElement.textContent = title || 'Error';
+        if (messageElement) messageElement.textContent = message || 'An error occurred. Please try again.';
+        if (modal) modal.style.display = 'flex';
+    }
+
+    function closeErrorModal() {
+        const modal = document.getElementById('errorModal');
         if (modal) modal.style.display = 'none';
     }
 

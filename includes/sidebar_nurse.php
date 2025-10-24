@@ -278,6 +278,20 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     </div>
 </div>
 
+<!-- Station Assignment Error Modal -->
+<div id="stationErrorModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="stationErrorTitle">
+        <h2 id="stationErrorTitle">
+            <i class="fas fa-exclamation-triangle" style="color:#ff6b6b;margin-right:8px;"></i>
+            Station Assignment Required
+        </h2>
+        <p>You must be assigned to a station to access Queue Management. Please contact your administrator to get assigned to a station for today.</p>
+        <div class="modal-actions">
+            <button type="button" onclick="closeStationErrorModal()" class="btn btn-primary">Understood</button>
+        </div>
+    </div>
+</div>
+
 <!-- Optional overlay -->
 <div class="overlay" id="overlay" onclick="closeNav()"></div>
 
@@ -316,6 +330,12 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     function showStationRequiredModal(e) {
         if (e) e.preventDefault();
         closeNav();
-        alert('You must be assigned to a station to access Queue Management. Please contact your administrator.');
+        const m = document.getElementById('stationErrorModal');
+        if (m) m.style.display = 'flex';
+    }
+
+    function closeStationErrorModal() {
+        const m = document.getElementById('stationErrorModal');
+        if (m) m.style.display = 'none';
     }
 </script>
