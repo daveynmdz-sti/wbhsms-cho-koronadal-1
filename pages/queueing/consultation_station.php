@@ -46,7 +46,7 @@ $access_error = '';
 // Check if employee is assigned to a consultation station today
 // Updated to match actual database schema
 $assignment_query = "SELECT sch.*, s.station_name, s.station_type 
-                     FROM staff_assignments sch 
+                     FROM assignment_schedules sch 
                      JOIN stations s ON sch.station_id = s.station_id 
                      WHERE sch.employee_id = ? 
                      AND s.station_type = 'consultation'
