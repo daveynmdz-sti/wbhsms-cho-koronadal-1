@@ -367,9 +367,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $consultation_status = in_array($_POST['consultation_status'] ?? '', ['ongoing', 'completed', 'follow_up_required']) 
                 ? $_POST['consultation_status'] : 'ongoing';
             
-            // Validate date format if provided
-            if ($follow_up_date && !DateTime::createFromFormat('Y-m-d', $follow_up_date)) {
-                throw new Exception('Invalid follow-up date format.');
+            // Handle empty follow-up date (convert to NULL for database)
+            if (empty($follow_up_date)) {
+                $follow_up_date = null;
+            } else {
+                // Validate date format if provided
+                if (!DateTime::createFromFormat('Y-m-d', $follow_up_date)) {
+                    throw new Exception('Invalid follow-up date format.');
+                }
             }
             
             // Length validation

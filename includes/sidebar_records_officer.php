@@ -75,7 +75,7 @@ if (preg_match('#^(.*?)/pages/#', $script_name, $matches)) {
 } else {
     // Fallback: try to extract from REQUEST_URI
     $uri_parts = explode('/', trim($request_uri, '/'));
-    if (count($uri_parts) > 0 && $uri_parts[0] !== 'pages') {
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
         $base_path = '/' . $uri_parts[0];
     } else {
         $base_path = '';
