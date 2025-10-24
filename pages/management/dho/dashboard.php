@@ -1160,7 +1160,7 @@ try {
         <section class="info-card">
             <h2><i class="fas fa-chart-line"></i> District Health Overview</h2>
             <p>Welcome to your district health management dashboard. Monitor health centers, program performance, compliance rates, and resource allocation across the district.</p>
-        </section>
+        </section> 
 
         <!-- Statistics Cards -->
         <section class="stats-section">
@@ -1215,7 +1215,7 @@ try {
                     </div>
                 </div>
             </div>
-        </section>
+        </section> 
 
         <!-- Quick Actions -->
         <section class="quick-actions-section">

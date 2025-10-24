@@ -1,4 +1,4 @@
-appointment-card<?php
+<?php
 // Start output buffering at the very beginning
 ob_start();
 
