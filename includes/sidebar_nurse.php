@@ -76,7 +76,7 @@ if ($employee_id) {
             SELECT s.station_name 
             FROM assignment_schedules sa
             JOIN stations s ON sa.station_id = s.station_id
-            WHERE sa.employee_id = ? AND sa.assignment_date = CURDATE()
+            WHERE sa.employee_id = ? AND sa.start_date = CURDATE()
             LIMIT 1
         ");
         $stmt->bind_param("i", $employee_id);
