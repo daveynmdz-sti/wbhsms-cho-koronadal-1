@@ -64,31 +64,30 @@ if (($needsName || $needsNo) && $employee_id) {
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <?php
-// Get the proper base URL by extracting the project folder from the request URI
+// Get the proper base URL by extracting the project folder from the script name
+// Mirrors admin sidebar logic to be deployment-agnostic and PHP-version safe.
 $request_uri = $_SERVER['REQUEST_URI'];
 $script_name = $_SERVER['SCRIPT_NAME'];
 
 // Extract the base path (project folder) from the script name
 // For example: /wbhsms-cho-koronadal/pages/management/dho/dashboard.php -> /wbhsms-cho-koronadal/
-if (preg_match('#^(.*?)/pages/#', $script_name, $matches)) {
-    $base_path = $matches[1];
+if (preg_match('#^(/[^/]+)/pages/#', $script_name, $matches)) {
+    $base_path = $matches[1] . '/';
 } else {
-    // Fallback: try to extract from REQUEST_URI
+    // Fallback: try to extract from REQUEST_URI - first segment should be project folder
     $uri_parts = explode('/', trim($request_uri, '/'));
-    if (count($uri_parts) > 0 && $uri_parts[0] !== 'pages') {
-        $base_path = '/' . $uri_parts[0];
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0] . '/';
     } else {
-        $base_path = '';
+        $base_path = '/';
     }
 }
 
-// Ensure base_path ends with / if it's not empty
-if ($base_path && !str_ends_with($base_path, '/')) {
-    $base_path .= '/';
-}
-
+// Create absolute URL for vendor path to fix photo loading (works on any page depth)
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
 $cssPath = $base_path . 'assets/css/sidebar.css';
-$vendorPath = $base_path . 'vendor/photo_controller.php';
 $nav_base = $base_path . 'pages/';
 ?>
 <link rel="stylesheet" href="<?= $cssPath ?>">
@@ -165,16 +164,24 @@ $nav_base = $base_path . 'pages/';
 </nav>
 
 <?php
-// Generate correct logout URL with production-safe calculation
+// Generate correct logout URL with production-safe calculation (mirrors admin sidebar)
 $logoutUrl = '';
 
-// Determine the correct path based on current location
+// First, try to determine the correct path based on current location
 if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
-    // We're in a management page
-    if (strpos($_SERVER['PHP_SELF'], '/pages/management/dho/') !== false ||
+    // We're in a management page - use relative paths
+    if (
         strpos($_SERVER['PHP_SELF'], '/pages/management/admin/') !== false ||
-        strpos($_SERVER['PHP_SELF'], '/pages/management/bhw/') !== false) {
-        // From role-specific pages (3 levels deep)
+        strpos($_SERVER['PHP_SELF'], '/pages/management/doctor/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/management/nurse/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/management/dho/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/management/bhw/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/management/cashier/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/management/laboratory_tech/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/management/pharmacist/') !== false ||
+        strpos($_SERVER['PHP_SELF'], '/pages/management/records_officer/') !== false
+    ) {
+        // From role-specific dashboard pages (3 levels deep)
         $logoutUrl = '../auth/employee_logout.php';
     } else {
         // From /pages/management/ directly (2 levels deep)
@@ -184,20 +191,21 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     // From centralized referrals pages
     $logoutUrl = '../management/auth/employee_logout.php';
 } else {
-    // Fallback - use absolute path with dynamic base detection
+    // Fallback - use absolute path with dynamic base
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     $request_uri = $_SERVER['REQUEST_URI'];
-    
-    // Extract base path from REQUEST_URI for production compatibility
+
+    // Extract base path from REQUEST_URI
     $uri_parts = explode('/', trim($request_uri, '/'));
     $base_path = '';
-    
-    // Check if we're in a project subfolder (local development)
+
+    // Check if we're in a project subfolder (like local development)
     if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        // Looks like we're in a subfolder (local development)
         $base_path = '/' . $uri_parts[0];
     }
-    
+
     $logoutUrl = $base_path . '/pages/management/auth/employee_logout.php';
 }
 ?>

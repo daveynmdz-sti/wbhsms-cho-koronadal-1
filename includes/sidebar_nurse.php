@@ -61,34 +61,61 @@ if (($needsName || $needsNo) && $employee_id) {
         $stmt->close();
     }
 }
+
+// Check for station assignment (for Queue Management access)
+$hasStationAssignment = false;
+$assignedStationName = '';
+
+if ($employee_id) {
+    if (!isset($conn)) {
+        require_once __DIR__ . '/../config/db.php';
+    }
+
+    if (isset($conn)) {
+        $stmt = $conn->prepare("
+            SELECT s.station_name 
+            FROM assignment_schedules sa
+            JOIN stations s ON sa.station_id = s.station_id
+            WHERE sa.employee_id = ? AND sa.assignment_date = CURDATE()
+            LIMIT 1
+        ");
+        $stmt->bind_param("i", $employee_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($row = $result->fetch_assoc()) {
+            $hasStationAssignment = true;
+            $assignedStationName = $row['station_name'];
+        }
+        $stmt->close();
+    }
+}
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <?php
-// Get the proper base URL by extracting the project folder from the request URI
+// Get the proper base URL by extracting the project folder from the script name
+// Mirrors admin sidebar logic to be deployment-agnostic and PHP-version safe.
 $request_uri = $_SERVER['REQUEST_URI'];
 $script_name = $_SERVER['SCRIPT_NAME'];
 
 // Extract the base path (project folder) from the script name
 // For example: /wbhsms-cho-koronadal/pages/management/nurse/dashboard.php -> /wbhsms-cho-koronadal/
-if (preg_match('#^(.*?)/pages/#', $script_name, $matches)) {
-    $base_path = $matches[1];
+if (preg_match('#^(/[^/]+)/pages/#', $script_name, $matches)) {
+    $base_path = $matches[1] . '/';
 } else {
-    // Fallback: try to extract from REQUEST_URI
+    // Fallback: try to extract from REQUEST_URI - first segment should be project folder
     $uri_parts = explode('/', trim($request_uri, '/'));
-    if (count($uri_parts) > 0 && $uri_parts[0] !== 'pages') {
-        $base_path = '/' . $uri_parts[0];
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0] . '/';
     } else {
-        $base_path = '';
+        $base_path = '/';
     }
 }
 
-// Ensure base_path ends with / if it's not empty
-if ($base_path && !str_ends_with($base_path, '/')) {
-    $base_path .= '/';
-}
-
+// Create absolute URL for vendor path to fix photo loading (works on any page depth)
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
 $cssPath = $base_path . 'assets/css/sidebar.css';
-$vendorPath = $base_path . 'vendor/photo_controller.php';
 $nav_base = $base_path . 'pages/';
 ?>
 <link rel="stylesheet" href="<?= $cssPath ?>">
@@ -284,5 +311,11 @@ if (strpos($_SERVER['PHP_SELF'], '/pages/management/') !== false) {
     function confirmLogout() {
         const f = document.getElementById('logoutForm');
         if (f) f.submit();
+    }
+
+    function showStationRequiredModal(e) {
+        if (e) e.preventDefault();
+        closeNav();
+        alert('You must be assigned to a station to access Queue Management. Please contact your administrator.');
     }
 </script>
