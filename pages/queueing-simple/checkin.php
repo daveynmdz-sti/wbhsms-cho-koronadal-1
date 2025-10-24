@@ -18,77 +18,6 @@ require_once '../../config/db.php';
 require_once '../../utils/queue_management_service.php';
 require_once '../../utils/patient_flow_validator.php';
 
-// Access Control - Only allow check-in roles
-$allowed_roles = ['admin', 'records_officer', 'dho', 'bhw'];
-$user_role = $_SESSION['role'] ?? '';
-
-if (!isset($_SESSION['employee_id']) || !in_array($user_role, $allowed_roles)) {
-?>
-    <!DOCTYPE html>
-    <html lang="en">
-
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Access Denied - CHO Koronadal</title>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-        <link rel="stylesheet" href="../../assets/css/dashboard.css">
-        <link rel="stylesheet" href="../../assets/css/sidebar.css">
-    </head>
-
-    <body>
-        <?php
-        $sidebar_file = "../../includes/sidebar_" . strtolower(str_replace(' ', '_', $_SESSION['role'] ?? 'guest')) . ".php";
-        if (file_exists($sidebar_file)) {
-            include $sidebar_file;
-        }
-        ?>
-
-        <div class="main-content">
-            <div class="breadcrumb">
-                <i class="fas fa-home"></i>
-                <a href="../../index.php">Home</a> >
-                <a href="../management/">Queue Management</a> >
-                <span>Patient Check-In</span>
-            </div>
-
-            <div class="access-denied-container">
-                <div class="access-denied-card">
-                    <i class="fas fa-lock fa-5x text-danger mb-4"></i>
-                    <h2>Access Denied</h2>
-                    <p>You don't have permission to access the Patient Check-In module.</p>
-                    <p>This module is restricted to: admin, records_officer, dho, and bhw roles only.</p>
-                    <a href="../../index.php" class="btn btn-primary">
-                        <i class="fas fa-home"></i> Return to Dashboard
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <style>
-            .access-denied-container {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 60vh;
-            }
-
-            .access-denied-card {
-                text-align: center;
-                background: white;
-                padding: 3rem;
-                border-radius: 15px;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-                max-width: 500px;
-            }
-        </style>
-    </body>
-
-    </html>
-<?php
-    exit();
-}
-
 // Initialize variables and services
 $message = '';
 $error = '';
@@ -176,12 +105,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Parse QR data to extract appointment_id and validate
                 $appointment_id = null;
                 $is_valid_qr = false;
-                
+
                 // Try to parse as JSON first (new QR format)
                 $qr_json = json_decode($qr_data, true);
                 if ($qr_json && isset($qr_json['type']) && $qr_json['type'] === 'appointment') {
                     $appointment_id = intval($qr_json['appointment_id'] ?? 0);
-                    
+
                     // Validate QR code using verification code
                     if ($appointment_id > 0) {
                         require_once dirname(dirname(__DIR__)) . '/utils/qr_code_generator.php';
@@ -500,15 +429,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $pdo->beginTransaction();
                             $update_params = [$is_philhealth];
                             $philhealth_update_query = "UPDATE patients SET isPhilHealth = ?";
-                            
+
                             if (!empty($philhealth_id) && $is_philhealth == 1) {
                                 $philhealth_update_query .= ", philhealth_id_number = ?";
                                 $update_params[] = $philhealth_id;
                             }
-                            
+
                             $philhealth_update_query .= " WHERE patient_id = ?";
                             $update_params[] = $patient_id;
-                            
+
                             $stmt = $pdo->prepare($philhealth_update_query);
                             $stmt->execute($update_params);
                             $pdo->commit();
@@ -537,18 +466,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // 3. Use QueueManagementService (handles its own transaction)
                     $queue_result = $queueService->createQueueEntry(
-                        $appointment_id, 
-                        $patient_id, 
-                        $appointment_data['service_id'], 
-                        'triage', 
-                        $priority_level, 
+                        $appointment_id,
+                        $patient_id,
+                        $appointment_data['service_id'],
+                        'triage',
+                        $priority_level,
                         $employee_id
                     );
-                    
+
                     if (!$queue_result['success']) {
                         throw new Exception("Failed to create queue entry: " . $queue_result['message']);
                     }
-                    
+
                     $queue_code = $queue_result['queue_code'];
                     $queue_entry_id = $queue_result['queue_entry_id'];
 
@@ -607,7 +536,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Log success
                     error_log("Check-in successful for appointment {$appointment_id}: Queue Code {$queue_code_display}");
-                        
                 } catch (Exception $e) {
                     // Clean up any open transactions
                     if ($pdo->inTransaction()) {
@@ -755,1677 +683,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-    <style>
-        /* Main Layout */
-        .homepage {
-            margin-left: 250px;
-            padding: 20px;
-            min-height: 100vh;
-            transition: margin-left 0.3s ease;
-        }
-
-        .checkin-container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .content-area {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            margin-bottom: 20px;
-        }
-
-        /* Breadcrumb Navigation */
-        .breadcrumb {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            padding: 15px 25px;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        .breadcrumb a {
-            color: #495057;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-
-        .breadcrumb a:hover {
-            color: #007bff;
-        }
-
-        .breadcrumb-separator {
-            margin: 0 10px;
-            color: #6c757d;
-            font-size: 0.8rem;
-        }
-
-        .breadcrumb-current {
-            color: #007bff;
-            font-weight: 600;
-        }
-
-        /* Page Header */
-        .page-header {
-            padding: 25px;
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-            border-bottom: 1px solid #dee2e6;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .page-header h1 {
-            color: #2c3e50;
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .page-header h1 i {
-            color: #007bff;
-        }
-
-        .total-count {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .badge {
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .bg-primary { background: linear-gradient(135deg, #007bff, #0056b3); color: white; }
-        .bg-success { background: linear-gradient(135deg, #28a745, #1e7e34); color: white; }
-        .bg-info { background: linear-gradient(135deg, #17a2b8, #117a8b); color: white; }
-
-        /* Alert Styles */
-        .alert {
-            padding: 15px 20px;
-            margin: 20px 25px;
-            border-radius: 8px;
-            border-left: 4px solid;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 500;
-        }
-
-        .alert-success {
-            background: linear-gradient(135deg, #d4edda, #c3e6cb);
-            color: #155724;
-            border-left-color: #28a745;
-        }
-
-        .alert-danger {
-            background: linear-gradient(135deg, #f8d7da, #f5c6cb);
-            color: #721c24;
-            border-left-color: #dc3545;
-        }
-
-        .alert-info {
-            background: linear-gradient(135deg, #d1ecf1, #bee5eb);
-            color: #0c5460;
-            border-left-color: #17a2b8;
-        }
-
-        .alert-warning {
-            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-            color: #856404;
-            border-left-color: #ffc107;
-        }
-
-        /* Card Container */
-        .card-container {
-            background: white;
-            margin: 20px;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            border: 1px solid #e9ecef;
-        }
-
-        /* Section Header */
-        .section-header {
-            background: linear-gradient(135deg, #495057 0%, #6c757d 100%);
-            color: white;
-            padding: 20px 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 3px solid #007bff;
-        }
-
-        .section-header h4 {
-            margin: 0;
-            font-size: 1.3rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .section-header h4 i {
-            color: #007bff;
-        }
-
-        .toggle-instructions {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 1.2rem;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 50%;
-            transition: all 0.3s ease;
-        }
-
-        .toggle-instructions:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: scale(1.1);
-        }
-
-        .station-status {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
-        }
-
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-
-        .status-active { background: #28a745; }
-        .status-inactive { background: #dc3545; }
-        .status-maintenance { background: #ffc107; }
-
-        .status-text {
-            font-weight: 500;
-        }
-
-        /* Section Body */
-        .section-body {
-            padding: 25px;
-        }
-
-        /* Instructions */
-        .compact-instructions .section-body {
-            padding: 0;
-        }
-
-        .detailed-instructions {
-            padding: 20px 25px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        }
-
-        .instruction-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-        }
-
-        .step-compact {
-            display: flex;
-            align-items: flex-start;
-            gap: 15px;
-            padding: 15px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            border-left: 4px solid #007bff;
-        }
-
-        .step-num {
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            color: white;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.9rem;
-            flex-shrink: 0;
-        }
-
-        .step-text {
-            flex: 1;
-            line-height: 1.5;
-        }
-
-        .step-text strong {
-            color: #2c3e50;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        .checkin-container .bg-info,
-        .checkin-container .status-checked_in {
-            background: linear-gradient(135deg, #48cae4, #0096c7);
-        }
-
-        .checkin-container .bg-primary,
-        .checkin-container .status-completed {
-            background: linear-gradient(135deg, #0096c7, #0077b6);
-        }
-
-        .checkin-container .bg-danger,
-        .checkin-container .status-cancelled {
-            background: linear-gradient(135deg, #ef476f, #d00000);
-        }
-
-        .checkin-container .bg-warning {
-            background: linear-gradient(135deg, #ffba08, #faa307);
-        }
-
-        .checkin-container .bg-secondary {
-            background: linear-gradient(135deg, #adb5bd, #6c757d);
-        }
-
-        .checkin-container .priority-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            padding: 0.2rem 0.5rem;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-        }
-
-        .checkin-container .priority-senior {
-            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-            color: #856404;
-        }
-
-        .checkin-container .priority-pwd {
-            background: linear-gradient(135deg, #d1ecf1, #74b9ff);
-            color: #0c5460;
-        }
-
-        /* Compact Instructions Card Styles */
-        .compact-instructions {
-            margin-bottom: 15px !important;
-        }
-
-        .compact-instructions .section-header {
-            padding: 8px 15px !important;
-            margin-bottom: 0 !important;
-        }
-
-        .compact-instructions .section-header h4 {
-            font-size: 16px;
-        }
-
-        .toggle-instructions {
-            background: none;
-            border: none;
-            color: var(--primary);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-        }
-
-        .toggle-instructions:hover {
-            background: rgba(0, 119, 182, 0.1);
-        }
-
-        .toggle-instructions.rotated {
-            transform: rotate(180deg);
-        }
-
-        .instructions-summary {
-            padding: 10px 15px;
-            background: linear-gradient(135deg, #e3f2fd, #f8f9fa);
-            border-top: 1px solid #e9ecef;
-        }
-
-        .quick-steps {
-            font-size: 13px;
-            color: #495057;
-            line-height: 1.4;
-        }
-
-        .detailed-instructions {
-            padding: 15px;
-            border-top: 1px solid #e9ecef;
-            background: #f8f9fa;
-        }
-
-        .instruction-grid {
-            display: grid;
-            gap: 8px;
-        }
-
-        .step-compact {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            padding: 8px 10px;
-            background: white;
-            border-radius: 6px;
-            border-left: 3px solid var(--primary);
-        }
-
-        .step-num {
-            background: var(--primary);
-            color: white;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            font-size: 11px;
-            flex-shrink: 0;
-        }
-
-        .step-text {
-            font-size: 12px;
-            line-height: 1.4;
-            color: #495057;
-        }
-
-        /* Two-Panel Input Layout */
-        .checkin-container .input-panels {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 2rem;
-            margin-top: 1rem;
-        }
-
-        .checkin-container .panel {
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: var(--border-radius);
-            border: 1px solid #e9ecef;
-        }
-
-        .checkin-container .panel h5 {
-            color: var(--primary-dark);
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        .checkin-container .qr-scanner-area {
-            text-align: center;
-        }
-
-        .checkin-container .qr-scanner-box {
-            width: 200px;
-            height: 200px;
-            background: white;
-            border: 2px dashed #dee2e6;
-            border-radius: 12px;
-            margin: 0 auto 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            color: #6c757d;
-            transition: var(--transition);
-        }
-
-        /* Action Sections */
-        .action-section {
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .action-section:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-        }
-
-        .action-section-title {
-            color: #495057;
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .action-section-title i {
-            color: #007bff;
-        }
-
-        .action-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 15px;
-        }
-
-        /* Modern Buttons */
-        .modern-btn {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 18px 20px;
-            background: white;
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
-            text-decoration: none;
-            color: inherit;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .modern-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-            transition: left 0.5s ease;
-        }
-
-        .modern-btn:hover::before {
-            left: 100%;
-        }
-
-        .modern-btn:hover {
-            border-color: #007bff;
-            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.15);
-            transform: translateY(-2px);
-        }
-
-        .btn-nav {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        }
-
-        .btn-nav:hover {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-        }
-
-        .btn-qr-scan {
-            background: linear-gradient(135deg, #e8f5e8 0%, #d4edda 100%);
-            border-color: #28a745;
-        }
-
-        .btn-qr-scan:hover {
-            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
-            color: white;
-        }
-
-        .btn-manual-search {
-            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-            border-color: #ffc107;
-        }
-
-        .btn-manual-search:hover {
-            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
-            color: #212529;
-        }
-
-        .btn-icon {
-            width: 50px;
-            height: 50px;
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 1.3rem;
-            flex-shrink: 0;
-        }
-
-        .btn-nav:hover .btn-icon {
-            background: linear-gradient(135deg, #ffffff, #f8f9fa);
-            color: #007bff;
-        }
-
-        .btn-qr-scan .btn-icon {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-        }
-
-        .btn-qr-scan:hover .btn-icon {
-            background: linear-gradient(135deg, #ffffff, #f8f9fa);
-            color: #28a745;
-        }
-
-        .btn-manual-search .btn-icon {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
-            color: #212529;
-        }
-
-        .btn-manual-search:hover .btn-icon {
-            background: linear-gradient(135deg, #212529, #495057);
-            color: #ffc107;
-        }
-
-        .btn-content {
-            flex: 1;
-            text-align: left;
-        }
-
-        .btn-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #2c3e50;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        .btn-subtitle {
-            font-size: 0.9rem;
-            color: #6c757d;
-            display: block;
-        }
-
-        .btn-nav:hover .btn-title,
-        .btn-nav:hover .btn-subtitle {
-            color: white;
-        }
-
-        .btn-qr-scan:hover .btn-title,
-        .btn-qr-scan:hover .btn-subtitle {
-            color: white;
-        }
-
-        .btn-manual-search:hover .btn-title {
-            color: #212529;
-        }
-
-        .btn-manual-search:hover .btn-subtitle {
-            color: #495057;
-        }
-
-        /* Stats Row */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-        }
-
-        .quick-stat {
-            background: white;
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
-            padding: 20px 15px;
-            text-align: center;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .quick-stat::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, #007bff, #28a745, #ffc107, #dc3545);
-        }
-
-        .quick-stat:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        .stat-total { border-color: #007bff; }
-        .stat-total::before { background: linear-gradient(135deg, #007bff, #0056b3); }
-
-        .stat-checked { border-color: #28a745; }
-        .stat-checked::before { background: linear-gradient(135deg, #28a745, #1e7e34); }
-
-        .stat-priority { border-color: #ffc107; }
-        .stat-priority::before { background: linear-gradient(135deg, #ffc107, #e0a800); }
-
-        .stat-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            margin: 0 auto 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.3rem;
-            color: white;
-        }
-
-        .stat-total .stat-icon { background: linear-gradient(135deg, #007bff, #0056b3); }
-        .stat-checked .stat-icon { background: linear-gradient(135deg, #28a745, #1e7e34); }
-        .stat-priority .stat-icon { background: linear-gradient(135deg, #ffc107, #e0a800); }
-
-        .stat-number {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #2c3e50;
-            display: block;
-            line-height: 1;
-        }
-
-        .stat-label {
-            font-size: 0.9rem;
-            color: #6c757d;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        /* QR Scanner */
-        .qr-scanner-area {
-            text-align: center;
-        }
-
-        .qr-scanner-box {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border: 3px dashed #007bff;
-            border-radius: 12px;
-            padding: 60px 20px;
-            margin-bottom: 20px;
-            color: #6c757d;
-            transition: all 0.3s ease;
-        }
-
-        .qr-scanner-box.scanning {
-            border-color: #28a745;
-            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-            color: #155724;
-        }
-
-        .qr-scanner-box i {
-            display: block;
-            margin-bottom: 15px;
-            color: #007bff;
-        }
-
-        .qr-scanner-box.scanning i {
-            color: #28a745;
-            animation: pulse 1.5s infinite;
-        }
-
-        .qr-scanner-box p {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .qr-scanner-box small {
-            font-size: 0.9rem;
-            opacity: 0.8;
-        }
-
-        .qr-actions {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-        }
-
-        /* Forms */
-        .search-form {
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            padding: 25px;
-            border-radius: 12px;
-            border: 1px solid #e9ecef;
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-label {
-            font-weight: 600;
-            color: #495057;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .form-control {
-            padding: 12px 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            background: white;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: #007bff;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-        }
-
-        .form-control:hover {
-            border-color: #ced4da;
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 15px;
-            justify-content: flex-start;
-            flex-wrap: wrap;
-            padding-top: 20px;
-            border-top: 1px solid #e9ecef;
-        }
-
-        /* Standard Buttons */
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #0056b3, #004085);
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #6c757d, #495057);
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: linear-gradient(135deg, #495057, #343a40);
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-            color: white;
-        }
-
-        .btn-success:hover {
-            background: linear-gradient(135deg, #1e7e34, #155724);
-        }
-
-        .btn-warning {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
-            color: #212529;
-        }
-
-        .btn-warning:hover {
-            background: linear-gradient(135deg, #e0a800, #d39e00);
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: linear-gradient(135deg, #c82333, #bd2130);
-        }
-
-        .close-btn {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 50%;
-            transition: all 0.3s ease;
-        }
-
-        .close-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: scale(1.1);
-        }
-
-        .loading-placeholder {
-            margin: 0 auto 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            color: #6c757d;
-        }
-
-        /* Table Styles */
-        .table-responsive {
-            overflow-x: auto;
-            margin: 20px 0;
-        }
-
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        }
-
-        .results-table thead {
-            background: linear-gradient(135deg, #495057 0%, #6c757d 100%);
-            color: white;
-        }
-
-        .results-table th {
-            padding: 18px 15px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 3px solid #007bff;
-        }
-
-        .results-table td {
-            padding: 15px;
-            border-bottom: 1px solid #e9ecef;
-            vertical-align: middle;
-        }
-
-        .results-table tbody tr {
-            transition: all 0.3s ease;
-        }
-
-        .results-table tbody tr:hover {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            transform: scale(1.01);
-        }
-
-        .text-muted {
-            color: #6c757d !important;
-            font-size: 0.85rem;
-        }
-
-        .d-block {
-            display: block !important;
-        }
-
-        .text-success {
-            color: #28a745 !important;
-        }
-
-        /* Status and Service Badges */
-        .status-badge, .service-badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: inline-block;
-        }
-
-        .service-badge {
-            background: linear-gradient(135deg, #e9ecef, #ced4da);
-            color: #495057;
-            border: 1px solid #adb5bd;
-        }
-
-        .status-confirmed { background: linear-gradient(135deg, #28a745, #1e7e34); color: white; }
-        .status-pending { background: linear-gradient(135deg, #ffc107, #e0a800); color: #212529; }
-        .status-cancelled { background: linear-gradient(135deg, #dc3545, #c82333); color: white; }
-        .status-completed { background: linear-gradient(135deg, #17a2b8, #117a8b); color: white; }
-
-        /* Priority Badges */
-        .priority-indicators {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .priority-badge {
-            padding: 4px 8px;
-            border-radius: 15px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            white-space: nowrap;
-        }
-
-        .priority-badge {
-            background: linear-gradient(135deg, #e9ecef, #ced4da);
-            color: #495057;
-        }
-
-        .priority-senior {
-            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
-            color: white;
-        }
-
-        .priority-pwd {
-            background: linear-gradient(135deg, #4ecdc4, #44a08d);
-            color: white;
-        }
-
-        /* Action Buttons */
-        .modern-action-buttons {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .modern-action-btn {
-            width: 36px;
-            height: 36px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .modern-action-btn::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 0;
-            height: 0;
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            transition: all 0.3s ease;
-            transform: translate(-50%, -50%);
-        }
-
-        .modern-action-btn:hover::before {
-            width: 40px;
-            height: 40px;
-        }
-
-        .modern-action-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-view {
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            color: white;
-        }
-
-        .btn-checkin {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-            color: white;
-        }
-
-        .btn-flag {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
-            color: #212529;
-        }
-
-        .btn-cancel {
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-        }
-
-        .btn-icon-mini {
-            font-size: 0.9rem;
-            z-index: 1;
-            position: relative;
-        }
-
-        /* Header Actions */
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .results-count {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-
-        /* Footer */
-        .footer-info {
-            text-align: center;
-            padding: 20px;
-            color: #6c757d;
-            font-size: 0.9rem;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-radius: 12px;
-            margin: 20px;
-            border: 1px solid #e9ecef;
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(5px);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .modal.show {
-            display: block;
-            opacity: 1;
-        }
-
-        .modal-content {
-            background: white;
-            margin: 5% auto;
-            padding: 0;
-            border-radius: 15px;
-            width: 90%;
-            max-width: 600px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            transform: scale(0.7);
-            transition: transform 0.3s ease;
-            overflow: hidden;
-        }
-
-        .modal.show .modal-content {
-            transform: scale(1);
-        }
-
-        .modal-header {
-            background: linear-gradient(135deg, #495057 0%, #6c757d 100%);
-            color: white;
-            padding: 20px 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 3px solid #007bff;
-        }
-
-        .modal-title {
-            margin: 0;
-            font-size: 1.3rem;
-            font-weight: 600;
-        }
-
-        .modal-close {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 50%;
-            transition: all 0.3s ease;
-        }
-
-        .modal-close:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: scale(1.1);
-        }
-
-        .modal-body {
-            padding: 25px;
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-
-        .modal-footer {
-            padding: 20px 25px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            display: flex;
-            justify-content: flex-end;
-            gap: 15px;
-            border-top: 1px solid #dee2e6;
-        }
-
-        /* Loading and Success States */
-        .loading-placeholder {
-            text-align: center;
-            padding: 40px 20px;
-            color: #6c757d;
-        }
-
-        .loading-placeholder i {
-            font-size: 2rem;
-            margin-bottom: 15px;
-            color: #007bff;
-        }
-
-        .appointment-summary {
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid #e9ecef;
-        }
-
-        .confirmation-details,
-        .confirmation-summary,
-        .patient-summary {
-            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-            border: 1px solid #ffc107;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-
-        .patient-summary-content h6,
-        .confirmation-summary h6 {
-            color: #856404;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .patient-summary-content p,
-        .confirmation-summary p {
-            margin: 5px 0;
-            color: #495057;
-        }
-
-        /* PhilHealth Verification Section */
-        .philhealth-verification {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #007bff;
-        }
-
-        .philhealth-options {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin: 15px 0;
-        }
-
-        .philhealth-option {
-            display: flex;
-            align-items: center;
-            padding: 12px 15px;
-            background: #fff;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .philhealth-option:hover {
-            border-color: #007bff;
-            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.1);
-        }
-
-        .philhealth-option input[type="radio"] {
-            margin-right: 12px;
-            transform: scale(1.2);
-        }
-
-        .philhealth-option input[type="radio"]:checked + .philhealth-label {
-            font-weight: 600;
-            color: #007bff;
-        }
-
-        .philhealth-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 16px;
-            margin: 0;
-        }
-
-        .philhealth-label i {
-            font-size: 18px;
-        }
-
-        .philhealth-option small {
-            display: block;
-            color: #6c757d;
-            margin-top: 4px;
-            font-size: 13px;
-        }
-
-        .philhealth-id-section {
-            margin-top: 15px;
-            padding: 15px;
-            background: #ffffff;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-        }
-
-        .philhealth-id-section label {
-            font-weight: 500;
-            color: #495057;
-            margin-bottom: 8px;
-            display: block;
-        }
-
-        .philhealth-id-section input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        /* PhilHealth Verification Section */
-        .philhealth-verification {
-            margin: 20px 0;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #007bff;
-        }
-
-        .philhealth-options {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .philhealth-option {
-            display: flex;
-            align-items: center;
-            padding: 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .philhealth-option:hover {
-            border-color: #007bff;
-            background: #f8f9fa;
-        }
-
-        .philhealth-option input[type="radio"] {
-            margin-right: 10px;
-        }
-
-        .philhealth-option input[type="radio"]:checked + .philhealth-label {
-            color: #007bff;
-            font-weight: 600;
-        }
-
-        .philhealth-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-weight: 500;
-        }
-
-        .philhealth-label i {
-            font-size: 1.2em;
-        }
-
-        .philhealth-option small {
-            display: block;
-            color: #6c757d;
-            margin-top: 5px;
-            font-size: 0.85em;
-        }
-
-        .philhealth-id-section {
-            margin-top: 15px;
-            padding: 15px;
-            background: #fff;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-        }
-
-        .philhealth-id-section label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #495057;
-        }
-
-        .philhealth-id-section input {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
-        }
-
-        /* Priority Selection */
-        .priority-selection {
-            margin-top: 20px;
-        }
-
-        .priority-options {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        /* Stats Section */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
-        }
-
-        /* Action Button Types */
-        .btn-view {
-            background: linear-gradient(135deg, #48cae4, #0096c7);
-        }
-
-        .btn-view:hover {
-            background: linear-gradient(135deg, #0096c7, #0077b6);
-        }
-
-        .btn-checkin {
-            background: linear-gradient(135deg, #52b788, #2d6a4f);
-        }
-
-        .btn-checkin:hover {
-            background: linear-gradient(135deg, #40916c, #2d6a4f);
-        }
-
-        .btn-flag {
-            background: linear-gradient(135deg, #ffd60a, #f77f00);
-        }
-
-        .btn-flag:hover {
-            background: linear-gradient(135deg, #f77f00, #d62d20);
-        }
-
-        .btn-cancel {
-            background: linear-gradient(135deg, #e74c3c, #c0392b);
-        }
-
-        .btn-cancel:hover {
-            background: linear-gradient(135deg, #c0392b, #a93226);
-        }
-
-        .btn-content {
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-        }
-
-        .btn-title {
-            font-weight: 600;
-            font-size: 15px;
-            color: #2c3e50;
-            text-align: left;
-        }
-
-        .btn-subtitle {
-            font-size: 12px;
-            color: #7f8c8d;
-            font-weight: 400;
-            text-align: left;
-        }
-
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-        }
-
-        /* Stats Section */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
-        }
-
-        .quick-stat {
-            display: flex;
-            align-items: center;
-            padding: 15px;
-            background: white;
-            border: 2px solid;
-            border-radius: 10px;
-            transition: all 0.3s ease;
-        }
-
-        .quick-stat:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        .stat-total {
-            border-color: #007bff;
-            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-        }
-
-        .stat-checked {
-            border-color: #28a745;
-            background: linear-gradient(135deg, #d4edda, #c3e6cb);
-        }
-
-        .stat-priority {
-            border-color: #ffc107;
-            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-        }
-
-        .stat-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            margin-right: 12px;
-            font-size: 18px;
-        }
-
-        .stat-total .stat-icon {
-            background: #007bff;
-            color: white;
-        }
-
-        .stat-checked .stat-icon {
-            background: #28a745;
-            color: white;
-        }
-
-        .stat-priority .stat-icon {
-            background: #ffc107;
-            color: white;
-        }
-
-        .stat-info {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .stat-number {
-            font-size: 22px;
-            font-weight: 700;
-            color: #2c3e50;
-            line-height: 1;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            font-weight: 500;
-            color: #6c757d;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        /* Close Button */
-        .close-btn {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-            opacity: 0.8;
-            transition: opacity 0.3s ease;
-        }
-
-        .close-btn:hover {
-            opacity: 1;
-        }
-
-        /* QR Scanner Styles */
-        .qr-scanner-area {
-            text-align: center;
-            padding: 20px;
-        }
-
-        .qr-scanner-box {
-            background: #f8f9fa;
-            border: 3px dashed #dee2e6;
-            border-radius: 12px;
-            padding: 40px 20px;
-            margin-bottom: 20px;
-            transition: all 0.3s ease;
-            min-height: 200px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .qr-scanner-box:hover {
-            border-color: #007bff;
-            background: #e3f2fd;
-        }
-
-        .qr-scanner-box.scanning {
-            border-color: #28a745;
-            background: #d4edda;
-        }
-
-        .qr-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .action-row {
-                grid-template-columns: 1fr;
-            }
-
-            .stats-row {
-                grid-template-columns: 1fr;
-            }
-
-            .modern-btn {
-                padding: 14px 16px;
-            }
-
-            .btn-icon {
-                width: 40px;
-                height: 40px;
-                margin-right: 12px;
-                font-size: 18px;
-            }
-
-            .btn-title {
-                font-size: 14px;
-            }
-
-            .btn-subtitle {
-                font-size: 11px;
-            }
-
-            .quick-stat {
-                padding: 12px;
-            }
-
-            .stat-icon {
-                width: 35px;
-                height: 35px;
-                font-size: 16px;
-                margin-right: 10px;
-            }
-
-            .stat-number {
-                font-size: 18px;
-            }
-
-            .stat-label {
-                font-size: 11px;
-            }
-
-            .action-section-title {
-                font-size: 13px;
-                padding: 6px 10px;
-            }
-
-            .table-responsive {
-                overflow-x: auto;
-            }
-
-            .results-table {
-                min-width: 800px;
-            }
-
-            .modern-action-buttons {
-                flex-direction: column;
-                gap: 5px;
-            }
-
-            .modern-action-btn {
-                width: 32px;
-                height: 32px;
-            }
-        }
-    </style>
 </head>
 
 <body>
@@ -2781,7 +1038,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </td>
                                         <td>
                                             <div class="modern-action-buttons">
-                                                <button type="button" class="modern-action-btn btn-view" 
+                                                <button type="button" class="modern-action-btn btn-view"
                                                     onclick="viewAppointment(<?php echo $row['appointment_id']; ?>, <?php echo $row['patient_id']; ?>)"
                                                     title="View Details">
                                                     <div class="btn-icon-mini">
@@ -2808,13 +1065,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 </button>
 
                                                 <?php if (!empty($row['already_checked_in']) || $row['status'] === 'confirmed'): ?>
-                                                <button type="button" class="modern-action-btn btn-cancel"
-                                                    onclick="cancelAppointment(<?php echo $row['appointment_id']; ?>, <?php echo $row['patient_id']; ?>)"
-                                                    title="Cancel Appointment">
-                                                    <div class="btn-icon-mini">
-                                                        <i class="fas fa-times-circle"></i>
-                                                    </div>
-                                                </button>
+                                                    <button type="button" class="modern-action-btn btn-cancel"
+                                                        onclick="cancelAppointment(<?php echo $row['appointment_id']; ?>, <?php echo $row['patient_id']; ?>)"
+                                                        title="Cancel Appointment">
+                                                        <div class="btn-icon-mini">
+                                                            <i class="fas fa-times-circle"></i>
+                                                        </div>
+                                                    </button>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
@@ -2902,11 +1159,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <small>Patient will be charged for services</small>
                             </label>
                         </div>
-                        
+
                         <div class="philhealth-id-section" id="philhealth_id_section" style="display: none;">
                             <label for="philhealth_id">PhilHealth ID Number (Optional)</label>
-                            <input type="text" name="philhealth_id" id="philhealth_id" class="form-control" 
-                                   placeholder="e.g., 12-345678901-2" maxlength="15">
+                            <input type="text" name="philhealth_id" id="philhealth_id" class="form-control"
+                                placeholder="e.g., 12-345678901-2" maxlength="15">
                             <small class="text-muted">For record keeping purposes</small>
                         </div>
                     </div>
@@ -3434,13 +1691,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Debug: Log response details
                     console.log('Response status:', response.status);
                     console.log('Response headers:', response.headers.get('content-type'));
-                    
+
                     // Check if response is JSON
                     const contentType = response.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
                         throw new Error('Response is not JSON. Content-Type: ' + contentType);
                     }
-                    
+
                     return response.json();
                 })
                 .then(data => {
@@ -3722,14 +1979,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const philhealthYes = document.getElementById('philhealth_yes');
             const philhealthNo = document.getElementById('philhealth_no');
             const philhealthIdSection = document.getElementById('philhealth_id_section');
-            
+
             if (philhealthYes && philhealthNo && philhealthIdSection) {
                 philhealthYes.addEventListener('change', function() {
                     if (this.checked) {
                         philhealthIdSection.style.display = 'block';
                     }
                 });
-                
+
                 philhealthNo.addEventListener('change', function() {
                     if (this.checked) {
                         philhealthIdSection.style.display = 'none';
@@ -3742,14 +1999,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         function validatePhilHealthSelection() {
             const philhealthYes = document.getElementById('philhealth_yes');
             const philhealthNo = document.getElementById('philhealth_no');
-            
+
             if (!philhealthYes || !philhealthNo) return true; // Skip validation if elements not found
-            
+
             if (!philhealthYes.checked && !philhealthNo.checked) {
                 showAlert('Please specify the patient\'s PhilHealth membership status before proceeding.', 'warning');
                 return false;
             }
-            
+
             return true;
         }
 
@@ -3762,7 +2019,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize PhilHealth handling
             handlePhilHealthSelection();
-            
+
             // Add enhanced validation to check-in form
             const checkinForm = document.getElementById('checkinConfirmForm');
             if (checkinForm) {
@@ -3774,7 +2031,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     showLoadingOverlay('Checking in patient...');
                 });
             }
-            
+
             // Add loading to other form submissions
             submitFormWithLoading('flagForm', 'Flagging patient...');
             submitFormWithLoading('cancelForm', 'Cancelling appointment...');
@@ -3885,7 +2142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (result.success) {
                     showAlert('Appointment successfully cancelled.', 'success');
-                    
+
                     // Remove the row from the table or refresh
                     setTimeout(() => {
                         window.location.reload();
@@ -3905,9 +2162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 event.target.classList.remove('show');
             }
         }
-        
+
         // === UNIVERSAL FRAMEWORK INTEGRATION FOR CHECK-IN ===
-        
+
         class CheckInQueueSync {
             constructor() {
                 this.syncEnabled = true;
@@ -3915,31 +2172,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 this.setupSyncTriggers();
                 this.checkForSyncTrigger();
             }
-            
+
             initializeSync() {
                 console.log('🔄 Check-In Queue Sync initialized');
             }
-            
+
             setupSyncTriggers() {
                 // Listen for successful check-ins to broadcast updates
                 const originalSubmit = HTMLFormElement.prototype.submit;
                 const self = this;
-                
+
                 // Override form submissions to detect check-in completion
                 HTMLFormElement.prototype.submit = function() {
                     const form = this;
-                    
+
                     // Check if this is a check-in form
                     if (form.id === 'checkinForm' || form.classList.contains('checkin-form')) {
                         console.log('📋 Check-in form submitted - will broadcast on success');
-                        
+
                         // Set a flag to broadcast after successful submission
                         sessionStorage.setItem('pending_checkin_broadcast', 'true');
                     }
-                    
+
                     return originalSubmit.call(this);
                 };
-                
+
                 // Listen for page changes that indicate successful check-in
                 const observer = new MutationObserver((mutations) => {
                     mutations.forEach((mutation) => {
@@ -3957,28 +2214,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     });
                 });
-                
+
                 observer.observe(document.body, {
                     childList: true,
                     subtree: true
                 });
             }
-            
+
             checkForSyncTrigger() {
                 // Check if there's a sync trigger from PHP session
                 <?php if (isset($_SESSION['queue_sync_trigger'])): ?>
-                const syncTrigger = <?php echo json_encode($_SESSION['queue_sync_trigger']); ?>;
-                console.log('📡 PHP Sync Trigger detected:', syncTrigger);
-                this.broadcastQueueUpdate(syncTrigger.type, syncTrigger);
-                
-                // Clear the trigger to prevent duplicate broadcasts
-                <?php unset($_SESSION['queue_sync_trigger']); ?>
+                    const syncTrigger = <?php echo json_encode($_SESSION['queue_sync_trigger']); ?>;
+                    console.log('📡 PHP Sync Trigger detected:', syncTrigger);
+                    this.broadcastQueueUpdate(syncTrigger.type, syncTrigger);
+
+                    // Clear the trigger to prevent duplicate broadcasts
+                    <?php unset($_SESSION['queue_sync_trigger']); ?>
                 <?php endif; ?>
             }
-            
+
             broadcastQueueUpdate(eventType, data = {}) {
                 if (!this.syncEnabled) return;
-                
+
                 const updateData = {
                     type: 'queue_updated',
                     source: 'checkin',
@@ -3987,14 +2244,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     station_type: data.station_type || 'triage',
                     ...data
                 };
-                
+
                 console.log('📢 Broadcasting queue update:', updateData);
-                
+
                 // Broadcast to parent window (if opened from another window)
                 if (window.opener && !window.opener.closed) {
                     window.opener.postMessage(updateData, '*');
                 }
-                
+
                 // Broadcast to all open windows in the same origin
                 try {
                     localStorage.setItem('queue_sync_broadcast', JSON.stringify(updateData));
@@ -4002,14 +2259,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } catch (e) {
                     console.warn('Failed to broadcast via localStorage:', e);
                 }
-                
+
                 // Show user notification
                 this.showSyncNotification(eventType);
             }
-            
+
             showSyncNotification(eventType) {
                 let message = 'Queue updated';
-                
+
                 switch (eventType) {
                     case 'patient_checked_in':
                         message = '✅ Patient successfully checked in to queue';
@@ -4020,7 +2277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     default:
                         message = '🔄 Queue status updated';
                 }
-                
+
                 // Show browser notification if permitted
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification('CHO Koronadal - Check-In', {
@@ -4030,11 +2287,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         silent: false
                     });
                 }
-                
+
                 // Also show in-page notification
                 this.showInPageAlert(message, 'info');
             }
-            
+
             showInPageAlert(message, type = 'info') {
                 // Create alert element
                 const alert = document.createElement('div');
@@ -4055,20 +2312,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     transform: translateX(100%);
                     transition: all 0.3s ease;
                 `;
-                
+
                 alert.innerHTML = `
                     <i class="fas fa-${type === 'info' ? 'info-circle' : 'check-circle'}" style="margin-right: 8px;"></i>
                     ${message}
                 `;
-                
+
                 document.body.appendChild(alert);
-                
+
                 // Animate in
                 setTimeout(() => {
                     alert.style.opacity = '1';
                     alert.style.transform = 'translateX(0)';
                 }, 100);
-                
+
                 // Auto-remove after 4 seconds
                 setTimeout(() => {
                     alert.style.opacity = '0';
@@ -4081,15 +2338,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }, 4000);
             }
         }
-        
+
         // Initialize check-in sync when page loads
         document.addEventListener('DOMContentLoaded', function() {
             window.checkinSync = new CheckInQueueSync();
             console.log('🏥 Check-In module ready with queue synchronization');
         });
-        
     </script>
-    
+
     <!-- Universal Framework Integration -->
     <script src="../../assets/js/queue-sync.js"></script>
     </div>

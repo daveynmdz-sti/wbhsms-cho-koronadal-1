@@ -1,0 +1,128 @@
+/* queue_transactions table */
+
+transaction_id	int unsigned	NO	PRI	NULL	auto_increment	
+visit_id	int unsigned	NO	MUL	NULL		
+patient_id	int unsigned	NO	MUL	NULL		
+station_id	int unsigned	NO	MUL	NULL		
+employee_id	int unsigned	YES	MUL	NULL		
+queue_number	varchar(10)	NO		NULL		
+status	enum('waiting','called','serving','completed','skipped','cancelled')	YES	MUL	waiting		
+arrival_time	datetime	YES		NULL		
+waiting_time	datetime	YES		NULL		
+turnaround_time	int	YES		NULL		
+service_start	datetime	YES		NULL		
+service_end	datetime	YES		NULL		
+priority	enum('normal','senior','pwd','emergency')	YES		normal		
+remarks	text	YES		NULL		
+created_at	timestamp	YES		CURRENT_TIMESTAMP	DEFAULT_GENERATED	
+updated_at	timestamp	YES		CURRENT_TIMESTAMP	DEFAULT_GENERATED on update CURRENT_TIMESTAMP	
+
+
+queue_transactions	0	PRIMARY	1	transaction_id	A	0	NULL	NULL		BTREE			YES	NULL	
+queue_transactions	1	idx_visit_id	1	visit_id	A	0	NULL	NULL		BTREE			YES	NULL	
+queue_transactions	1	idx_patient_id	1	patient_id	A	0	NULL	NULL		BTREE			YES	NULL	
+queue_transactions	1	idx_station_id	1	station_id	A	0	NULL	NULL		BTREE			YES	NULL	
+queue_transactions	1	idx_employee_id	1	employee_id	A	0	NULL	NULL	YES	BTREE			YES	NULL	
+queue_transactions	1	idx_queue_status	1	status	A	0	NULL	NULL	YES	BTREE			YES	NULL	
+
+
+TABLE_NAME	COLUMN_NAME	CONSTRAINT_NAME	REFERENCED_TABLE_NAME	REFERENCED_COLUMN_NAME	
+queue_transactions	employee_id	fk_queue_employee	employees	employee_id	
+queue_transactions	patient_id	fk_queue_patient	patients	patient_id	
+queue_transactions	station_id	fk_queue_station	stations	station_id	
+queue_transactions	visit_id	fk_queue_visit	visits	visit_id	
+
+
+/* patients table */
+patient_id	int unsigned	NO	PRI	NULL	auto_increment	
+username	varchar(10)	YES	UNI	NULL		
+first_name	varchar(50)	NO		NULL		
+middle_name	varchar(50)	YES		NULL		
+last_name	varchar(50)	NO		NULL		
+suffix	varchar(15)	YES		NULL		
+date_of_birth	date	NO		NULL		
+sex	enum('Male','Female','Other')	NO		NULL		
+contact_number	varchar(20)	YES		NULL		
+email	varchar(100)	YES		NULL		
+barangay_id	int unsigned	NO	MUL	NULL		
+isPWD	tinyint(1)	YES		0		
+pwd_id_number	varchar(30)	YES		NULL		
+isPhilHealth	tinyint(1)	YES		0		
+philhealth_type	enum('Indigent','Sponsored','Lifetime Member','Senior Citizen','PWD','Employed Private','Employed Government','Individual Paying','OFW')	YES		NULL		
+philhealth_id_number	varchar(30)	YES		NULL		
+isSenior	tinyint(1)	YES		0		
+senior_citizen_id	varchar(30)	YES		NULL		
+password_hash	varchar(255)	NO		NULL		
+status	enum('active','inactive')	YES		active		
+created_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED	
+updated_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED on update CURRENT_TIMESTAMP	
+
+TABLE_NAME	COLUMN_NAME	CONSTRAINT_NAME	REFERENCED_TABLE_NAME	REFERENCED_COLUMN_NAME	
+patients	barangay_id	fk_patients_barangay	barangay	barangay_id	
+
+/* visits table */
+visit_id	int unsigned	NO	PRI	NULL	auto_increment	
+patient_id	int unsigned	NO	MUL	NULL		
+facility_id	int unsigned	NO	MUL	NULL		
+appointment_id	int unsigned	YES	MUL	NULL		
+vitals_id	int unsigned	YES	MUL	NULL		
+visit_date	date	NO		NULL		
+time_in	datetime	YES		NULL		
+time_out	datetime	YES		NULL		
+attending_employee_id	int unsigned	YES	MUL	NULL		
+remarks	text	YES		NULL		
+visit_status	enum('ongoing','completed','cancelled')	YES		ongoing		
+attendance_status	enum('early','on_time','late','no_show','left_early')	YES		on_time		
+created_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED	
+updated_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED on update CURRENT_TIMESTAMP	
+
+TABLE_NAME	COLUMN_NAME	CONSTRAINT_NAME	REFERENCED_TABLE_NAME	REFERENCED_COLUMN_NAME	
+visits	appointment_id	fk_visits_appointment	appointments	appointment_id	
+visits	attending_employee_id	fk_visits_attending_employee	employees	employee_id	
+visits	facility_id	fk_visits_facility	facilities	facility_id	
+visits	patient_id	fk_visits_patient	patients	patient_id	
+visits	vitals_id	fk_visits_vitals	vitals	vitals_id	
+
+/* employees table */
+employee_id	int unsigned	NO	PRI	NULL	auto_increment	
+employee_number	varchar(20)	YES	UNI	NULL		
+first_name	varchar(50)	NO		NULL		
+middle_name	varchar(50)	YES		NULL		
+last_name	varchar(50)	NO		NULL		
+email	varchar(100)	NO		NULL		
+contact_num	varchar(20)	YES		NULL		
+role_id	int unsigned	NO	MUL	NULL		
+facility_id	int unsigned	NO	MUL	NULL		
+password	varchar(255)	NO		NULL		
+status	enum('active','inactive','on_leave','retired')	YES	MUL	active		
+license_number	varchar(50)	YES		NULL		
+birth_date	date	YES		NULL		
+gender	enum('male','female','other')	YES		NULL		
+created_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED	
+updated_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED on update CURRENT_TIMESTAMP	
+last_login	datetime	YES		NULL		
+failed_login_attempts	int	YES		0		
+locked_until	datetime	YES		NULL		
+password_changed_at	datetime	YES		NULL		
+must_change_password	tinyint(1)	YES		0		
+two_factor_enabled	tinyint(1)	YES		0		
+two_factor_secret	varchar(255)	YES		NULL	
+
+TABLE_NAME	COLUMN_NAME	CONSTRAINT_NAME	REFERENCED_TABLE_NAME	REFERENCED_COLUMN_NAME	
+employees	facility_id	fk_employees_facility	facilities	facility_id	
+employees	role_id	fk_employees_role	roles	role_id	
+
+/* stations table */
+station_id	int unsigned	NO	PRI	NULL	auto_increment	
+station_name	varchar(100)	NO		NULL		
+service_id	int unsigned	NO	MUL	NULL		
+station_type	enum('checkin','triage','billing','consultation','lab','pharmacy','document')	YES	MUL	consultation		
+station_number	int unsigned	YES		1		
+is_active	tinyint(1)	YES		1		
+is_open	tinyint(1)	NO	MUL	1		
+created_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED	
+updated_at	timestamp	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED on update CURRENT_TIMESTAMP	
+
+
+TABLE_NAME	COLUMN_NAME	CONSTRAINT_NAME	REFERENCED_TABLE_NAME	REFERENCED_COLUMN_NAME	
+stations	service_id	fk_stations_service_id	services	service_id	
