@@ -46,6 +46,39 @@ $patient_id = $_SESSION['patient_id'];
 $message = '';
 $error = '';
 
+// Check if coming from referral page with specific referral ID
+$selected_referral_id = isset($_GET['referral_id']) ? intval($_GET['referral_id']) : null;
+$preselected_referral = null;
+
+// If referral_id is provided, fetch that specific referral
+if ($selected_referral_id) {
+    try {
+        $stmt = $conn->prepare("
+            SELECT r.referral_id, r.referral_num, r.referral_reason, r.destination_type,
+                   r.referred_to_facility_id, r.external_facility_name, r.status, r.service_id,
+                   f.name as facility_name, f.type as facility_type,
+                   s.name as service_name, s.description as service_description
+            FROM referrals r
+            LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
+            LEFT JOIN services s ON r.service_id = s.service_id
+            WHERE r.referral_id = ? AND r.patient_id = ?
+        ");
+        $stmt->bind_param("ii", $selected_referral_id, $patient_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $preselected_referral = $result->fetch_assoc();
+        $stmt->close();
+        
+        if ($preselected_referral) {
+            error_log("DEBUG - Preselected referral found: " . $preselected_referral['referral_num'] . " for destination: " . $preselected_referral['destination_type']);
+        } else {
+            error_log("DEBUG - No referral found for ID: " . $selected_referral_id . " and patient: " . $patient_id);
+        }
+    } catch (Exception $e) {
+        error_log("Error fetching preselected referral: " . $e->getMessage());
+    }
+}
+
 // Fetch patient information including priority status
 $patient_info = null;
 try {
@@ -1074,6 +1107,20 @@ try {
                 </div>
             <?php endif; ?>
 
+            <?php if ($selected_referral_id && !$preselected_referral): ?>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    <strong>Referral Not Found:</strong> The referral you selected (ID: <?php echo $selected_referral_id; ?>) may have been cancelled, expired, or is not associated with your account. Please select a different referral or contact the referring facility.
+                </div>
+            <?php endif; ?>
+
+            <?php if ($selected_referral_id && $preselected_referral): ?>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Referral Pre-selected:</strong> You came from referral #<?php echo htmlspecialchars($preselected_referral['referral_num']); ?>. The appropriate facility and service will be automatically selected for you.
+                </div>
+            <?php endif; ?>
+
             <!-- Step 1: Facility Selection -->
             <div class="form-section active" id="section-1">
                 <h3 style="margin-bottom: 2rem;">Step 1: Select Healthcare Facility</h3>
@@ -1270,11 +1317,15 @@ try {
         let activeReferrals = <?php echo json_encode($active_referrals); ?>;
         let patientInfo = <?php echo json_encode($patient_info); ?>;
         let availableServices = <?php echo json_encode($services); ?>;
+        let preselectedReferral = <?php echo json_encode($preselected_referral); ?>;
+        let selectedReferralId = <?php echo json_encode($selected_referral_id); ?>;
         
         // Debug output
         console.log('Active Referrals:', activeReferrals);
         console.log('Total active referrals found:', activeReferrals.length);
         console.log('Patient Info:', patientInfo);
+        console.log('Preselected Referral:', preselectedReferral);
+        console.log('Selected Referral ID from URL:', selectedReferralId);
         
         // Additional debugging for empty referrals
         if (activeReferrals.length === 0) {
@@ -1290,6 +1341,54 @@ try {
         // Initialize the form
         document.addEventListener('DOMContentLoaded', function() {
             updateStepVisibility();
+            
+            // Handle preselected referral from URL parameter
+            if (preselectedReferral && selectedReferralId) {
+                console.log('Auto-selecting referral:', preselectedReferral);
+                
+                // Determine which facility to select based on destination_type
+                let facilityType = null;
+                switch(preselectedReferral.destination_type) {
+                    case 'city_office':
+                        facilityType = 'cho';
+                        break;
+                    case 'district_office':
+                        facilityType = 'dho';
+                        break;
+                    case 'barangay_center':
+                        facilityType = 'bhc';
+                        break;
+                    case 'external':
+                        // For external, we need to check if it's going to CHO, DHO, or BHC
+                        // Default to CHO for external referrals
+                        facilityType = 'cho';
+                        break;
+                }
+                
+                if (facilityType) {
+                    console.log('Auto-selecting facility:', facilityType);
+                    // Auto-select the facility
+                    selectFacility(facilityType);
+                    
+                    // Add referral to active list if not already there
+                    const referralExists = activeReferrals.some(ref => ref.referral_id == selectedReferralId);
+                    if (!referralExists) {
+                        console.log('Adding preselected referral to active list');
+                        activeReferrals.unshift(preselectedReferral);
+                    }
+                    
+                    // Delay the referral selection to ensure facility is selected first
+                    setTimeout(() => {
+                        // Trigger step 2 to show referral selection
+                        nextStep();
+                        
+                        // Auto-select the referral
+                        const serviceName = preselectedReferral.service_name || preselectedReferral.referral_reason;
+                        const serviceId = preselectedReferral.service_id || null;
+                        selectReferral(selectedReferralId, serviceName, serviceId);
+                    }, 100);
+                }
+            }
             
             // Handle any media elements that might cause play() errors
             const mediaElements = document.querySelectorAll('audio, video');
@@ -1459,17 +1558,26 @@ try {
             
             // Filter referrals based on facility type
             let relevantReferrals = activeReferrals.filter(referral => {
+                let matches = false;
                 if (selectedFacility === 'dho') {
-                    return referral.destination_type === 'district_office' || referral.destination_type === 'external';
+                    matches = referral.destination_type === 'district_office' || referral.destination_type === 'external';
                 } else if (selectedFacility === 'cho') {
-                    return referral.destination_type === 'city_office' || referral.destination_type === 'external';
+                    matches = referral.destination_type === 'city_office' || referral.destination_type === 'external';
                 } else if (selectedFacility === 'bhc') {
-                    return referral.destination_type === 'barangay_center' || referral.destination_type === 'external';
+                    matches = referral.destination_type === 'barangay_center' || referral.destination_type === 'external';
                 }
-                return false;
+                
+                // Debug each referral's match status
+                console.log(`Referral #${referral.referral_num} (${referral.destination_type}) matches ${selectedFacility}:`, matches);
+                return matches;
             });
             
             console.log('Filtered referrals for', selectedFacility + ':', relevantReferrals.length);
+            console.log('Relevant referrals:', relevantReferrals.map(r => ({
+                num: r.referral_num,
+                type: r.destination_type,
+                facility: r.facility_name || r.external_facility_name
+            })));
 
             if (relevantReferrals.length === 0) {
                 referralList.innerHTML = '';
