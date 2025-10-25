@@ -1043,12 +1043,87 @@ try {
         }
 
         // Book appointment from referral
+        let selectedReferralForBooking = null;
+
         function bookFromReferral(referralId) {
-            // Check if booking page exists, otherwise show message
-            if (confirm('Navigate to appointment booking with this referral?')) {
-                const bookingUrl = '../appointment/book_appointment.php?referral_id=' + referralId;
+            selectedReferralForBooking = referralId;
+            
+            // Find the referral data from the current referrals
+            const referralCards = document.querySelectorAll('.referral-card');
+            let referralData = null;
+            
+            referralCards.forEach(card => {
+                const bookBtn = card.querySelector(`[onclick*="${referralId}"]`);
+                if (bookBtn) {
+                    // Extract referral data from the card
+                    const referralNum = card.querySelector('.card-title').textContent.trim();
+                    const facilityInfo = card.querySelector('.info-row .value').textContent.trim();
+                    const serviceInfo = card.querySelector('.info-row:nth-child(2) .value')?.textContent.trim() || 'Not specified';
+                    const dateInfo = card.querySelector('.info-row:nth-child(3) .value').textContent.trim();
+                    const reasonInfo = card.querySelector('.info-row:last-child .value')?.textContent.trim() || 'Not specified';
+                    
+                    referralData = {
+                        referral_num: referralNum,
+                        facility: facilityInfo,
+                        service: serviceInfo,
+                        date: dateInfo,
+                        reason: reasonInfo
+                    };
+                }
+            });
+            
+            if (referralData) {
+                populateBookingModal(referralData);
+            }
+            
+            openModal('bookingConfirmationModal');
+        }
+
+        function populateBookingModal(referralData) {
+            const detailsContainer = document.getElementById('bookingReferralDetails');
+            
+            detailsContainer.innerHTML = `
+                <div class="booking-referral-card">
+                    <div class="booking-referral-header">
+                        <i class="fas fa-file-medical"></i>
+                        <h4>Referral Details</h4>
+                    </div>
+                    <div class="booking-referral-info">
+                        <div class="booking-info-row">
+                            <span class="booking-label">Referral Number:</span>
+                            <span class="booking-value highlight">${referralData.referral_num}</span>
+                        </div>
+                        <div class="booking-info-row">
+                            <span class="booking-label">Facility:</span>
+                            <span class="booking-value">${referralData.facility}</span>
+                        </div>
+                        <div class="booking-info-row">
+                            <span class="booking-label">Service:</span>
+                            <span class="booking-value">${referralData.service}</span>
+                        </div>
+                        <div class="booking-info-row">
+                            <span class="booking-label">Referral Date:</span>
+                            <span class="booking-value">${referralData.date}</span>
+                        </div>
+                        <div class="booking-info-row">
+                            <span class="booking-label">Reason:</span>
+                            <span class="booking-value reason">${referralData.reason}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function confirmBooking() {
+            if (selectedReferralForBooking) {
+                const bookingUrl = '../appointment/book_appointment.php?referral_id=' + selectedReferralForBooking;
                 window.location.href = bookingUrl;
             }
+        }
+
+        function closeBookingModal() {
+            closeModal('bookingConfirmationModal');
+            selectedReferralForBooking = null;
         }
 
         // Print Referral Function (Using HTML Print View)
@@ -1886,7 +1961,241 @@ try {
                 min-width: auto;
             }
         }
+
+        /* Booking Modal Specific Styles */
+        .booking-referral-card {
+            background: white;
+            border-radius: 12px;
+            border: 2px solid #e9ecef;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .booking-referral-header {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-bottom: 2px solid #0077b6;
+            color: #0077b6;
+            font-weight: 600;
+        }
+
+        .booking-referral-header i {
+            background: #e3f2fd;
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+        }
+
+        .booking-referral-header h4 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+        .booking-referral-info {
+            padding: 1.5rem;
+        }
+
+        .booking-info-row {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 1rem;
+            gap: 0.25rem;
+        }
+
+        .booking-info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .booking-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .booking-value {
+            color: #212529;
+            font-size: 1rem;
+            padding: 0.5rem 0;
+        }
+
+        .booking-value.highlight {
+            color: #0077b6;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .booking-value.reason {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border-left: 4px solid #0077b6;
+            font-style: italic;
+            line-height: 1.4;
+        }
+
+        .booking-info-card {
+            background: #e3f2fd;
+            border-radius: 12px;
+            border: 1px solid #bbdefb;
+            overflow: hidden;
+        }
+
+        .info-header {
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .info-header i {
+            font-size: 1.2rem;
+        }
+
+        .info-header h4 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .info-content {
+            padding: 1.5rem;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            color: #0d47a1;
+            font-weight: 500;
+        }
+
+        .info-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-item i {
+            color: #0077b6;
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* Enhanced Modal Animations */
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .referral-confirmation-modal.show .referral-modal-content {
+            animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* Mobile responsive for booking modal */
+        @media (max-width: 768px) {
+            .booking-referral-header {
+                padding: 0.75rem 1rem;
+                flex-direction: column;
+                text-align: center;
+                gap: 0.5rem;
+            }
+
+            .booking-referral-info {
+                padding: 1rem;
+            }
+
+            .booking-info-row {
+                margin-bottom: 0.75rem;
+            }
+
+            .info-content {
+                padding: 1rem;
+            }
+
+            .info-item {
+                font-size: 0.9rem;
+                margin-bottom: 0.75rem;
+            }
+
+            .referral-modal-actions {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+
+            .modal-btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
     </style>
+
+    <!-- Booking Confirmation Modal -->
+    <div id="bookingConfirmationModal" class="referral-confirmation-modal">
+        <div class="referral-modal-content">
+            <div class="referral-modal-header">
+                <button type="button" class="referral-modal-close" onclick="closeBookingModal()">&times;</button>
+                <div class="icon">
+                    <i class="fas fa-calendar-plus"></i>
+                </div>
+                <h3>Book Appointment</h3>
+                <p class="modal-description">Navigate to appointment booking with this referral?</p>
+            </div>
+
+            <div class="referral-modal-body">
+                <div id="bookingReferralDetails">
+                    <!-- Referral details will be populated here -->
+                </div>
+                
+                <div class="booking-info-card">
+                    <div class="info-header">
+                        <i class="fas fa-info-circle"></i>
+                        <h4>What happens next?</h4>
+                    </div>
+                    <div class="info-content">
+                        <div class="info-item">
+                            <i class="fas fa-arrow-right"></i>
+                            <span>You'll be redirected to the appointment booking page</span>
+                        </div>
+                        <div class="info-item">
+                            <i class="fas fa-hospital"></i>
+                            <span>The referral information will be pre-filled automatically</span>
+                        </div>
+                        <div class="info-item">
+                            <i class="fas fa-calendar-check"></i>
+                            <span>Select your preferred date and time for the appointment</span>
+                        </div>
+                        <div class="info-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Complete the booking process to secure your appointment</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="referral-modal-actions">
+                <button type="button" class="modal-btn modal-btn-secondary" onclick="closeBookingModal()">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="confirmBooking()" id="confirmBookingBtn">
+                    <i class="fas fa-calendar-plus"></i> Book Appointment
+                </button>
+            </div>
+        </div>
+    </div>
 
 </body>
 

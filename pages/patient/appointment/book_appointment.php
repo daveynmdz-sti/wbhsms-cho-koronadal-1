@@ -1444,17 +1444,32 @@ try {
             const referralList = document.getElementById('referral-list');
             const noReferrals = document.getElementById('no-referrals');
             
+            console.log('loadReferrals() called for facility:', selectedFacility);
+            console.log('Total active referrals:', activeReferrals.length);
+            
+            // Log all referrals with their destination types for debugging
+            activeReferrals.forEach((referral, index) => {
+                console.log(`Referral ${index + 1}:`, {
+                    referral_num: referral.referral_num,
+                    destination_type: referral.destination_type,
+                    facility_name: referral.facility_name,
+                    external_facility_name: referral.external_facility_name
+                });
+            });
+            
             // Filter referrals based on facility type
             let relevantReferrals = activeReferrals.filter(referral => {
                 if (selectedFacility === 'dho') {
-                    return referral.facility_type === 'District Health Office' || referral.destination_type === 'external';
+                    return referral.destination_type === 'district_office' || referral.destination_type === 'external';
                 } else if (selectedFacility === 'cho') {
-                    return referral.facility_type === 'City Health Office' || referral.destination_type === 'external';
+                    return referral.destination_type === 'city_office' || referral.destination_type === 'external';
                 } else if (selectedFacility === 'bhc') {
-                    return referral.facility_type === 'Barangay Health Center' || referral.destination_type === 'external';
+                    return referral.destination_type === 'barangay_center' || referral.destination_type === 'external';
                 }
                 return false;
             });
+            
+            console.log('Filtered referrals for', selectedFacility + ':', relevantReferrals.length);
 
             if (relevantReferrals.length === 0) {
                 referralList.innerHTML = '';
