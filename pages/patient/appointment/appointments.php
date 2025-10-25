@@ -1690,7 +1690,7 @@ try {
 
         function showCancelModal(appointmentId, appointmentNumber) {
             // Fetch appointment details and populate modal
-            fetch(`/wbhsms-cho-koronadal-1/api/patient_appointment_details.php?appointment_id=${appointmentId}`)
+            fetch(`../../../api/patient_appointment_details.php?appointment_id=${appointmentId}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1767,7 +1767,7 @@ try {
             formData.append('appointment_id', currentAppointmentData.appointment_id);
             formData.append('cancellation_reason', finalReason);
             
-            fetch('/wbhsms-cho-koronadal-1/api/cancel_appointment.php', {
+            fetch('../../../api/cancel_appointment.php', {
                 method: 'POST',
                 body: formData
             })
@@ -1797,7 +1797,7 @@ try {
         }
 
         function viewAppointmentDetails(appointmentId) {
-            fetch(`/wbhsms-cho-koronadal-1/api/patient_appointment_details.php?appointment_id=${appointmentId}`)
+            fetch(`../../../api/patient_appointment_details.php?appointment_id=${appointmentId}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1945,7 +1945,7 @@ try {
             modal.style.display = 'block';
             
             // Generate QR code
-            fetch(`/wbhsms-cho-koronadal-1/api/generate_qr_code.php?appointment_id=${appointmentId}`)
+            fetch(`../../../api/generate_qr_code.php?appointment_id=${appointmentId}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -2200,7 +2200,7 @@ try {
 
         // Load patient facilities for filtering
         function loadPatientFacilities() {
-            fetch('/wbhsms-cho-koronadal-1/api/get_patient_facilities_for_appointments.php')
+            fetch('../../../api/get_patient_facilities_for_appointments.php')
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {

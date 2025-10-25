@@ -15,9 +15,17 @@ $root_path = dirname(__DIR__);
 require_once $root_path . '/config/session/patient_session.php';
 require_once $root_path . '/config/db.php';
 
+// Validate database connection
+if (!isset($conn) || $conn->connect_error) {
+    error_log("API Error: Database connection failed - " . ($conn->connect_error ?? 'Connection object not set'));
+    echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+    exit();
+}
+
 try {
     // Check if patient is logged in
     if (!isset($_SESSION['patient_id'])) {
+        error_log("API Error: No patient_id in session - session data: " . print_r($_SESSION, true));
         echo json_encode(['success' => false, 'message' => 'Unauthorized access - please log in']);
         exit();
     }
@@ -26,6 +34,7 @@ try {
     $appointment_id = $_GET['appointment_id'] ?? '';
 
     if (empty($appointment_id) || !is_numeric($appointment_id)) {
+        error_log("API Error: Invalid appointment ID received: " . $appointment_id);
         echo json_encode(['success' => false, 'message' => 'Invalid appointment ID']);
         exit();
     }
@@ -60,18 +69,25 @@ try {
     }
     
     $stmt->bind_param("ii", $appointment_id, $patient_id);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        error_log("SQL Execute Error: " . $stmt->error . " | Patient ID: $patient_id | Appointment ID: $appointment_id");
+        throw new Exception("Database execute error: " . $stmt->error);
+    }
+    
     $result = $stmt->get_result();
     
     if ($appointment = $result->fetch_assoc()) {
         // Combine first and last name
         $appointment['patient_name'] = trim($appointment['first_name'] . ' ' . $appointment['last_name']);
         
+        error_log("API Success: Appointment details retrieved for Patient ID: $patient_id, Appointment ID: $appointment_id");
         echo json_encode([
             'success' => true,
             'appointment' => $appointment
         ]);
     } else {
+        error_log("API Warning: No appointment found for Patient ID: $patient_id, Appointment ID: $appointment_id");
         echo json_encode([
             'success' => false, 
             'message' => 'Appointment not found or you do not have permission to view it'
