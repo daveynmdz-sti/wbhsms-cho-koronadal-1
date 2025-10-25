@@ -1,9 +1,9 @@
 <?php
 // Include employee session configuration
-// Use absolute path resolution
-$root_path = dirname(dirname(dirname(__DIR__)));
-require_once $root_path . '/config/session/employee_session.php';
-include $root_path . '/config/db.php';
+// Use absolute path resolution - go up 3 levels from records_officer directory
+$root_path = realpath(dirname(dirname(dirname(__DIR__))));
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
+include $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.php';
 
 // Use relative path for assets - more reliable than absolute URLs
 $assets_path = '../../../assets';
@@ -19,9 +19,9 @@ if (!isset($_SESSION['employee_id'])) {
 // Set active page for sidebar highlighting
 $activePage = 'patient_records';
 
-// Define role-based permissions - Records Officer specific (VIEW ONLY)
-$canEdit = false; // Records Officers can ONLY view, print, and download - NO editing allowed
-$canView = ($_SESSION['role'] === 'records_officer');
+// Define role-based permissions for records officer
+$canEdit = false; // Records Officer can only view - NO editing allowed
+$canView = in_array($_SESSION['role'], ['records_officer']);
 
 if (!$canView) {
     $role = $_SESSION['role'];
@@ -248,16 +248,15 @@ $totalPages = ceil($totalRecords / $recordsPerPage);
 
 // Get patient records
 $sql = "SELECT p.patient_id, p.username, p.status, 
-        CONCAT(p.last_name, ', ', p.first_name, 
-               CASE WHEN p.middle_name IS NOT NULL AND p.middle_name != '' 
-                    THEN CONCAT(' ', p.middle_name) 
-                    ELSE '' END) as full_name,
-        p.first_name, p.last_name, p.middle_name, p.date_of_birth, 
-        p.sex, p.contact_number, p.email_address, 
-        p.profile_photo, p.created_at, 
-        b.barangay_name, b.barangay_id
-        FROM patients p 
-        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
+        p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.sex, p.contact_number, 
+        pi.profile_photo,
+        b.barangay_name,
+        CONCAT(ec.emergency_last_name, ', ', ec.emergency_first_name, ' ', LEFT(ec.emergency_middle_name, 1), '.') as contact_name, 
+        ec.emergency_contact_number as emergency_contact
+        FROM patients p
+        LEFT JOIN personal_information pi ON p.patient_id = pi.patient_id
+        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+        LEFT JOIN emergency_contact ec ON p.patient_id = ec.patient_id
         WHERE 1=1";
 
 // Apply the same filters for the main query
@@ -266,7 +265,7 @@ $types = "";
 
 if (!empty($searchQuery)) {
     $sql .= " AND (p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? 
-             OR b.barangay_name LIKE ? OR p.date_of_birth LIKE ?)";
+              OR b.barangay_name LIKE ? OR p.date_of_birth LIKE ?)";
     $searchParam = "%{$searchQuery}%";
     array_push($params, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
     $types .= "sssss";
@@ -333,1081 +332,1357 @@ $result = $stmt->get_result();
 // Get all barangays for filter dropdown
 $barangaySql = "SELECT barangay_id, barangay_name FROM barangay ORDER BY barangay_name";
 $barangayResult = $conn->query($barangaySql);
-
-// Handle status update (Records Officers CANNOT update - view only)
-if ($_POST['action'] === 'update_status' && $canEdit) {
-    $patient_id = intval($_POST['patient_id']);
-    $new_status = $_POST['status'] === 'active' ? 'active' : 'inactive';
-    
-    $updateSql = "UPDATE patients SET status = ? WHERE patient_id = ?";
-    $updateStmt = $conn->prepare($updateSql);
-    $updateStmt->bind_param("si", $new_status, $patient_id);
-    
-    if ($updateStmt->execute()) {
-        echo json_encode(['success' => true, 'message' => 'Patient status updated successfully']);
-    } else {
-        echo json_encode(['success' => false, 'message' => 'Failed to update patient status']);
-    }
-    exit;
-}
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Patient Records Management - CHO Koronadal</title>
-    
-    <!-- External Stylesheets -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    
-    <!-- Custom Stylesheets -->
+    <title>Patient Records Management - Records Officer | CHO Koronadal</title>
+    <!-- CSS Files -->
     <link rel="stylesheet" href="../../../assets/css/sidebar.css">
     <link rel="stylesheet" href="../../../assets/css/dashboard.css">
-    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        /* Main Content Styles */
-        .main-content {
-            margin-left: 260px;
-            padding: 20px;
-            background-color: #f8f9fa;
-            min-height: 100vh;
+        /* Additional styles for patient records management */
+        :root {
+            --primary: #0077b6;
+            --primary-dark: #03045e;
+            --secondary: #6c757d;
+            --success: #2d6a4f;
+            --info: #17a2b8;
+            --warning: #ffc107;
+            --danger: #d00000;
+            --light: #f8f9fa;
+            --border: #dee2e6;
+            --shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            --shadow-lg: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            --border-radius: 0.5rem;
+            --border-radius-lg: 1rem;
+            --transition: all 0.3s ease;
         }
-
-        /* Patient Records Specific Styles */
-        .records-header {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        .loader {
+            border: 5px solid rgba(240, 240, 240, 0.5);
+            border-radius: 50%;
+            border-top: 5px solid var(--primary);
+            width: 30px;
+            height: 30px;
+            animation: spin 1.5s linear infinite;
+            margin: 0 auto;
+            display: none;
         }
-
-        .records-header h1 {
-            margin: 0 0 10px 0;
-            font-size: 2.5rem;
-            font-weight: 700;
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
-
-        .records-header p {
-            margin: 0;
-            opacity: 0.9;
-            font-size: 1.1rem;
+        
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: var(--border-radius);
+            margin-top: 10px;
         }
-
-        /* Statistics Cards */
-        .stats-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            border-left: 5px solid;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
-        }
-
-        .stat-card.total { border-left-color: #3498db; }
-        .stat-card.active { border-left-color: #27ae60; }
-        .stat-card.inactive { border-left-color: #e74c3c; }
-
-        .stat-card .icon {
-            font-size: 2.5rem;
-            margin-bottom: 15px;
-            opacity: 0.8;
-        }
-
-        .stat-card.total .icon { color: #3498db; }
-        .stat-card.active .icon { color: #27ae60; }
-        .stat-card.inactive .icon { color: #e74c3c; }
-
-        .stat-card .number {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 5px;
-            color: #2c3e50;
-        }
-
-        .stat-card .label {
-            color: #7f8c8d;
-            font-size: 1.1rem;
-            font-weight: 500;
-        }
-
-        /* Controls Section */
-        .controls-section {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            margin-bottom: 30px;
-        }
-
-        .search-filter-container {
-            display: grid;
-            grid-template-columns: 1fr auto auto;
-            gap: 15px;
-            align-items: end;
-        }
-
-        .search-group {
-            position: relative;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 12px 45px 12px 15px;
-            border: 2px solid #e1e8ed;
-            border-radius: 10px;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: #1e3c72;
-        }
-
-        .search-icon {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #7f8c8d;
-            font-size: 1.1rem;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(30, 60, 114, 0.3);
-        }
-
-        .btn-secondary {
-            background: #95a5a6;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #7f8c8d;
-            transform: translateY(-2px);
-        }
-
-        /* Filters */
-        .filters-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #e1e8ed;
-        }
-
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .filter-label {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 0.9rem;
-        }
-
-        .filter-select, .filter-input {
-            padding: 10px 12px;
-            border: 2px solid #e1e8ed;
-            border-radius: 8px;
-            font-size: 0.95rem;
-            transition: border-color 0.3s ease;
-        }
-
-        .filter-select:focus, .filter-input:focus {
-            outline: none;
-            border-color: #1e3c72;
-        }
-
-        /* Table Styles */
-        .table-container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            overflow: hidden;
-        }
-
-        .table {
+        
+        table {
             width: 100%;
             border-collapse: collapse;
+            box-shadow: var(--shadow);
         }
-
-        .table th {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        
+        table th {
+            background: linear-gradient(135deg, #0077b6, #03045e);
             color: white;
-            padding: 18px 15px;
+            padding: 12px 15px;
             text-align: left;
-            font-weight: 600;
-            font-size: 0.95rem;
+            font-weight: 500;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            cursor: pointer;
+            user-select: none;
         }
-
-        .table td {
-            padding: 15px;
-            border-bottom: 1px solid #e1e8ed;
+        
+        table th.sortable::after {
+            content: '\f0dc';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            margin-left: 5px;
+            opacity: 0.5;
+            font-size: 14px;
+        }
+        
+        table th.sort-asc::after {
+            content: '\f0de';
+            opacity: 1;
+        }
+        
+        table th.sort-desc::after {
+            content: '\f0dd';
+            opacity: 1;
+        }
+        
+        table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
             vertical-align: middle;
         }
-
-        .table tr:hover {
-            background-color: #f8f9fa;
+        
+        table tr:hover {
+            background-color: rgba(240, 247, 255, 0.6);
+            transition: background-color 0.2s;
         }
-
-        .profile-img {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 3px solid #1e3c72;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        
+        table tr:last-child td {
+            border-bottom: none;
         }
-
-        .patient-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .patient-details h4 {
-            margin: 0 0 5px 0;
-            color: #2c3e50;
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        .patient-details p {
-            margin: 0;
-            color: #7f8c8d;
-            font-size: 0.9rem;
-        }
-
-        /* Status Badge */
-        .status-badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
+        
+        .action-btn {
+            margin-right: 5px;
+            padding: 8px 15px;
             border: none;
+            border-radius: var(--border-radius);
             cursor: pointer;
-            transition: all 0.3s ease;
+            color: white;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
         }
-
-        .status-active {
-            background: #d4edda;
-            color: #155724;
+        
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
         }
-
-        .status-inactive {
-            background: #f8d7da;
-            color: #721c24;
+        
+        .equal-width {
+            width: calc(50% - 5px);
+            max-height: fit-content;
+            padding: 10px;
+            text-align: center;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+            gap: 10px;
         }
-
-        .status-badge:hover {
-            transform: scale(1.05);
+        
+        .button-container {
+            justify-content: space-between;
+            gap: 10px;
         }
-
-        /* Action Buttons */
-        .action-btns {
+        
+        .button-container .dropdown {
+            width: 50%;
+        }
+        
+        .button-container .dropdown button {
+            width: 100%;
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #0096c7, #0077b6);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #48cae4, #0096c7);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #ffba08, #faa307);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #adb5bd, #6c757d);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #52b788, #2d6a4f);
+        }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .bg-success {
+            background: linear-gradient(135deg, #52b788, #2d6a4f);
+        }
+        
+        .bg-danger {
+            background: linear-gradient(135deg, #ef476f, #d00000);
+        }
+        
+        .pagination {
             display: flex;
+            list-style: none;
+            padding: 0;
+            justify-content: center;
+            margin-top: 25px;
             gap: 8px;
         }
-
-        .btn-sm {
+        
+        .pagination li {
+            margin: 0;
+        }
+        
+        .pagination a {
             padding: 8px 12px;
-            font-size: 0.85rem;
-            border-radius: 6px;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            text-decoration: none;
+            border-radius: var(--border-radius);
+            transition: all 0.2s ease;
+            font-weight: 500;
+            min-width: 38px;
+            text-align: center;
+            display: inline-block;
         }
-
-        .btn-info {
-            background: #17a2b8;
+        
+        .pagination a:hover:not(.disabled a) {
+            background-color: rgba(0, 119, 182, 0.1);
+            transform: translateY(-2px);
+        }
+        
+        .pagination .active a {
+            background: linear-gradient(135deg, #0096c7, #0077b6);
             color: white;
+            border-color: transparent;
+            box-shadow: 0 2px 5px rgba(0, 119, 182, 0.3);
         }
-
-        .btn-info:hover {
-            background: #138496;
-            transform: translateY(-1px);
+        
+        .pagination .disabled a {
+            color: #ccc;
+            border-color: #eee;
+            cursor: not-allowed;
+            pointer-events: none;
         }
-
-        /* Pagination */
-        .pagination-container {
-            background: white;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            margin-top: 20px;
+        
+        .profile-img {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+        
+        tr:hover .profile-img {
+            transform: scale(1.05);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #0077b6, #03045e);
+            color: white;
+            padding: 12px 15px;
+            border-radius: var(--border-radius);
+            text-align: center;
+            margin-bottom: 15px;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h5 {
+            margin: 0;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        .info p {
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .info p:last-child {
+            border-bottom: none;
+        }
+        
+        .info strong {
+            color: var(--primary-dark);
+            font-weight: 600;
+        }
+        
+        /* Card content styling */
+        .content-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 20px;
         }
-
-        .pagination {
-            display: flex;
-            gap: 5px;
-        }
-
-        .pagination a, .pagination .current {
-            padding: 10px 15px;
-            border-radius: 8px;
-            text-decoration: none;
+        
+        .page-title {
+            color: var(--primary-dark);
+            font-size: 1.8rem;
             font-weight: 600;
-            transition: all 0.3s ease;
+            margin: 0;
         }
-
-        .pagination a {
-            color: #1e3c72;
-            border: 2px solid #e1e8ed;
-        }
-
-        .pagination a:hover {
-            background: #1e3c72;
-            color: white;
-            border-color: #1e3c72;
-        }
-
-        .pagination .current {
-            background: #1e3c72;
-            color: white;
-            border: 2px solid #1e3c72;
-        }
-
-        /* Modal Styles */
+        
+        /* Modal styles */
         .modal {
             display: none;
             position: fixed;
-            z-index: 1000;
-            left: 0;
             top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
         }
-
+        
+        .modal.show {
+            display: block !important;
+        }
+        
+        .modal-dialog {
+            max-width: 450px;
+            margin: 50px auto;
+            transform: translateY(-20px);
+            transition: transform 0.3s ease;
+        }
+        
+        .modal.show .modal-dialog {
+            transform: translateY(0);
+        }
+        
         .modal-content {
             background-color: white;
-            margin: 5% auto;
-            padding: 0;
-            border-radius: 15px;
-            width: 90%;
-            max-width: 700px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            animation: modalSlideIn 0.3s ease;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
         }
-
-        @keyframes modalSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-50px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
+        
         .modal-header {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            padding: 20px 30px;
-            border-radius: 15px 15px 0 0;
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background-color: var(--primary-dark);
+            color: white;
         }
-
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.5rem;
-            font-weight: 600;
+        
+        .modal-body {
+            padding: 20px;
         }
-
-        .modal-close {
+        
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .btn-close {
             background: none;
             border: none;
-            color: white;
-            font-size: 1.5rem;
+            font-size: 20px;
             cursor: pointer;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
+            color: white;
+            transition: color 0.2s ease;
+        }
+        
+        .btn-close:hover {
+            color: var(--light);
+        }
+
+        /* Radio option pulse animation */
+        @keyframes pulseEffect {
+            0% { transform: scale(1.02); }
+            50% { transform: scale(1.04); }
+            100% { transform: scale(1.02); }
+        }
+        
+        .pulse-animation {
+            animation: pulseEffect 0.3s ease;
+        }
+        
+        /* Form inputs */
+        .form-control {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--border-radius);
+            margin-bottom: 12px;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            font-size: 14px;
+        }
+        
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.2);
+            outline: none;
+        }
+        
+        .form-select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--border-radius);
+            margin-bottom: 12px;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 16px 12px;
+            font-size: 14px;
+        }
+        
+        .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.2);
+            outline: none;
+        }
+        
+        .input-group {
+            display: flex;
+            position: relative;
+        }
+        
+        .input-group-text {
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #e2e8f0;
+            border-right: none;
+            border-radius: var(--border-radius) 0 0 var(--border-radius);
             display: flex;
             align-items: center;
-            justify-content: center;
-            transition: background-color 0.3s ease;
+            color: #64748b;
         }
-
-        .modal-close:hover {
-            background-color: rgba(255, 255, 255, 0.2);
+        
+        .input-group .form-control {
+            border-radius: 0 var(--border-radius) var(--border-radius) 0;
+            margin-bottom: 0;
+            flex: 1;
         }
-
-        .modal-body {
-            padding: 30px;
+        
+        /* Utility classes */
+        .d-flex {
+            display: flex;
         }
-
-        .patient-detail-grid {
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 20px;
-            align-items: start;
+        
+        .me-2 {
+            margin-right: 10px;
         }
-
-        .patient-photo-section {
-            text-align: center;
-        }
-
-        .patient-info-section {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-        }
-
-        .info-group {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            border-left: 4px solid #1e3c72;
-        }
-
-        .info-group h4 {
-            margin: 0 0 10px 0;
-            color: #1e3c72;
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        .info-group p {
-            margin: 5px 0;
-            color: #2c3e50;
-        }
-
-        .info-group strong {
-            color: #1e3c72;
-            font-weight: 600;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .main-content {
-                margin-left: 0;
-                padding: 15px;
-            }
-
-            .records-header h1 {
-                font-size: 2rem;
-            }
-
-            .search-filter-container {
-                grid-template-columns: 1fr;
-                gap: 10px;
-            }
-
-            .filters-container {
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            }
-
-            .stats-container {
-                grid-template-columns: 1fr;
-            }
-
-            .patient-detail-grid {
-                grid-template-columns: 1fr;
-                text-align: center;
-            }
-
-            .patient-info-section {
-                grid-template-columns: 1fr;
-            }
-
-            .action-btns {
-                flex-direction: column;
-            }
-        }
-
-        /* Loading State */
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #7f8c8d;
-        }
-
-        .loading i {
-            font-size: 2rem;
+        
+        .mb-2 {
             margin-bottom: 10px;
-            animation: spin 1s linear infinite;
         }
-
-        @keyframes spin {
-            from { transform: rotate(0deg); }
+        
+        .mt-4 {
+            margin-top: 20px;
+        }
+        
+        .justify-content-center {
+            justify-content: center;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-muted {
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        /* Header with badge */
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .total-count .badge {
+            font-size: 14px;
+            padding: 6px 12px;
+            margin-right: 8px;
+        }
+        
+        .bg-primary {
+            background: linear-gradient(135deg, #48cae4, #0096c7);
+        }
+        
+        /* Responsive grid */
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-right: -15px;
+            margin-left: -15px;
+        }
+        
+        .col-12 {
+            flex: 0 0 100%;
+            max-width: 100%;
+            padding: 0 15px;
+        }
+        
+        .col-md-4 {
+            flex: 0 0 33.333333%;
+            max-width: 33.333333%;
+            padding: 0 15px;
+        }
+        
+        .col-md-3 {
+            flex: 0 0 25%;
+            max-width: 25%;
+            padding: 0 15px;
+        }
+        
+        .col-md-2 {
+            flex: 0 0 16.666667%;
+            max-width: 16.666667%;
+            padding: 0 15px;
+        }
+        
+        @media (max-width: 768px) {
+            .col-md-4, .col-md-3, .col-md-2 {
+                flex: 0 0 100%;
+                max-width: 100%;
+            }
+        }
+        
+        /* Dropdown */
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .dropdown-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .dropdown-toggle::after {
+            display: inline-block;
+            margin-left: 0.255em;
+            vertical-align: 0.255em;
+            content: "";
+            border-top: 0.3em solid;
+            border-right: 0.3em solid transparent;
+            border-bottom: 0;
+            border-left: 0.3em solid transparent;
+            transition: transform 0.2s ease;
+        }
+        
+        .dropdown-toggle[aria-expanded="true"]::after {
+            transform: rotate(180deg);
+        }
+        
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: calc(100% + 5px);
+            background-color: #fff;
+            min-width: 180px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            border-radius: var(--border-radius);
+            padding: 8px 0;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        
+        .dropdown-menu.show {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            clear: both;
+            text-decoration: none;
+            color: #333;
+            transition: background-color 0.15s ease;
+        }
+        
+        .dropdown-item:hover {
+            background-color: rgba(0, 119, 182, 0.1);
+        }
+        
+        .dropdown-item i {
+            color: var(--primary);
+        }
+        
+        /* Alert styles */
+        .alert {
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left-width: 4px;
+            border-left-style: solid;
+        }
+        
+        .alert-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border-color: #ffeeba;
+            border-left-color: #ffc107;
+        }
+        
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+            border-left-color: #dc3545;
+        }
+        
+        .alert i {
+            margin-right: 5px;
+        }
+        
+        /* Form styling for modals */
+        .form-label {
+            font-weight: 500;
+            color: var(--primary-dark);
+            margin-bottom: 5px;
+            display: block;
+        }
+        
+        .form-check {
+            padding: 8px 12px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            transition: background-color 0.15s ease;
+        }
+        
+        .form-check:hover {
+            background-color: rgba(0, 119, 182, 0.05);
+        }
+        
+        .form-check-input {
+            margin-top: 0.3em;
+        }
+        
+        .form-check-label {
+            padding-left: 5px;
+        }
+        
+        .d-none {
+            display: none !important;
+        }
+        
+        /* Spinner for loading states */
+        .spinner-border {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            vertical-align: middle;
+            border: 0.2em solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spinner-border .75s linear infinite;
+            margin-right: 5px;
+        }
+        
+        @keyframes spinner-border {
             to { transform: rotate(360deg); }
         }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #7f8c8d;
+        
+        /* Section header styling */
+        .section-header {
+            padding: 0 0 15px 0;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 119, 182, 0.2);
         }
-
-        .empty-state i {
-            font-size: 4rem;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        .empty-state h3 {
-            margin: 0 0 10px 0;
-            color: #2c3e50;
-        }
-
-        .empty-state p {
+        
+        .section-header h4 {
             margin: 0;
-            font-size: 1.1rem;
+            color: var(--primary-dark);
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .section-header h4 i {
+            color: var(--primary);
+            margin-right: 8px;
+        }
+
+        /* Breadcrumb styling */
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .breadcrumb a {
+            color: #0077b6;
+            text-decoration: none;
+        }
+
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+
+        /* Page header styling */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .page-header h1 {
+            color: #0077b6;
+            margin: 0;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .page-header h1 i {
+            color: #0077b6;
+        }
+
+        /* Total count badges styling */
+        .total-count {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        .total-count .badge {
+            min-width: 150px;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-align: center;
+            white-space: nowrap;
+            border-radius: 25px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .total-count .badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Mobile responsive styling */
+        @media (max-width: 768px) {
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .total-count {
+                width: 100%;
+                justify-content: flex-start;
+                gap: 0.75rem;
+            }
+
+            .total-count .badge {
+                min-width: 120px;
+                font-size: 0.8rem;
+                padding: 6px 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .total-count {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.5rem;
+            }
+
+            .total-count .badge {
+                width: 100%;
+                min-width: auto;
+                text-align: center;
+            }
         }
     </style>
 </head>
-
 <body>
-    <!-- Include Sidebar -->
-    <?php include '../../../includes/sidebar_records_officer.php'; ?>
+    <!-- Include sidebar -->
+    <?php include $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'sidebar_records_officer.php'; ?>
+    <div class="homepage">
+        <div class="main-content">
+            <!-- Breadcrumb Navigation -->
+            <div class="breadcrumb" style="margin-top: 50px;">
+                <a href="../dashboard.php"><i class="fas fa-home"></i> Records Officer Dashboard</a>
+                <i class="fas fa-chevron-right"></i>
+                <span>Patient Records Management</span>
+            </div>
 
-    <!-- Main Content -->
-    <div class="main-content">
-        <!-- Page Header -->
-        <div class="records-header">
-            <h1><i class="fas fa-user-injured"></i> Patient Records Management</h1>
-            <p>Comprehensive patient records system for healthcare management</p>
-        </div>
-
-        <!-- Statistics Cards -->
-        <div class="stats-container">
-            <div class="stat-card total">
-                <div class="icon">
-                    <i class="fas fa-users"></i>
+            <div class="page-header">
+                <h1><i class="fas fa-users"></i> Patient Records Management</h1>
+                <div class="total-count">
+                    <span class="badge bg-success"><?php echo $totalRecords; ?> Total Patients</span>
+                    <span class="badge bg-primary"><?php echo $activePatients; ?> Active</span>
+                    <span class="badge bg-danger"><?php echo $inactivePatients; ?> Inactive</span>
                 </div>
-                <div class="number"><?php echo number_format($totalRecords); ?></div>
-                <div class="label">Total Patients</div>
             </div>
             
-            <div class="stat-card active">
-                <div class="icon">
-                    <i class="fas fa-user-check"></i>
+            <!-- Search and Filter Section -->
+            <div class="card-container">
+                <div class="section-header">
+                    <h4><i class="fas fa-filter"></i> Search & Filter Options</h4>
                 </div>
-                <div class="number"><?php echo number_format($activePatients); ?></div>
-                <div class="label">Active Patients</div>
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" id="searchInput" class="form-control" placeholder="General search..." value="<?php echo htmlspecialchars($searchQuery); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-id-card"></i></span>
+                            <input type="text" id="patientIdInput" class="form-control" placeholder="Patient ID" value="<?php echo htmlspecialchars($patientIdFilter); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user"></i></span>
+                            <input type="text" id="firstNameInput" class="form-control" placeholder="First Name" value="<?php echo htmlspecialchars($firstNameFilter); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user"></i></span>
+                            <input type="text" id="lastNameInput" class="form-control" placeholder="Last Name" value="<?php echo htmlspecialchars($lastNameFilter); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user"></i></span>
+                            <input type="text" id="middleNameInput" class="form-control" placeholder="Middle Name" value="<?php echo htmlspecialchars($middleNameFilter); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-calendar"></i></span>
+                            <input type="date" id="birthdayInput" class="form-control" placeholder="Birthday" value="<?php echo htmlspecialchars($birthdayFilter); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <select id="barangayFilter" class="form-select">
+                            <option value="">All Barangays</option>
+                            <?php 
+                            // Reset pointer to beginning of result set
+                            $barangayResult->data_seek(0);
+                            while($barangay = $barangayResult->fetch_assoc()): 
+                            ?>
+                                <option value="<?php echo $barangay['barangay_id']; ?>" <?php echo ($barangayFilter == $barangay['barangay_id'] ? 'selected' : ''); ?>>
+                                    <?php echo htmlspecialchars($barangay['barangay_name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <select id="statusFilter" class="form-select">
+                            <option value="">All Status</option>
+                            <option value="active" <?php echo ($statusFilter == 'active' ? 'selected' : ''); ?>>Active</option>
+                            <option value="inactive" <?php echo ($statusFilter == 'inactive' ? 'selected' : ''); ?>>Inactive</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex button-container">
+                        <button id="clearFilters" class="action-btn btn-secondary" style="width: 100%;">
+                            <i class="fas fa-times-circle"></i> Clear Filters
+                        </button>
+                    </div>
+                </div>
             </div>
             
-            <div class="stat-card inactive">
-                <div class="icon">
-                    <i class="fas fa-user-times"></i>
+            <!-- Loader -->
+            <div class="text-center" style="padding: 15px 0;">
+                <div id="loader" class="loader"></div>
+            </div>
+            
+            <!-- Patient Records Table -->
+            <div class="card-container">
+                <div class="section-header">
+                    <h4><i class="fas fa-table"></i> Patient Records</h4>
                 </div>
-                <div class="number"><?php echo number_format($inactivePatients); ?></div>
-                <div class="label">Inactive Patients</div>
+                <div class="table-responsive">
+                    <table id="patientTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 70px;"> </th>
+                                        <th class="sortable" data-column="username">Patient ID</th>
+                                        <th class="sortable" data-column="full_name">Full Name</th>
+                                        <th class="sortable" data-column="dob">DOB</th>
+                                        <th class="sortable" data-column="sex">Sex</th>
+                                        <th class="sortable" data-column="barangay">Barangay</th>
+                                        <th class="sortable" data-column="contact">Contact</th>
+                                        <th class="sortable" data-column="status">Status</th>
+                                        <th style="width: 120px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($result->num_rows > 0): ?>
+                                        <?php while ($patient = $result->fetch_assoc()): ?>
+                                            <tr>
+                                                <td>
+                                                    <?php if (!empty($patient['profile_photo'])): ?>
+                                                        <img src="data:image/jpeg;base64,<?php echo base64_encode($patient['profile_photo']); ?>" 
+                                                             class="profile-img" alt="Patient Photo">
+                                                    <?php else: ?>
+                                                        <img src="<?php echo $assets_path; ?>/images/user-default.png" 
+                                                             class="profile-img" alt="Patient Photo">
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td><strong><?php echo htmlspecialchars($patient['username']); ?></strong></td>
+                                                <td>
+                                                    <?php 
+                                                    $fullName = $patient['last_name'] . ', ' . $patient['first_name'];
+                                                    if (!empty($patient['middle_name'])) {
+                                                        $fullName .= ' ' . substr($patient['middle_name'], 0, 1) . '.';
+                                                    }
+                                                    echo htmlspecialchars($fullName); 
+                                                    ?>
+                                                </td>
+                                                <td>
+                                                    <?php 
+                                                    if (!empty($patient['date_of_birth'])) {
+                                                        $dob = new DateTime($patient['date_of_birth']);
+                                                        echo $dob->format('M d, Y');
+                                                    } else {
+                                                        echo '<span class="text-muted">N/A</span>';
+                                                    }
+                                                    ?>
+                                                </td>
+                                                <td><?php echo !empty($patient['sex']) ? htmlspecialchars($patient['sex']) : '<span class="text-muted">N/A</span>'; ?></td>
+                                                <td><?php echo !empty($patient['barangay_name']) ? htmlspecialchars($patient['barangay_name']) : '<span class="text-muted">N/A</span>'; ?></td>
+                                                <td><?php echo !empty($patient['contact_number']) ? htmlspecialchars($patient['contact_number']) : '<span class="text-muted">N/A</span>'; ?></td>
+                                                <td>
+                                                    <span class="badge <?php echo ($patient['status'] == 'active') ? 'bg-success' : 'bg-danger'; ?>">
+                                                        <?php echo ucfirst(htmlspecialchars($patient['status'])); ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div class="action-buttons">
+                                                        <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>" 
+                                                        class="action-btn btn-info" title="View Patient Profile (Records Officer)">
+                                                            <i class="fas fa-eye"></i>
+                                                        </a>
+                                                        <button type="button" class="action-btn btn-primary view-contact" 
+                                                                data-id="<?php echo $patient['patient_id']; ?>"
+                                                                data-username="<?php echo htmlspecialchars($patient['username']); ?>"
+                                                                data-name="<?php echo htmlspecialchars($fullName); ?>"
+                                                                data-dob="<?php echo !empty($patient['date_of_birth']) ? $dob->format('M d, Y') : 'N/A'; ?>"
+                                                                data-sex="<?php echo !empty($patient['sex']) ? htmlspecialchars($patient['sex']) : 'N/A'; ?>"
+                                                                data-contact="<?php echo !empty($patient['contact_number']) ? htmlspecialchars($patient['contact_number']) : 'N/A'; ?>"
+                                                                data-barangay="<?php echo !empty($patient['barangay_name']) ? htmlspecialchars($patient['barangay_name']) : 'N/A'; ?>"
+                                                                data-emergency-name="<?php echo !empty($patient['contact_name']) ? htmlspecialchars($patient['contact_name']) : 'N/A'; ?>"
+                                                                data-emergency-contact="<?php echo !empty($patient['emergency_contact']) ? htmlspecialchars($patient['emergency_contact']) : 'N/A'; ?>"
+                                                                data-photo="<?php echo !empty($patient['profile_photo']) ? 'data:image/jpeg;base64,'.base64_encode($patient['profile_photo']) : $assets_path . '/images/user-default.png'; ?>"
+                                                                title="View Contact">
+                                                            <i class="fas fa-address-card"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endwhile; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="9" class="text-center">
+                                                <div style="padding: 30px 0;">
+                                                    <i class="fas fa-search" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
+                                                    <p>No patient records found.</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Pagination -->
+                        <?php if ($totalPages > 1): ?>
+                        <div class="mt-4">
+                            <ul class="pagination">
+                                <li class="<?php echo ($page <= 1) ? 'disabled' : ''; ?>">
+                                    <a href="#" data-page="<?php echo $page-1; ?>">Previous</a>
+                                </li>
+                                
+                                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                                    <?php if ($i == 1 || $i == $totalPages || ($i >= $page - 2 && $i <= $page + 2)): ?>
+                                        <li class="<?php echo ($i == $page) ? 'active' : ''; ?>">
+                                            <a href="#" data-page="<?php echo $i; ?>"><?php echo $i; ?></a>
+                                        </li>
+                                    <?php elseif ($i == $page - 3 || $i == $page + 3): ?>
+                                        <li class="disabled">
+                                            <span>...</span>
+                                        </li>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
+                                
+                                <li class="<?php echo ($page >= $totalPages) ? 'disabled' : ''; ?>">
+                                    <a href="#" data-page="<?php echo $page+1; ?>">Next</a>
+                                </li>
+                            </ul>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
         </div>
-
-        <!-- Search and Filter Controls -->
-        <div class="controls-section">
-            <div class="search-filter-container">
-                <div class="search-group">
-                    <input type="text" class="search-input" id="globalSearch" placeholder="Search patients by name, ID, barangay, or date...">
-                    <i class="fas fa-search search-icon"></i>
+    </div>
+    
+    <!-- Contact Modal -->
+    <div class="modal fade" id="contactModal" tabindex="-1" role="dialog" aria-labelledby="contactModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="contactModalLabel">Patient ID Card</h5>
+                    <button type="button" class="btn-close" id="closeContactModal" aria-label="Close">&times;</button>
                 </div>
-                <button type="button" class="btn btn-secondary" id="toggleFilters">
-                    <i class="fas fa-filter"></i> Advanced Filters
-                </button>
-                <button type="button" class="btn btn-primary" id="exportCsv">
-                    <i class="fas fa-download"></i> Export CSV
-                </button>
-            </div>
-
-            <!-- Advanced Filters -->
-            <div class="filters-container" id="filtersContainer" style="display: none;">
-                <div class="filter-group">
-                    <label class="filter-label">Patient ID</label>
-                    <input type="text" class="filter-input" id="patientIdFilter" placeholder="Enter Patient ID">
+                <div class="modal-body">
+                    <div class="card-container" style="box-shadow: none; padding: 0;">
+                        <div class="header">
+                            <h5>CITY HEALTH OFFICE - KORONADAL</h5>
+                        </div>
+                        <div style="text-align: center; padding: 20px 0;">
+                            <img src="<?php echo $assets_path; ?>/images/user-default.png" id="patientPhoto" alt="Patient Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #0077b6; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                            <h4 id="patientName" style="margin-top: 15px; color: var(--primary-dark); font-weight: 600;"></h4>
+                            <p style="color: var(--primary); font-weight: 500; letter-spacing: 1px;"><i class="fas fa-id-badge" style="margin-right: 5px;"></i> Patient ID: <span id="patientId"></span></p>
+                        </div>
+                        <div class="info">
+                            <p><strong><i class="fas fa-calendar-alt" style="color: var(--primary);"></i> Date of Birth:</strong> <span id="patientDob"></span></p>
+                            <p><strong><i class="fas fa-venus-mars" style="color: var(--primary);"></i> Sex:</strong> <span id="patientSex"></span></p>
+                            <p><strong><i class="fas fa-map-marker-alt" style="color: var(--primary);"></i> Barangay:</strong> <span id="patientBarangay"></span></p>
+                            <p><strong><i class="fas fa-phone" style="color: var(--primary);"></i> Contact Number:</strong> <span id="patientContact"></span></p>
+                        </div>
+                        
+                        <div class="header" style="margin-top: 20px;">
+                            <h5>Emergency Contact</h5>
+                        </div>
+                        <div class="info">
+                            <p><strong><i class="fas fa-user" style="color: var(--primary);"></i> Name:</strong> <span id="emergencyName"></span></p>
+                            <p><strong><i class="fas fa-phone" style="color: var(--primary);"></i> Contact Number:</strong> <span id="emergencyContact"></span></p>
+                        </div>
+                    </div>
                 </div>
-                <div class="filter-group">
-                    <label class="filter-label">First Name</label>
-                    <input type="text" class="filter-input" id="firstNameFilter" placeholder="Enter first name">
-                </div>
-                <div class="filter-group">
-                    <label class="filter-label">Last Name</label>
-                    <input type="text" class="filter-input" id="lastNameFilter" placeholder="Enter last name">
-                </div>
-                <div class="filter-group">
-                    <label class="filter-label">Middle Name</label>
-                    <input type="text" class="filter-input" id="middleNameFilter" placeholder="Enter middle name">
-                </div>
-                <div class="filter-group">
-                    <label class="filter-label">Birthday</label>
-                    <input type="date" class="filter-input" id="birthdayFilter">
-                </div>
-                <div class="filter-group">
-                    <label class="filter-label">Barangay</label>
-                    <select class="filter-select" id="barangayFilter">
-                        <option value="">All Barangays</option>
-                        <?php while ($barangay = $barangayResult->fetch_assoc()): ?>
-                            <option value="<?php echo $barangay['barangay_id']; ?>"><?php echo htmlspecialchars($barangay['barangay_name']); ?></option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label class="filter-label">Status</label>
-                    <select class="filter-select" id="statusFilter">
-                        <option value="">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label class="filter-label">&nbsp;</label>
-                    <button type="button" class="btn btn-secondary" id="clearFilters">
-                        <i class="fas fa-times"></i> Clear Filters
+                <div class="modal-footer">
+                    <button type="button" class="action-btn btn-secondary" id="closeModalBtn">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                    <button type="button" class="action-btn btn-primary" id="printIdCard">
+                        <i class="fas fa-print"></i> Print ID Card
                     </button>
                 </div>
             </div>
         </div>
-
-        <!-- Patient Records Table -->
-        <div class="table-container">
-            <?php if ($result->num_rows > 0): ?>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Patient</th>
-                            <th>Patient ID</th>
-                            <th>Contact Info</th>
-                            <th>Location</th>
-                            <th>Status</th>
-                            <th>Date Registered</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php while ($patient = $result->fetch_assoc()): ?>
-                            <tr>
-                                <td>
-                                    <div class="patient-info">
-                                        <img src="<?php echo $assets_path; ?>/images/user-default.png" class="profile-img" alt="Patient Photo">
-                                        <div class="patient-details">
-                                            <h4><?php echo htmlspecialchars($patient['full_name']); ?></h4>
-                                            <p>
-                                                <i class="fas fa-birthday-cake"></i>
-                                                <?php echo date('M d, Y', strtotime($patient['date_of_birth'])); ?> 
-                                                (<?php echo date_diff(date_create($patient['date_of_birth']), date_create('today'))->y; ?> years)
-                                            </p>
-                                            <p><i class="fas fa-venus-mars"></i> <?php echo ucfirst($patient['sex']); ?></p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <strong><?php echo htmlspecialchars($patient['username']); ?></strong>
-                                </td>
-                                <td>
-                                    <?php if (!empty($patient['contact_number'])): ?>
-                                        <p><i class="fas fa-phone"></i> <?php echo htmlspecialchars($patient['contact_number']); ?></p>
-                                    <?php endif; ?>
-                                    <?php if (!empty($patient['email_address'])): ?>
-                                        <p><i class="fas fa-envelope"></i> <?php echo htmlspecialchars($patient['email_address']); ?></p>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <i class="fas fa-map-marker-alt"></i>
-                                    <?php echo htmlspecialchars($patient['barangay_name']); ?>
-                                </td>
-                                <td>
-                                    <?php if ($canEdit): ?>
-                                        <button class="status-badge status-<?php echo $patient['status']; ?>" 
-                                                onclick="toggleStatus(<?php echo $patient['patient_id']; ?>, '<?php echo $patient['status']; ?>')">
-                                            <?php echo ucfirst($patient['status']); ?>
-                                        </button>
-                                    <?php else: ?>
-                                        <span class="status-badge status-<?php echo $patient['status']; ?>">
-                                            <?php echo ucfirst($patient['status']); ?>
-                                        </span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php echo date('M d, Y', strtotime($patient['created_at'])); ?>
-                                </td>
-                                <td>
-                                    <div class="action-btns">
-                                        <button class="btn btn-info btn-sm" 
-                                                onclick="viewPatient(<?php echo $patient['patient_id']; ?>)"
-                                                data-patient-id="<?php echo $patient['patient_id']; ?>"
-                                                data-full-name="<?php echo htmlspecialchars($patient['full_name']); ?>"
-                                                data-username="<?php echo htmlspecialchars($patient['username']); ?>"
-                                                data-first-name="<?php echo htmlspecialchars($patient['first_name']); ?>"
-                                                data-last-name="<?php echo htmlspecialchars($patient['last_name']); ?>"
-                                                data-middle-name="<?php echo htmlspecialchars($patient['middle_name'] ?? ''); ?>"
-                                                data-dob="<?php echo $patient['date_of_birth']; ?>"
-                                                data-gender="<?php echo $patient['sex']; ?>"
-                                                data-contact="<?php echo htmlspecialchars($patient['contact_number'] ?? ''); ?>"
-                                                data-email="<?php echo htmlspecialchars($patient['email_address'] ?? ''); ?>"
-                                                data-barangay="<?php echo htmlspecialchars($patient['barangay_name']); ?>"
-                                                data-status="<?php echo $patient['status']; ?>"
-                                                data-created="<?php echo $patient['created_at']; ?>"
-                                                data-photo="<?php echo !empty($patient['profile_photo']) ? 'data:image/jpeg;base64,' . base64_encode($patient['profile_photo']) : $assets_path . '/images/user-default.png'; ?>">
-                                            <i class="fas fa-eye"></i> View
-                                        </button>
-                                        
-                                        <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>" 
-                                           class="btn btn-primary btn-sm" 
-                                           title="View Full Profile">
-                                            <i class="fas fa-file-medical"></i> Full Profile
-                                        </a>
-                                        
-                                        <?php if ($canEdit): ?>
-                                            <button class="btn btn-toggle btn-sm"
-                                                    onclick="toggleStatus(<?php echo $patient['patient_id']; ?>, '<?php echo $patient['status']; ?>')">
-                                                <?php if ($patient['status'] === 'active'): ?>
-                                                    <i class="fas fa-toggle-on"></i> Active
-                                                <?php else: ?>
-                                                    <i class="fas fa-toggle-off"></i> Inactive
-                                                <?php endif; ?>
-                                            </button>
-                                        <?php endif; ?>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <div class="empty-state">
-                    <i class="fas fa-users"></i>
-                    <h3>No Patients Found</h3>
-                    <p>No patient records match your current search criteria.</p>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <!-- Pagination -->
-        <?php if ($totalPages > 1): ?>
-            <div class="pagination-container">
-                <div class="pagination-info">
-                    Showing <?php echo $offset + 1; ?> to <?php echo min($offset + $recordsPerPage, $totalRecords); ?> of <?php echo number_format($totalRecords); ?> results
-                </div>
-                <div class="pagination">
-                    <?php if ($page > 1): ?>
-                        <a href="?page=<?php echo $page - 1; ?>" class="pagination-btn">
-                            <i class="fas fa-chevron-left"></i> Previous
-                        </a>
-                    <?php endif; ?>
-
-                    <?php 
-                    $startPage = max(1, $page - 2);
-                    $endPage = min($totalPages, $page + 2);
-                    
-                    for ($i = $startPage; $i <= $endPage; $i++): ?>
-                        <?php if ($i == $page): ?>
-                            <span class="current"><?php echo $i; ?></span>
-                        <?php else: ?>
-                            <a href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
-                        <?php endif; ?>
-                    <?php endfor; ?>
-
-                    <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?php echo $page + 1; ?>" class="pagination-btn">
-                            Next <i class="fas fa-chevron-right"></i>
-                        </a>
-                    <?php endif; ?>
-                </div>
-            </div>
-        <?php endif; ?>
     </div>
-
-    <!-- Patient Details Modal -->
-    <div id="patientModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-user-injured"></i> Patient Details</h2>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="patient-detail-grid">
-                    <div class="patient-photo-section">
-                        <img src="<?php echo $assets_path; ?>/images/user-default.png" id="patientPhoto" alt="Patient Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #1e3c72; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                    </div>
-                    <div class="patient-info-section">
-                        <div class="info-group">
-                            <h4><i class="fas fa-user"></i> Personal Information</h4>
-                            <p><strong>Full Name:</strong> <span id="modalFullName"></span></p>
-                            <p><strong>Patient ID:</strong> <span id="modalUsername"></span></p>
-                            <p><strong>Date of Birth:</strong> <span id="modalDob"></span></p>
-                            <p><strong>Age:</strong> <span id="modalAge"></span></p>
-                            <p><strong>Gender:</strong> <span id="modalGender"></span></p>
-                        </div>
-                        <div class="info-group">
-                            <h4><i class="fas fa-address-book"></i> Contact Information</h4>
-                            <p><strong>Phone:</strong> <span id="modalContact"></span></p>
-                            <p><strong>Email:</strong> <span id="modalEmail"></span></p>
-                            <p><strong>Barangay:</strong> <span id="modalBarangay"></span></p>
-                        </div>
-                        <div class="info-group">
-                            <h4><i class="fas fa-info-circle"></i> Account Information</h4>
-                            <p><strong>Status:</strong> <span id="modalStatus" class="status-badge"></span></p>
-                            <p><strong>Date Registered:</strong> <span id="modalCreated"></span></p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- JavaScript -->
+    
+    <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
     <script>
-        // Global variables
-        let currentPage = <?php echo $page; ?>;
-        let totalPages = <?php echo $totalPages; ?>;
-        
-        // Initialize page
         $(document).ready(function() {
-            initializeEventListeners();
-            setFilterValues();
-        });
-
-        // Initialize event listeners
-        function initializeEventListeners() {
-            // Global search
-            $('#globalSearch').on('input', debounce(function() {
-                applyFilters();
-            }, 300));
-
-            // Filter inputs
-            $('.filter-input, .filter-select').on('change input', debounce(function() {
-                applyFilters();
-            }, 300));
-
-            // Toggle filters
-            $('#toggleFilters').on('click', function() {
-                $('#filtersContainer').slideToggle();
-                const icon = $(this).find('i');
-                icon.toggleClass('fa-filter fa-filter-circle-xmark');
-            });
-
-            // Clear filters
-            $('#clearFilters').on('click', function() {
-                clearAllFilters();
-            });
-
-            // Export CSV
-            $('#exportCsv').on('click', function() {
-                exportToCSV();
-            });
-
-            // Modal close events
-            $(document).on('click', function(e) {
-                if (e.target.id === 'patientModal') {
-                    closeModal();
-                }
-            });
-        }
-
-        // Set filter values from URL parameters
-        function setFilterValues() {
-            const params = new URLSearchParams(window.location.search);
-            $('#globalSearch').val(params.get('search') || '');
-            $('#patientIdFilter').val(params.get('patient_id') || '');
-            $('#firstNameFilter').val(params.get('first_name') || '');
-            $('#lastNameFilter').val(params.get('last_name') || '');
-            $('#middleNameFilter').val(params.get('middle_name') || '');
-            $('#birthdayFilter').val(params.get('birthday') || '');
-            $('#barangayFilter').val(params.get('barangay') || '');
-            $('#statusFilter').val(params.get('status') || '');
-        }
-
-        // Apply filters and reload page
-        function applyFilters() {
-            const params = new URLSearchParams();
-            
-            const search = $('#globalSearch').val().trim();
-            if (search) params.set('search', search);
-            
-            const patientId = $('#patientIdFilter').val().trim();
-            if (patientId) params.set('patient_id', patientId);
-            
-            const firstName = $('#firstNameFilter').val().trim();
-            if (firstName) params.set('first_name', firstName);
-            
-            const lastName = $('#lastNameFilter').val().trim();
-            if (lastName) params.set('last_name', lastName);
-            
-            const middleName = $('#middleNameFilter').val().trim();
-            if (middleName) params.set('middle_name', middleName);
-            
-            const birthday = $('#birthdayFilter').val();
-            if (birthday) params.set('birthday', birthday);
-            
-            const barangay = $('#barangayFilter').val();
-            if (barangay) params.set('barangay', barangay);
-            
-            const status = $('#statusFilter').val();
-            if (status) params.set('status', status);
-            
-            params.set('page', '1'); // Reset to first page
-            
-            const url = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-            window.location.href = url;
-        }
-
-        // Clear all filters
-        function clearAllFilters() {
-            $('#globalSearch, .filter-input').val('');
-            $('.filter-select').val('');
-            window.location.href = window.location.pathname;
-        }
-
-        // View patient details
-        function viewPatient(patientId) {
-            const btn = $(`button[data-patient-id="${patientId}"]`);
-            
-            console.log('View contact clicked for:', btn.data('full-name'));
-            
-            // Populate modal with patient data
-            $('#modalFullName').text(btn.data('full-name'));
-            $('#modalUsername').text(btn.data('username'));
-            $('#modalDob').text(formatDate(btn.data('dob')));
-            $('#modalAge').text(calculateAge(btn.data('dob')) + ' years');
-            $('#modalGender').text(capitalizeFirst(btn.data('gender')));
-            $('#modalContact').text(btn.data('contact') || 'Not provided');
-            $('#modalEmail').text(btn.data('email') || 'Not provided');
-            $('#modalBarangay').text(btn.data('barangay'));
-            
-            const status = btn.data('status');
-            $('#modalStatus').text(capitalizeFirst(status)).removeClass().addClass(`status-badge status-${status}`);
-            $('#modalCreated').text(formatDate(btn.data('created')));
-            
-            // Set patient photo
-            $('#patientPhoto').attr('src', btn.data('photo') || '<?php echo $assets_path; ?>/images/user-default.png');
-            
-            // Show modal
-            $('#patientModal').fadeIn();
-        }
-
-        // Close modal
-        function closeModal() {
-            console.log('Close contact modal clicked');
-            $('#patientModal').fadeOut();
-        }
-
-        // Toggle patient status (for records officers)
-        function toggleStatus(patientId, currentStatus) {
-            <?php if ($canEdit): ?>
-                const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-                const confirmMessage = `Are you sure you want to change this patient's status to ${newStatus}?`;
-                
-                if (confirm(confirmMessage)) {
-                    $.ajax({
-                        url: window.location.href,
-                        method: 'POST',
-                        data: {
-                            action: 'update_status',
-                            patient_id: patientId,
-                            status: newStatus
-                        },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.success) {
-                                location.reload();
-                            } else {
-                                alert('Error: ' + response.message);
-                            }
-                        },
-                        error: function() {
-                            alert('An error occurred while updating the status.');
-                        }
-                    });
-                }
-            <?php endif; ?>
-        }
-
-        // Export to CSV
-        function exportToCSV() {
-            const params = new URLSearchParams(window.location.search);
-            params.set('export', 'csv');
-            window.location.href = window.location.pathname + '?' + params.toString();
-        }
-
-        // Utility functions
-        function debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
+            // Debounce function for search input
+            function debounce(func, delay) {
+                let timeout;
+                return function() {
+                    const context = this;
+                    const args = arguments;
                     clearTimeout(timeout);
-                    func(...args);
+                    timeout = setTimeout(() => func.apply(context, args), delay);
                 };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
-        }
-
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-        }
-
-        function calculateAge(birthDate) {
-            const today = new Date();
-            const birth = new Date(birthDate);
-            let age = today.getFullYear() - birth.getFullYear();
-            const monthDiff = today.getMonth() - birth.getMonth();
-            
-            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-                age--;
             }
             
-            return age;
-        }
-
-        function capitalizeFirst(str) {
-            return str.charAt(0).toUpperCase() + str.slice(1);
-        }
+            // Function to update URL with filters and reload
+            function updateFilters() {
+                $('#loader').show();
+                let searchValue = $('#searchInput').val();
+                let patientIdValue = $('#patientIdInput').val();
+                let firstNameValue = $('#firstNameInput').val();
+                let lastNameValue = $('#lastNameInput').val();
+                let middleNameValue = $('#middleNameInput').val();
+                let birthdayValue = $('#birthdayInput').val();
+                let barangayValue = $('#barangayFilter').val();
+                let statusValue = $('#statusFilter').val();
+                let pageValue = 1; // Reset to first page when filters change
+                
+                let url = window.location.pathname + '?';
+                let params = [];
+                
+                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
+                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
+                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
+                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
+                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
+                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
+                if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
+                if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
+                if (pageValue) params.push('page=' + encodeURIComponent(pageValue));
+                
+                url += params.join('&');
+                window.location.href = url;
+            }
+            
+            // Event listeners for filters
+            $('#searchInput').on('input', debounce(updateFilters, 300));
+            $('#patientIdInput').on('input', debounce(updateFilters, 300));
+            $('#firstNameInput').on('input', debounce(updateFilters, 300));
+            $('#lastNameInput').on('input', debounce(updateFilters, 300));
+            $('#middleNameInput').on('input', debounce(updateFilters, 300));
+            $('#birthdayInput').on('change', updateFilters);
+            $('#barangayFilter, #statusFilter').on('change', updateFilters);
+            
+            // Clear filters button
+            $('#clearFilters').on('click', function() {
+                window.location.href = window.location.pathname;
+            });
+            
+            // Pagination handling
+            $('.pagination a').on('click', function(e) {
+                e.preventDefault();
+                $('#loader').show();
+                
+                let page = $(this).data('page');
+                let searchValue = $('#searchInput').val();
+                let patientIdValue = $('#patientIdInput').val();
+                let firstNameValue = $('#firstNameInput').val();
+                let lastNameValue = $('#lastNameInput').val();
+                let middleNameValue = $('#middleNameInput').val();
+                let birthdayValue = $('#birthdayInput').val();
+                let barangayValue = $('#barangayFilter').val();
+                let statusValue = $('#statusFilter').val();
+                
+                let url = window.location.pathname + '?';
+                let params = [];
+                
+                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
+                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
+                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
+                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
+                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
+                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
+                if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
+                if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
+                params.push('page=' + encodeURIComponent(page));
+                
+                url += params.join('&');
+                window.location.href = url;
+            });
+            
+            // Table column sorting
+            let sortState = {
+                column: null,
+                direction: 'asc'
+            };
+            
+            $('#patientTable th.sortable').on('click', function() {
+                const columnIndex = $(this).index();
+                const columnType = $(this).data('column');
+                
+                // Update sort direction
+                if (sortState.column === columnIndex) {
+                    // Toggle sort direction if same column clicked again
+                    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    // Set new column and default to ascending
+                    sortState.column = columnIndex;
+                    sortState.direction = 'asc';
+                }
+                
+                // Sort the table rows
+                const rows = $('#patientTable tbody tr').get();
+                rows.sort(function(a, b) {
+                    let aValue = $(a).children('td').eq(columnIndex).text().trim();
+                    let bValue = $(b).children('td').eq(columnIndex).text().trim();
+                    
+                    // Special handling for dates
+                    if (columnType === 'dob') {
+                        // Try to parse dates (M d, Y format)
+                        const aDate = new Date(aValue);
+                        const bDate = new Date(bValue);
+                        
+                        // Check if we have valid dates
+                        if (!isNaN(aDate) && !isNaN(bDate)) {
+                            if (sortState.direction === 'asc') {
+                                return aDate - bDate;
+                            } else {
+                                return bDate - aDate;
+                            }
+                        }
+                    }
+                    
+                    // Handle N/A values - N/A should always be at the bottom
+                    if (aValue === 'N/A' && bValue !== 'N/A') return 1;
+                    if (aValue !== 'N/A' && bValue === 'N/A') return -1;
+                    
+                    // Use natural sorting for everything else
+                    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+                    const result = collator.compare(aValue, bValue);
+                    
+                    // Apply sort direction
+                    return sortState.direction === 'asc' ? result : -result;
+                });
+                
+                // Append sorted rows back to table
+                $.each(rows, function(index, row) {
+                    $('#patientTable tbody').append(row);
+                });
+                
+                // Update UI to show sort direction
+                $('#patientTable th').removeClass('sort-asc sort-desc');
+                $(this).addClass('sort-' + sortState.direction);
+                
+                // Update row zebra striping after sort
+                $('#patientTable tbody tr').removeClass('odd even');
+                $('#patientTable tbody tr:odd').addClass('odd');
+                $('#patientTable tbody tr:even').addClass('even');
+            });
+            
+            // Contact modal handling - using event delegation for dynamically added elements
+            $(document).on('click', '.view-contact', function() {
+                const patientId = $(this).data('id');
+                const patientName = $(this).data('name');
+                const patientUsername = $(this).data('username');
+                const dob = $(this).data('dob');
+                const sex = $(this).data('sex');
+                const contact = $(this).data('contact');
+                const barangay = $(this).data('barangay');
+                const emergencyName = $(this).data('emergency-name');
+                const emergencyContact = $(this).data('emergency-contact');
+                const photoSrc = $(this).data('photo');
+                
+                console.log("View contact clicked for:", patientName); // Debug log
+                
+                // Update modal with patient data
+                $('#patientName').text(patientName);
+                $('#patientId').text(patientUsername);
+                $('#patientDob').text(dob);
+                $('#patientSex').text(sex);
+                $('#patientContact').text(contact);
+                $('#patientBarangay').text(barangay);
+                $('#emergencyName').text(emergencyName);
+                $('#emergencyContact').text(emergencyContact);
+                $('#patientPhoto').attr('src', photoSrc);
+                
+                // Show modal with custom handling
+                $('#contactModal').addClass('show');
+                // Ensure z-index is set correctly for the modal
+                $('#contactModal').css('z-index', '1050');
+            });
+            
+            // Close modal handlers - using event delegation
+            $(document).on('click', '#closeContactModal, #closeModalBtn', function() {
+                console.log("Close contact modal clicked"); // Debug log
+                // Hide modal with custom handling
+                $('#contactModal').removeClass('show');
+                
+                // Ensure any modal backdrop is removed
+                $('.modal-backdrop').remove();
+            });
+            
+            // Close dropdown when clicking outside
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.dropdown').length) {
+                    $('.dropdown-menu').removeClass('show');
+                }
+            });
+            
+            // Print ID Card functionality
+            $('#printIdCard').on('click', function() {
+                // Create a hidden iframe to print
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+                
+                // Get patient info
+                const patientName = $('#patientName').text();
+                const patientId = $('#patientId').text();
+                const patientDob = $('#patientDob').text();
+                const patientSex = $('#patientSex').text();
+                const patientBarangay = $('#patientBarangay').text();
+                const patientContact = $('#patientContact').text();
+                const emergencyName = $('#emergencyName').text();
+                const emergencyContact = $('#emergencyContact').text();
+                const photoSrc = $('#patientPhoto').attr('src');
+                
+                // Write to the iframe document
+                const doc = iframe.contentDocument || iframe.contentWindow.document;
+                doc.write('<!DOCTYPE html><html><head>');
+                doc.write('<title>Patient ID Card - ' + patientName + '</title>');
+                doc.write('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">');
+                doc.write('<style>');
+                doc.write('@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");');
+                doc.write('body { font-family: "Inter", sans-serif; padding: 20px; background-color: #f5f5f5; }');
+                doc.write('.card-container { width: 380px; margin: 0 auto; border: none; padding: 0; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); background-color: white; }');
+                doc.write('.header { background: linear-gradient(135deg, #0077b6, #03045e); color: white; padding: 15px; text-align: center; }');
+                doc.write('.header h5 { margin: 0; font-size: 18px; letter-spacing: 1px; }');
+                doc.write('.photo-section { text-align: center; padding: 25px 0 15px; background-color: #f8f9fa; }');
+                doc.write('img { width: 130px; height: 130px; border-radius: 50%; display: block; margin: 0 auto; border: 4px solid #0077b6; object-fit: cover; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); }');
+                doc.write('h4 { margin: 15px 0 5px; color: #03045e; font-size: 20px; font-weight: 600; }');
+                doc.write('.info { padding: 20px; }');
+                doc.write('.info p { margin: 0; padding: 12px 0; font-size: 14px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }');
+                doc.write('.info p:last-child { border-bottom: none; }');
+                doc.write('.info strong { color: #03045e; font-weight: 600; display: flex; align-items: center; gap: 8px; }');
+                doc.write('.info i { color: #0077b6; font-size: 16px; }');
+                doc.write('.section-title { background-color: #e9f3fe; color: #0077b6; padding: 10px 20px; font-weight: 600; margin: 0; font-size: 16px; }');
+                doc.write('@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }');
+                doc.write('</style></head><body>');
+                doc.write('<div class="card-container">');
+                doc.write('<div class="header"><h5>CITY HEALTH OFFICE - KORONADAL</h5></div>');
+                doc.write('<div class="photo-section">');
+                doc.write('<img src="' + photoSrc + '" alt="Patient Photo">');
+                doc.write('<h4>' + patientName + '</h4>');
+                doc.write('<p style="margin: 5px 0 0; color: #0077b6; font-weight: 500; letter-spacing: 1px;"><i class="fas fa-id-badge"></i> Patient ID: ' + patientId + '</p>');
+                doc.write('</div>');
+                doc.write('<div class="info">');
+                doc.write('<p><strong><i class="fas fa-calendar-alt"></i> Date of Birth:</strong> ' + patientDob + '</p>');
+                doc.write('<p><strong><i class="fas fa-venus-mars"></i> Sex:</strong> ' + patientSex + '</p>');
+                doc.write('<p><strong><i class="fas fa-map-marker-alt"></i> Barangay:</strong> ' + patientBarangay + '</p>');
+                doc.write('<p><strong><i class="fas fa-phone"></i> Contact Number:</strong> ' + patientContact + '</p>');
+                doc.write('</div>');
+                doc.write('<h5 class="section-title">Emergency Contact</h5>');
+                doc.write('<div class="info">');
+                doc.write('<p><strong><i class="fas fa-user"></i> Name:</strong> ' + emergencyName + '</p>');
+                doc.write('<p><strong><i class="fas fa-phone"></i> Contact Number:</strong> ' + emergencyContact + '</p>');
+                doc.write('</div>');
+                doc.write('</div></body></html>');
+                doc.close();
+                
+                // Print and remove the iframe
+                setTimeout(function() {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                    document.body.removeChild(iframe);
+                }, 250);
+            });
+            
+            // Edit Patient Modal functionality removed as per requirements
+        });
     </script>
 </body>
 </html>

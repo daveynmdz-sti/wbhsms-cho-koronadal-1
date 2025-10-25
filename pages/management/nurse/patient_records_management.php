@@ -17,9 +17,9 @@ if (!isset($_SESSION['employee_id'])) {
 }
 
 // Set active page for sidebar highlighting
-$activePage = 'patients';
+$activePage = 'patient_records';
 
-// Define role-based permissions
+// Define role-based permissions for nurse
 $canEdit = false; // Nurse cannot edit
 $canView = in_array($_SESSION['role'], ['nurse']);
 
@@ -251,8 +251,8 @@ $sql = "SELECT p.patient_id, p.username, p.status,
         p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.sex, p.contact_number, 
         pi.profile_photo,
         b.barangay_name,
-        CONCAT(ec.emergency_last_name, ', ', ec.emergency_first_name, ' ', LEFT(ec.emergency_middle_name, 1), '.') as contact_name, 
-        ec.emergency_contact_number as emergency_contact
+        COALESCE(CONCAT(COALESCE(ec.emergency_last_name, ''), ', ', COALESCE(ec.emergency_first_name, ''), ' ', LEFT(COALESCE(ec.emergency_middle_name, ''), 1), '.'), '') as contact_name, 
+        COALESCE(ec.emergency_contact_number, '') as emergency_contact
         FROM patients p
         LEFT JOIN personal_information pi ON p.patient_id = pi.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
@@ -329,65 +329,30 @@ if (!empty($params)) {
 $stmt->execute();
 $result = $stmt->get_result();
 
+// Store results in array to avoid consuming the result set
+$patients = [];
+while ($row = $result->fetch_assoc()) {
+    $patients[] = $row;
+}
+$resultCount = count($patients);
+
 // Get all barangays for filter dropdown
 $barangaySql = "SELECT barangay_id, barangay_name FROM barangay ORDER BY barangay_name";
 $barangayResult = $conn->query($barangaySql);
 
-// Handle CSV export
-if (isset($_GET['export']) && $_GET['export'] === 'csv') {
-    $filename = "nurse_patients_" . date('Y-m-d_H-i-s') . ".csv";
-    
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    
-    $output = fopen('php://output', 'w');
-    
-    // CSV headers
-    fputcsv($output, [
-        'Patient ID',
-        'Full Name', 
-        'Date of Birth',
-        'Sex',
-        'Contact Number',
-        'Emergency Contact',
-        'Emergency Phone',
-        'Barangay',
-        'Status'
-    ]);
-    
-    // Re-run query without pagination for complete export
-    $exportSql = str_replace("LIMIT ? OFFSET ?", "", $sql);
-    $exportParams = array_slice($params, 0, -2); // Remove LIMIT and OFFSET params
-    $exportTypes = substr($types, 0, -2); // Remove LIMIT and OFFSET types
-    
-    $exportStmt = $conn->prepare($exportSql);
-    if (!empty($exportParams)) {
-        $exportStmt->bind_param($exportTypes, ...$exportParams);
-    }
-    $exportStmt->execute();
-    $exportResult = $exportStmt->get_result();
-    
-    while ($patient = $exportResult->fetch_assoc()) {
-        $fullName = trim($patient['first_name'] . ' ' . $patient['middle_name'] . ' ' . $patient['last_name']);
-        
-        fputcsv($output, [
-            $patient['username'],
-            $fullName,
-            $patient['date_of_birth'],
-            $patient['sex'],
-            $patient['contact_number'] ?: 'N/A',
-            $patient['contact_name'] ?: 'N/A',
-            $patient['emergency_contact'] ?: 'N/A',
-            $patient['barangay_name'] ?: 'N/A',
-            $patient['status']
-        ]);
-    }
-    
-    fclose($output);
-    exit();
-}
-
+// Debug output for nurse patient records
+error_log("=== NURSE PATIENT RECORDS DEBUG ===");
+error_log("Role check: " . ($_SESSION['role'] ?? 'none'));
+error_log("Can view: " . ($canView ? 'true' : 'false'));
+error_log("SQL: " . $sql);
+error_log("Params: " . print_r($params, true));
+error_log("Types: " . $types);
+error_log("Query result rows: " . $resultCount);
+error_log("Total records from count: " . $totalRecords);
+error_log("Active patients: " . $activePatients);
+error_log("Inactive patients: " . $inactivePatients);
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -402,8 +367,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     <style>
         /* Additional styles for patient records management */
         :root {
-            --primary: #17a2b8;
-            --primary-dark: #138496;
+            --primary: #0077b6;
+            --primary-dark: #03045e;
             --secondary: #6c757d;
             --success: #2d6a4f;
             --info: #17a2b8;
@@ -446,7 +411,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
         
         table th {
-            background: linear-gradient(135deg, #17a2b8, #138496);
+            background: linear-gradient(135deg, #0077b6, #03045e);
             color: white;
             padding: 12px 15px;
             text-align: left;
@@ -537,11 +502,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
         
         .btn-info {
-            background: linear-gradient(135deg, #17a2b8, #138496);
+            background: linear-gradient(135deg, #0096c7, #0077b6);
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, #17a2b8, #138496);
+            background: linear-gradient(135deg, #48cae4, #0096c7);
         }
         
         .btn-warning {
@@ -603,15 +568,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
         
         .pagination a:hover:not(.disabled a) {
-            background-color: rgba(23, 162, 184, 0.1);
+            background-color: rgba(0, 119, 182, 0.1);
             transform: translateY(-2px);
         }
         
         .pagination .active a {
-            background: linear-gradient(135deg, #17a2b8, #138496);
+            background: linear-gradient(135deg, #0096c7, #0077b6);
             color: white;
             border-color: transparent;
-            box-shadow: 0 2px 5px rgba(23, 162, 184, 0.3);
+            box-shadow: 0 2px 5px rgba(0, 119, 182, 0.3);
         }
         
         .pagination .disabled a {
@@ -636,7 +601,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
         
         .header {
-            background: linear-gradient(135deg, #17a2b8, #138496);
+            background: linear-gradient(135deg, #0077b6, #03045e);
             color: white;
             padding: 12px 15px;
             border-radius: var(--border-radius);
@@ -777,7 +742,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         
         .form-control:focus {
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.2);
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.2);
             outline: none;
         }
         
@@ -799,7 +764,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         
         .form-select:focus {
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.2);
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.2);
             outline: none;
         }
         
@@ -875,7 +840,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
         
         .bg-primary {
-            background: linear-gradient(135deg, #17a2b8, #138496);
+            background: linear-gradient(135deg, #48cae4, #0096c7);
         }
         
         /* Responsive grid */
@@ -979,7 +944,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
         
         .dropdown-item:hover {
-            background-color: rgba(23, 162, 184, 0.1);
+            background-color: rgba(0, 119, 182, 0.1);
         }
         
         .dropdown-item i {
@@ -1029,7 +994,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
         
         .form-check:hover {
-            background-color: rgba(23, 162, 184, 0.05);
+            background-color: rgba(0, 119, 182, 0.05);
         }
         
         .form-check-input {
@@ -1065,7 +1030,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         .section-header {
             padding: 0 0 15px 0;
             margin-bottom: 15px;
-            border-bottom: 1px solid rgba(23, 162, 184, 0.2);
+            border-bottom: 1px solid rgba(0, 119, 182, 0.2);
         }
         
         .section-header h4 {
@@ -1091,7 +1056,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
 
         .breadcrumb a {
-            color: #17a2b8;
+            color: #0077b6;
             text-decoration: none;
         }
 
@@ -1109,7 +1074,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
 
         .page-header h1 {
-            color: #17a2b8;
+            color: #0077b6;
             margin: 0;
             font-size: 1.8rem;
             display: flex;
@@ -1118,7 +1083,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
 
         .page-header h1 i {
-            color: #17a2b8;
+            color: #0077b6;
         }
 
         /* Total count badges styling */
@@ -1136,8 +1101,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             font-size: 0.9rem;
             font-weight: 600;
             text-align: center;
+            white-space: nowrap;
             border-radius: 25px;
-            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .total-count .badge:hover {
@@ -1149,29 +1115,34 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         @media (max-width: 768px) {
             .page-header {
                 flex-direction: column;
-                text-align: center;
+                align-items: flex-start;
                 gap: 1rem;
             }
 
             .total-count {
-                justify-content: center;
+                width: 100%;
+                justify-content: flex-start;
+                gap: 0.75rem;
             }
 
             .total-count .badge {
                 min-width: 120px;
                 font-size: 0.8rem;
+                padding: 6px 12px;
             }
         }
 
         @media (max-width: 480px) {
             .total-count {
                 flex-direction: column;
+                align-items: stretch;
                 gap: 0.5rem;
             }
 
             .total-count .badge {
                 width: 100%;
-                max-width: 200px;
+                min-width: auto;
+                text-align: center;
             }
         }
     </style>
@@ -1179,12 +1150,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 <body>
     <!-- Include sidebar -->
     <?php include '../../../includes/sidebar_nurse.php'; ?>
-    
+    <!-- ... rest of the HTML and JS is identical to admin version except for sidebar and view_mode=doctor ... -->
     <div class="homepage">
         <div class="main-content">
             <!-- Breadcrumb Navigation -->
             <div class="breadcrumb" style="margin-top: 50px;">
-                <a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+                <a href="../nurse/dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
                 <i class="fas fa-chevron-right"></i>
                 <span>Patient Records Management</span>
             </div>
@@ -1305,8 +1276,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php if ($result->num_rows > 0): ?>
-                                        <?php while ($patient = $result->fetch_assoc()): ?>
+                                    <?php if ($resultCount > 0): ?>
+                                        <?php foreach ($patients as $patient): ?>
                                             <tr>
                                                 <td>
                                                     <?php if (!empty($patient['profile_photo'])): ?>
@@ -1368,7 +1339,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                                                     </div>
                                                 </td>
                                             </tr>
-                                        <?php endwhile; ?>
+                                        <?php endforeach; ?>
                                     <?php else: ?>
                                         <tr>
                                             <td colspan="9" class="text-center">
@@ -1426,10 +1397,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 <div class="modal-body">
                     <div class="card-container" style="box-shadow: none; padding: 0;">
                         <div class="header">
-                            <h5>WBHSMS - CHO Koronadal</h5>
+                            <h5>CITY HEALTH OFFICE - KORONADAL</h5>
                         </div>
                         <div style="text-align: center; padding: 20px 0;">
-                            <img src="<?php echo $assets_path; ?>/images/user-default.png" id="patientPhoto" alt="Patient Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #17a2b8; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                            <img src="<?php echo $assets_path; ?>/images/user-default.png" id="patientPhoto" alt="Patient Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #0077b6; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
                             <h4 id="patientName" style="margin-top: 15px; color: var(--primary-dark); font-weight: 600;"></h4>
                             <p style="color: var(--primary); font-weight: 500; letter-spacing: 1px;"><i class="fas fa-id-badge" style="margin-right: 5px;"></i> Patient ID: <span id="patientId"></span></p>
                         </div>
@@ -1460,7 +1431,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             </div>
         </div>
     </div>
-
+    
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
@@ -1703,17 +1674,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 doc.write('@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");');
                 doc.write('body { font-family: "Inter", sans-serif; padding: 20px; background-color: #f5f5f5; }');
                 doc.write('.card-container { width: 380px; margin: 0 auto; border: none; padding: 0; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); background-color: white; }');
-                doc.write('.header { background: linear-gradient(135deg, #17a2b8, #138496); color: white; padding: 15px; text-align: center; }');
+                doc.write('.header { background: linear-gradient(135deg, #0077b6, #03045e); color: white; padding: 15px; text-align: center; }');
                 doc.write('.header h5 { margin: 0; font-size: 18px; letter-spacing: 1px; }');
                 doc.write('.photo-section { text-align: center; padding: 25px 0 15px; background-color: #f8f9fa; }');
-                doc.write('img { width: 130px; height: 130px; border-radius: 50%; display: block; margin: 0 auto; border: 4px solid #17a2b8; object-fit: cover; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); }');
-                doc.write('h4 { margin: 15px 0 5px; color: #138496; font-size: 20px; font-weight: 600; }');
+                doc.write('img { width: 130px; height: 130px; border-radius: 50%; display: block; margin: 0 auto; border: 4px solid #0077b6; object-fit: cover; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); }');
+                doc.write('h4 { margin: 15px 0 5px; color: #03045e; font-size: 20px; font-weight: 600; }');
                 doc.write('.info { padding: 20px; }');
                 doc.write('.info p { margin: 0; padding: 12px 0; font-size: 14px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }');
                 doc.write('.info p:last-child { border-bottom: none; }');
-                doc.write('.info strong { color: #138496; font-weight: 600; display: flex; align-items: center; gap: 8px; }');
-                doc.write('.info i { color: #17a2b8; font-size: 16px; }');
-                doc.write('.section-title { background-color: #e9f3fe; color: #17a2b8; padding: 10px 20px; font-weight: 600; margin: 0; font-size: 16px; }');
+                doc.write('.info strong { color: #03045e; font-weight: 600; display: flex; align-items: center; gap: 8px; }');
+                doc.write('.info i { color: #0077b6; font-size: 16px; }');
+                doc.write('.section-title { background-color: #e9f3fe; color: #0077b6; padding: 10px 20px; font-weight: 600; margin: 0; font-size: 16px; }');
                 doc.write('@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }');
                 doc.write('</style></head><body>');
                 doc.write('<div class="card-container">');
@@ -1721,7 +1692,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 doc.write('<div class="photo-section">');
                 doc.write('<img src="' + photoSrc + '" alt="Patient Photo">');
                 doc.write('<h4>' + patientName + '</h4>');
-                doc.write('<p style="margin: 5px 0 0; color: #17a2b8; font-weight: 500; letter-spacing: 1px;"><i class="fas fa-id-badge"></i> Patient ID: ' + patientId + '</p>');
+                doc.write('<p style="margin: 5px 0 0; color: #0077b6; font-weight: 500; letter-spacing: 1px;"><i class="fas fa-id-badge"></i> Patient ID: ' + patientId + '</p>');
                 doc.write('</div>');
                 doc.write('<div class="info">');
                 doc.write('<p><strong><i class="fas fa-calendar-alt"></i> Date of Birth:</strong> ' + patientDob + '</p>');
@@ -1744,6 +1715,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                     document.body.removeChild(iframe);
                 }, 250);
             });
+            
+            // Edit Patient Modal functionality removed as per requirements
             
             // Export button handlers - Placeholder functions
             $('#exportCSV').on('click', function(e) {

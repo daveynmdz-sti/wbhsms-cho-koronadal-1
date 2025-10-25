@@ -37,15 +37,16 @@ $lastNameFilter = isset($_GET['last_name']) ? $_GET['last_name'] : '';
 $middleNameFilter = isset($_GET['middle_name']) ? $_GET['middle_name'] : '';
 $birthdayFilter = isset($_GET['birthday']) ? $_GET['birthday'] : '';
 $barangayFilter = isset($_GET['barangay']) ? $_GET['barangay'] : '';
+$statusFilter = isset($_GET['status']) ? $_GET['status'] : '';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $recordsPerPage = 20;
 $offset = ($page - 1) * $recordsPerPage;
 
-// Count total records for pagination - ONLY ACTIVE RECORDS
+// Count total records for pagination - ONLY INACTIVE RECORDS
 $countSql = "SELECT COUNT(DISTINCT p.patient_id) as total 
              FROM patients p 
              LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
-             WHERE p.status = 'active'";
+             WHERE p.status = 'inactive'";
 
 $params = [];
 $types = "";
@@ -97,6 +98,12 @@ if (!empty($barangayFilter)) {
     $countSql .= " AND p.barangay_id = ?";
     array_push($params, $barangayFilter);
     $types .= "i";
+}
+
+if (!empty($statusFilter)) {
+    $countSql .= " AND p.status = ?";
+    array_push($params, $statusFilter);
+    $types .= "s";
 }
 
 $countStmt = $conn->prepare($countSql);
@@ -239,7 +246,7 @@ $inactiveCountResult = $inactiveCountStmt->get_result();
 $inactivePatients = $inactiveCountResult->fetch_assoc()['inactive_count'];
 $totalPages = ceil($totalRecords / $recordsPerPage);
 
-// Get patient records
+// Get patient records - ONLY INACTIVE RECORDS
 $sql = "SELECT p.patient_id, p.username, p.status, 
         p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.sex, p.contact_number, 
         pi.profile_photo,
@@ -250,7 +257,7 @@ $sql = "SELECT p.patient_id, p.username, p.status,
         LEFT JOIN personal_information pi ON p.patient_id = pi.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN emergency_contact ec ON p.patient_id = ec.patient_id
-        WHERE p.status = 'active'";
+        WHERE p.status = 'inactive'";
 
 // Apply the same filters for the main query
 $params = [];
@@ -305,6 +312,12 @@ if (!empty($barangayFilter)) {
     $types .= "i";
 }
 
+if (!empty($statusFilter)) {
+    $sql .= " AND p.status = ?";
+    array_push($params, $statusFilter);
+    $types .= "s";
+}
+
 $sql .= " ORDER BY p.last_name ASC LIMIT ? OFFSET ?";
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
@@ -319,6 +332,53 @@ $result = $stmt->get_result();
 // Get all barangays for filter dropdown
 $barangaySql = "SELECT barangay_id, barangay_name FROM barangay ORDER BY barangay_name";
 $barangayResult = $conn->query($barangaySql);
+
+// Handle patient reactivation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reactivate_patient' && $canEdit) {
+    header('Content-Type: application/json');
+    
+    $patient_id = intval($_POST['patient_id']);
+    $admin_password = $_POST['admin_password'];
+    
+    // Verify admin password
+    $admin_id = $_SESSION['employee_id'];
+    $adminCheckSql = "SELECT password_hash FROM employees WHERE employee_id = ? AND role = 'admin'";
+    $adminCheckStmt = $conn->prepare($adminCheckSql);
+    $adminCheckStmt->bind_param("i", $admin_id);
+    $adminCheckStmt->execute();
+    $adminResult = $adminCheckStmt->get_result();
+    
+    if ($adminResult->num_rows === 0) {
+        echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
+        exit;
+    }
+    
+    $adminData = $adminResult->fetch_assoc();
+    
+    if (!password_verify($admin_password, $adminData['password_hash'])) {
+        echo json_encode(['success' => false, 'message' => 'Incorrect password']);
+        exit;
+    }
+    
+    // Reactivate the patient
+    $updateSql = "UPDATE patients SET status = 'active' WHERE patient_id = ? AND status = 'inactive'";
+    $updateStmt = $conn->prepare($updateSql);
+    $updateStmt->bind_param("i", $patient_id);
+    
+    if ($updateStmt->execute() && $updateStmt->affected_rows > 0) {
+        // Log the reactivation
+        $logSql = "INSERT INTO activity_logs (employee_id, action, details, timestamp) VALUES (?, 'Patient Reactivated', ?, NOW())";
+        $logStmt = $conn->prepare($logSql);
+        $logDetails = "Reactivated patient ID: $patient_id";
+        $logStmt->bind_param("is", $admin_id, $logDetails);
+        $logStmt->execute();
+        
+        echo json_encode(['success' => true, 'message' => 'Patient account reactivated successfully']);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Failed to reactivate patient account']);
+    }
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -326,7 +386,7 @@ $barangayResult = $conn->query($barangaySql);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Patient Records Management - Admin | CHO Koronadal</title>
+    <title>Archived Patient Records - Admin | CHO Koronadal</title>
     <!-- CSS Files -->
     <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
     <link rel="stylesheet" href="../../../../assets/css/dashboard.css">
@@ -507,10 +567,6 @@ $barangayResult = $conn->query($barangaySql);
         
         .bg-danger {
             background: linear-gradient(135deg, #ef476f, #d00000);
-        }
-        
-        .bg-warning {
-            background: linear-gradient(135deg, #ffba08, #faa307);
         }
         
         .pagination {
@@ -1128,15 +1184,15 @@ $barangayResult = $conn->query($barangaySql);
             <div class="breadcrumb" style="margin-top: 50px;">
                 <a href="../dashboard.php"><i class="fas fa-home"></i> Admin Dashboard</a>
                 <i class="fas fa-chevron-right"></i>
-                <span>Patient Records Management</span>
+                <a href="patient_records_management.php"><i class="fas fa-users"></i> Patient Records</a>
+                <i class="fas fa-chevron-right"></i>
+                <span>Archived Records</span>
             </div>
 
             <div class="page-header">
-                <h1><i class="fas fa-users"></i> Patient Records Management</h1>
+                <h1><i class="fas fa-archive"></i> Archived Patient Records</h1>
                 <div class="total-count">
-                    <span class="badge bg-success"><?php echo $totalRecords; ?> Total Patients</span>
-                    <span class="badge bg-primary"><?php echo $activePatients; ?> Active</span>
-                    <span class="badge bg-danger"><?php echo $inactivePatients; ?> Inactive</span>
+                    <span class="badge bg-danger"><?php echo $totalRecords; ?> Archived Patients</span>
                 </div>
             </div>
             
@@ -1200,11 +1256,11 @@ $barangayResult = $conn->query($barangaySql);
                         <button id="clearFilters" class="action-btn btn-secondary equal-width">
                             <i class="fas fa-times-circle"></i> Clear Filters
                         </button>
-                        <a href="archived_records_management.php" class="action-btn btn-secondary equal-width" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
-                            <i class="fas fa-archive"></i> View Archived Records
+                        <a href="patient_records_management.php" class="action-btn btn-primary equal-width" style="text-decoration: none;">
+                            <i class="fas fa-arrow-left"></i> Back to Active Records
                         </a>
                     </div>
-                    <div class="col-md-4 d-flex button-container">
+                    <div class="col-md-4 d-flex">
                         <div class="dropdown" style="width: 100%;">
                             <button class="action-btn btn-success dropdown-toggle" type="button" id="exportDropdown" style="width: 100%;">
                                 <i class="fas fa-file-export"></i> Export Data
@@ -1215,7 +1271,6 @@ $barangayResult = $conn->query($barangaySql);
                                 <li><a class="dropdown-item" href="#" id="exportPDF"><i class="fas fa-file-pdf"></i> Export to PDF</a></li>
                             </ul>
                         </div>
-
                     </div>
                 </div>
             </div>
@@ -1292,6 +1347,12 @@ $barangayResult = $conn->query($barangaySql);
                                                         class="action-btn btn-info" title="View Patient Profile (Admin)">
                                                             <i class="fas fa-eye"></i>
                                                         </a>
+                                                        <button type="button" class="action-btn btn-success reactivate-patient" 
+                                                                data-patient-id="<?php echo $patient['patient_id']; ?>"
+                                                                data-patient-name="<?php echo htmlspecialchars($fullName); ?>"
+                                                                title="Reactivate Patient Account">
+                                                            <i class="fas fa-undo"></i>
+                                                        </button>
                                                         <button type="button" class="action-btn btn-primary view-contact" 
                                                                 data-id="<?php echo $patient['patient_id']; ?>"
                                                                 data-username="<?php echo htmlspecialchars($patient['username']); ?>"
@@ -1351,6 +1412,48 @@ $barangayResult = $conn->query($barangaySql);
                         </div>
                         <?php endif; ?>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Reactivate Confirmation Modal -->
+    <div class="modal fade" id="reactivateModal" tabindex="-1" role="dialog" aria-labelledby="reactivateModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="reactivateModalLabel">
+                        <i class="fas fa-undo"></i> Reactivate Patient Account
+                    </h5>
+                    <button type="button" class="btn-close" id="closeReactivateModal" aria-label="Close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        You are about to reactivate the patient account for: <strong id="reactivatePatientName"></strong>
+                    </div>
+                    <form id="reactivateForm">
+                        <input type="hidden" id="reactivatePatientId" value="">
+                        <div class="form-group">
+                            <label for="adminPassword" class="form-label">
+                                <i class="fas fa-lock"></i> Enter your admin password to confirm:
+                            </label>
+                            <input type="password" id="adminPassword" class="form-control" 
+                                   placeholder="Enter your password" required>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            This action will make the patient account active and accessible again in the main patient records.
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="action-btn btn-secondary" id="cancelReactivate">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="button" class="action-btn btn-success" id="confirmReactivate">
+                        <i class="fas fa-undo"></i> Reactivate Account
+                    </button>
                 </div>
             </div>
         </div>
@@ -1680,6 +1783,66 @@ $barangayResult = $conn->query($barangaySql);
                     iframe.contentWindow.print();
                     document.body.removeChild(iframe);
                 }, 250);
+            });
+            
+            // Reactivate patient functionality
+            $(document).on('click', '.reactivate-patient', function() {
+                const patientId = $(this).data('patient-id');
+                const patientName = $(this).data('patient-name');
+                
+                $('#reactivatePatientId').val(patientId);
+                $('#reactivatePatientName').text(patientName);
+                $('#adminPassword').val('');
+                
+                // Show modal
+                $('#reactivateModal').addClass('show');
+            });
+            
+            // Close reactivate modal handlers
+            $(document).on('click', '#closeReactivateModal, #cancelReactivate', function() {
+                $('#reactivateModal').removeClass('show');
+                $('#adminPassword').val('');
+            });
+            
+            // Confirm reactivation
+            $('#confirmReactivate').on('click', function() {
+                const patientId = $('#reactivatePatientId').val();
+                const adminPassword = $('#adminPassword').val();
+                
+                if (!adminPassword) {
+                    alert('Please enter your admin password');
+                    return;
+                }
+                
+                // Show loading state
+                $(this).html('<i class="fas fa-spinner fa-spin"></i> Reactivating...');
+                $(this).prop('disabled', true);
+                
+                $.ajax({
+                    url: window.location.href,
+                    method: 'POST',
+                    data: {
+                        action: 'reactivate_patient',
+                        patient_id: patientId,
+                        admin_password: adminPassword
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.success) {
+                            alert('Patient account reactivated successfully! The page will refresh.');
+                            location.reload();
+                        } else {
+                            alert('Error: ' + response.message);
+                        }
+                    },
+                    error: function() {
+                        alert('An error occurred while processing the request.');
+                    },
+                    complete: function() {
+                        $('#confirmReactivate').html('<i class="fas fa-undo"></i> Reactivate Account');
+                        $('#confirmReactivate').prop('disabled', false);
+                    }
+                });
             });
             
             // Edit Patient Modal functionality removed as per requirements
