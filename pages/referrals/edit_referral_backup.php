@@ -1,5 +1,5 @@
 <?php
-// create_referrals.php - Admin Side Referral Creation with Patient Search
+// edit_referral.php - Edit Existing Referral with Pre-filled Form
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
@@ -12,6 +12,49 @@ require_once $root_path . '/config/db.php';
 
 // Include referral permissions utility
 require_once $root_path . '/utils/referral_permissions.php';
+
+// Validate referral ID and edit permissions
+if (!isset($_GET['referral_id']) || empty($_GET['referral_id'])) {
+    header('Location: ../../pages/management/admin/referrals/referrals_management.php?error=' . urlencode('No referral ID provided'));
+    exit();
+}
+
+$referral_id = intval($_GET['referral_id']);
+
+// Get current employee info
+$employee_id = get_employee_session('user_id');
+$employee_role = get_employee_session('role');
+
+// Check if employee can edit this referral
+if (!canEmployeeEditReferral($conn, $employee_id, $referral_id, $employee_role)) {
+    header('Location: ../../pages/management/admin/referrals/referrals_management.php?error=' . urlencode('Access denied. You can only edit referrals you created or have administrative privileges.'));
+    exit();
+}
+
+// Load existing referral data with all related information
+$stmt = $conn->prepare("
+    SELECT r.*, 
+           p.patient_id, p.full_name, p.date_of_birth, p.contact_number, p.address, p.emergency_contact, p.patient_id_manual,
+           v.height, v.weight, v.temperature, v.blood_pressure, v.heart_rate, v.respiratory_rate, v.oxygen_saturation,
+           r.external_facility_name as facility_name,
+           s.service_name
+    FROM referrals r
+    JOIN patients p ON r.patient_id = p.patient_id
+    LEFT JOIN vitals v ON r.vitals_id = v.vitals_id
+    LEFT JOIN services s ON r.service_id = s.service_id
+    WHERE r.referral_id = ?
+");
+$stmt->bind_param("i", $referral_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows === 0) {
+    header('Location: ../../pages/management/admin/referrals/referrals_management.php?error=' . urlencode('Referral not found'));
+    exit();
+}
+
+$referral_data = $result->fetch_assoc();
+$stmt->close();
 
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
@@ -94,16 +137,22 @@ $error_message = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'create_referral') {
+    if ($action === 'update_referral') {
         try {
             $conn->begin_transaction();
 
             // Get form data
             $patient_id = (int)($_POST['patient_id'] ?? 0);
+            $update_referral_id = (int)($_POST['referral_id'] ?? 0);
 
-            // Validate jurisdiction permission for this patient
-            if (!canEmployeeCreateReferralForPatient($conn, $employee_id, $patient_id, $_SESSION['role'])) {
-                throw new Exception("Access denied. You can only create referrals for patients within your jurisdiction.");
+            // Validate referral ID
+            if (!$update_referral_id) {
+                throw new Exception('Invalid referral ID.');
+            }
+
+            // Double-check edit permissions
+            if (!canEmployeeEditReferral($conn, $employee_id, $update_referral_id, $employee_role)) {
+                throw new Exception("Access denied. You can only edit referrals you created or have administrative privileges.");
             }
 
             $referral_reason = trim($_POST['referral_reason'] ?? '');
@@ -143,9 +192,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Validation
-            if (!$patient_id) {
-                throw new Exception('Please select a patient from the list above.');
-            }
             if (empty($referral_reason)) {
                 throw new Exception('Referral reason is required.');
             }
@@ -173,10 +219,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            if (!$employee_facility_id) {
-                throw new Exception('Employee facility information not found. Please contact administrator.');
-            }
-
             // Validate custom service if "others" is selected
             if (isset($_POST['service_id']) && $_POST['service_id'] === 'others') {
                 if (empty($custom_service_name)) {
@@ -187,43 +229,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Insert vitals first (if any vitals data provided)
-            $vitals_id = null;
+            // Handle vitals - update existing or create new
+            $vitals_id = $referral_data['vitals_id']; // Keep existing vitals_id
             if ($systolic_bp || $diastolic_bp || $heart_rate || $respiratory_rate || $temperature || $weight || $height) {
-                $stmt = $conn->prepare("
-                    INSERT INTO vitals (
-                        patient_id, systolic_bp, diastolic_bp, heart_rate, 
-                        respiratory_rate, temperature, weight, height, bmi, 
-                        recorded_by, remarks
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ");
-                $stmt->bind_param(
-                    'iiiiddddiis',
-                    $patient_id,
-                    $systolic_bp,
-                    $diastolic_bp,
-                    $heart_rate,
-                    $respiratory_rate,
-                    $temperature,
-                    $weight,
-                    $height,
-                    $bmi,
-                    $employee_id,
-                    $vitals_remarks
-                );
-                $stmt->execute();
-                $vitals_id = $conn->insert_id;
+                if ($vitals_id) {
+                    // Update existing vitals record
+                    $stmt = $conn->prepare("
+                        UPDATE vitals SET 
+                            systolic_bp = ?, diastolic_bp = ?, heart_rate = ?, 
+                            respiratory_rate = ?, temperature = ?, weight = ?, height = ?, bmi = ?, 
+                            recorded_by = ?, remarks = ?, recorded_at = NOW()
+                        WHERE vitals_id = ?
+                    ");
+                    $stmt->bind_param(
+                        'iiiidddissi',
+                        $systolic_bp,
+                        $diastolic_bp,
+                        $heart_rate,
+                        $respiratory_rate,
+                        $temperature,
+                        $weight,
+                        $height,
+                        $bmi,
+                        $employee_id,
+                        $vitals_remarks,
+                        $vitals_id
+                    );
+                    $stmt->execute();
+                } else {
+                    // Create new vitals record
+                    $stmt = $conn->prepare("
+                        INSERT INTO vitals (
+                            patient_id, systolic_bp, diastolic_bp, heart_rate, 
+                            respiratory_rate, temperature, weight, height, bmi, 
+                            recorded_by, remarks
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmt->bind_param(
+                        'iiiiddddiis',
+                        $patient_id,
+                        $systolic_bp,
+                        $diastolic_bp,
+                        $heart_rate,
+                        $respiratory_rate,
+                        $temperature,
+                        $weight,
+                        $height,
+                        $bmi,
+                        $employee_id,
+                        $vitals_remarks
+                    );
+                    $stmt->execute();
+                    $vitals_id = $conn->insert_id;
+                }
             }
 
-            // Generate referral number
-            $date_prefix = date('Ymd');
-            $stmt = $conn->prepare("SELECT COUNT(*) as count FROM referrals WHERE DATE(referral_date) = CURDATE()");
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $count = $result->fetch_assoc()['count'];
-            $referral_num = 'REF-' . $date_prefix . '-' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
-
-            // Handle custom service - if "others" is selected, store custom service name in referral_reason or notes
+            // Handle custom service - if "others" is selected, store custom service name in referral_reason
             $final_service_id = $service_id;
             $final_referral_reason = $referral_reason;
 
@@ -239,148 +300,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $referral_status = 'issued'; // Status for external referrals
             }
 
-            // Insert referral
+            // Update referral
             $stmt = $conn->prepare("
-                INSERT INTO referrals (
-                    referral_num, patient_id, referring_facility_id, referred_to_facility_id, 
-                    external_facility_name, vitals_id, service_id, referral_reason, 
-                    destination_type, referred_by, referral_date, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                UPDATE referrals SET 
+                    referred_to_facility_id = ?, external_facility_name = ?, external_facility_type = ?,
+                    vitals_id = ?, service_id = ?, referral_reason = ?, 
+                    destination_type = ?, status = ?, last_updated = NOW()
+                WHERE referral_id = ?
             ");
             $stmt->bind_param(
-                'siiisisssis',
-                $referral_num,
-                $patient_id,
-                $employee_facility_id,
+                'isssisssi',
                 $referred_to_facility_id,
                 $external_facility_name,
+                $external_facility_type,
                 $vitals_id,
                 $final_service_id,
                 $final_referral_reason,
                 $destination_type,
-                $employee_id,
-                $referral_status
+                $referral_status,
+                $update_referral_id
             );
             $stmt->execute();
 
             $conn->commit();
-            $_SESSION['snackbar_message'] = "Referral created successfully! Referral #: $referral_num";
+            $_SESSION['snackbar_message'] = "Referral updated successfully! Referral #: " . $referral_data['referral_num'];
 
-            // Redirect to referrals management page after successful creation
-            header('Location: referrals_management.php');
+            // Redirect to referrals management page after successful update
+            header('Location: ../../pages/management/admin/referrals/referrals_management.php');
             exit();
         } catch (Exception $e) {
             $conn->rollback();
             $error_message = $e->getMessage();
         }
     }
-}
-
-// Patient search functionality
-$search_query = $_GET['search'] ?? '';
-$first_name = $_GET['first_name'] ?? '';
-$last_name = $_GET['last_name'] ?? '';
-$barangay_filter = $_GET['barangay'] ?? '';
-
-$patients = [];
-if ($search_query || $first_name || $last_name || $barangay_filter) {
-    $where_conditions = [];
-    $params = [];
-    $param_types = '';
-
-    if (!empty($search_query)) {
-        $where_conditions[] = "(p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?)";
-        $search_term = "%$search_query%";
-        $params = array_merge($params, [$search_term, $search_term, $search_term, $search_term]);
-        $param_types .= 'ssss';
-    }
-
-    if (!empty($first_name)) {
-        $where_conditions[] = "p.first_name LIKE ?";
-        $params[] = "%$first_name%";
-        $param_types .= 's';
-    }
-
-    if (!empty($last_name)) {
-        $where_conditions[] = "p.last_name LIKE ?";
-        $params[] = "%$last_name%";
-        $param_types .= 's';
-    }
-
-    if (!empty($barangay_filter)) {
-        $where_conditions[] = "b.barangay_name LIKE ?";
-        $params[] = "%$barangay_filter%";
-        $param_types .= 's';
-    }
-
-    $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
-
-    $sql = "
-        SELECT p.patient_id, p.username, p.first_name, p.middle_name, p.last_name, 
-               p.date_of_birth, p.sex, p.contact_number, b.barangay_name,
-               TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
-        FROM patients p 
-        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
-        $where_clause
-        AND p.status = 'active'
-        $jurisdiction_restriction
-        ORDER BY p.last_name, p.first_name
-        LIMIT 5
-    ";
-
-    if (!empty($params) || !empty($jurisdiction_params)) {
-        // Combine search parameters with jurisdiction parameters
-        $all_params = array_merge($params, $jurisdiction_params);
-        $all_param_types = $param_types . $jurisdiction_param_types;
-
-        $stmt = $conn->prepare($sql);
-        if (!empty($all_params)) {
-            $stmt->bind_param($all_param_types, ...$all_params);
-        }
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $patients = $result->fetch_all(MYSQLI_ASSOC);
-    }
-}
-
-// Get barangays for filter dropdown - restricted by jurisdiction
-$barangays = [];
-try {
-    if ($employee_role === 'dho' && !empty($jurisdiction_params)) {
-        // DHO can only see barangays in their district
-        $stmt = $conn->prepare("SELECT barangay_name FROM barangay WHERE status = 'active' AND district_id = ? ORDER BY barangay_name ASC");
-        $stmt->bind_param('i', $jurisdiction_params[0]); // district_id
-    } elseif ($employee_role === 'bhw' && !empty($jurisdiction_params)) {
-        // BHW can only see their own barangay
-        $stmt = $conn->prepare("SELECT barangay_name FROM barangay WHERE status = 'active' AND barangay_id = ? ORDER BY barangay_name ASC");
-        $stmt->bind_param('i', $jurisdiction_params[0]); // barangay_id
-    } else {
-        // Other roles can see all active barangays
-        $stmt = $conn->prepare("SELECT barangay_name FROM barangay WHERE status = 'active' ORDER BY barangay_name ASC");
-    }
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $barangays = $result->fetch_all(MYSQLI_ASSOC);
-} catch (Exception $e) {
-    // Ignore errors for barangays
-}
-
-// Get available facilities for referral (excluding current employee's facility)
-$available_facilities = [];
-try {
-    $stmt = $conn->prepare("
-        SELECT f.facility_id, f.name, f.type, b.barangay_name 
-        FROM facilities f 
-        JOIN barangay b ON f.barangay_id = b.barangay_id 
-        WHERE f.status = 'active' AND f.facility_id != ?
-        ORDER BY f.type, f.name
-    ");
-    $stmt->bind_param('i', $employee_facility_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $available_facilities = $result->fetch_all(MYSQLI_ASSOC);
-} catch (Exception $e) {
-    // Ignore errors for facilities
 }
 
 // Get all services for dropdown
@@ -400,7 +352,7 @@ try {
 
 <head>
     <meta charset="UTF-8" />
-    <title>Create Referral | CHO Koronadal</title>
+    <title>Edit Referral | CHO Koronadal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="../../assets/css/topbar.css" />
     <link rel="stylesheet" href="../../assets/css/profile-edit-responsive.css" />
@@ -634,6 +586,52 @@ try {
         .patient-table-container {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
+        }
+
+        /* Patient Info Card for Edit Mode */
+        .patient-info-card {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .patient-details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .patient-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .patient-detail.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .patient-detail label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+
+        .patient-detail span {
+            color: #212529;
+            font-size: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .patient-details-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .patient-detail.full-width {
+                grid-column: 1;
+            }
         }
 
         .patient-card {
@@ -1079,7 +1077,7 @@ try {
 
     // Render topbar
     renderTopbar([
-        'title' => 'Create New Referral',
+        'title' => 'Edit Referral',
         'back_url' => 'referrals_management.php',
         'user_type' => 'employee',
         'vendor_path' => '../../vendor/'
@@ -1124,151 +1122,52 @@ try {
                 </div>
             <?php endif; ?>
 
-            <!-- Patient Search Section -->
+            <!-- Patient Information (Read-Only) -->
             <div class="form-section">
-                <div class="search-container">
-                    <h3><i class="fas fa-search"></i> Search Patient</h3>
-                    <form method="GET" class="search-grid">
-                        <div class="form-group">
-                            <label for="search">General Search</label>
-                            <input type="text" id="search" name="search" value="<?= htmlspecialchars($search_query) ?>"
-                                placeholder="Patient ID, Name...">
+                <div class="patient-info-card">
+                    <h3><i class="fas fa-user"></i> Patient Information</h3>
+                    <div class="patient-details-grid">
+                        <div class="patient-detail">
+                            <label>Patient ID:</label>
+                            <span><?= htmlspecialchars($referral_data['patient_id_manual'] ?: $referral_data['patient_id']) ?></span>
                         </div>
-                        <div class="form-group">
-                            <label for="first_name">First Name</label>
-                            <input type="text" id="first_name" name="first_name" value="<?= htmlspecialchars($first_name) ?>"
-                                placeholder="Enter first name...">
+                        <div class="patient-detail">
+                            <label>Full Name:</label>
+                            <span><?= htmlspecialchars($referral_data['full_name']) ?></span>
                         </div>
-                        <div class="form-group">
-                            <label for="last_name">Last Name</label>
-                            <input type="text" id="last_name" name="last_name" value="<?= htmlspecialchars($last_name) ?>"
-                                placeholder="Enter last name...">
+                        <div class="patient-detail">
+                            <label>Date of Birth:</label>
+                            <span><?= htmlspecialchars($referral_data['date_of_birth']) ?></span>
                         </div>
-                        <div class="form-group">
-                            <label for="barangay">Barangay</label>
-                            <select id="barangay" name="barangay">
-                                <option value="">All Barangays</option>
-                                <?php foreach ($barangays as $brgy): ?>
-                                    <option value="<?= htmlspecialchars($brgy['barangay_name']) ?>"
-                                        <?= $barangay_filter === $brgy['barangay_name'] ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($brgy['barangay_name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                        <div class="patient-detail">
+                            <label>Contact Number:</label>
+                            <span><?= htmlspecialchars($referral_data['contact_number'] ?: 'N/A') ?></span>
                         </div>
-                        <div class="form-group">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i> Search
-                            </button>
+                        <div class="patient-detail full-width">
+                            <label>Address:</label>
+                            <span><?= htmlspecialchars($referral_data['address']) ?></span>
                         </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Patient Results Table -->
-            <div class="form-section">
-                <div class="patient-table">
-                    <h3><i class="fas fa-users"></i> Patient Search Results</h3>
-                    <?php if (empty($patients) && ($search_query || $first_name || $last_name || $barangay_filter)): ?>
-                        <div class="empty-search">
-                            <i class="fas fa-user-times fa-2x"></i>
-                            <p>No patients found matching your search criteria.</p>
-                            <p>Try adjusting your search terms or check the spelling.</p>
+                        <div class="patient-detail full-width">
+                            <label>Emergency Contact:</label>
+                            <span><?= htmlspecialchars($referral_data['emergency_contact'] ?: 'N/A') ?></span>
                         </div>
-                    <?php elseif (!empty($patients)): ?>
-                        <p>Found <?= count($patients) ?> patient(s). Select one to create a referral:</p>
-
-                        <!-- Desktop Table View -->
-                        <div class="patient-table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Select</th>
-                                        <th>Patient ID</th>
-                                        <th>Name</th>
-                                        <th>Age/Sex</th>
-                                        <th>Contact</th>
-                                        <th>Barangay</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($patients as $patient): ?>
-                                        <tr class="patient-row" data-patient-id="<?= $patient['patient_id'] ?>">
-                                            <td>
-                                                <input type="radio" name="selected_patient" value="<?= $patient['patient_id'] ?>"
-                                                    class="patient-checkbox" data-patient-name="<?= htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']) ?>">
-                                            </td>
-                                            <td><?= htmlspecialchars($patient['username']) ?></td>
-                                            <td>
-                                                <?= htmlspecialchars($patient['first_name'] . ' ' .
-                                                    ($patient['middle_name'] ? $patient['middle_name'] . ' ' : '') .
-                                                    $patient['last_name']) ?>
-                                            </td>
-                                            <td><?= htmlspecialchars($patient['age']) ?> / <?= htmlspecialchars($patient['sex']) ?></td>
-                                            <td><?= htmlspecialchars($patient['contact_number'] ?? 'N/A') ?></td>
-                                            <td><?= htmlspecialchars($patient['barangay_name'] ?? 'N/A') ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Mobile Card View -->
-                        <?php foreach ($patients as $patient): ?>
-                            <div class="patient-card" data-patient-id="<?= $patient['patient_id'] ?>" onclick="selectPatientCard(this)">
-                                <input type="radio" name="selected_patient_mobile" value="<?= $patient['patient_id'] ?>"
-                                    class="patient-card-checkbox patient-checkbox" data-patient-name="<?= htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']) ?>">
-
-                                <div class="patient-card-header">
-                                    <div class="patient-card-name">
-                                        <?= htmlspecialchars($patient['first_name'] . ' ' .
-                                            ($patient['middle_name'] ? $patient['middle_name'] . ' ' : '') .
-                                            $patient['last_name']) ?>
-                                    </div>
-                                    <div class="patient-card-id"><?= htmlspecialchars($patient['username']) ?></div>
-                                </div>
-
-                                <div class="patient-card-details">
-                                    <div class="patient-card-detail">
-                                        <div class="patient-card-label">Age / Sex</div>
-                                        <div class="patient-card-value"><?= htmlspecialchars($patient['age']) ?> / <?= htmlspecialchars($patient['sex']) ?></div>
-                                    </div>
-                                    <div class="patient-card-detail">
-                                        <div class="patient-card-label">Contact</div>
-                                        <div class="patient-card-value"><?= htmlspecialchars($patient['contact_number'] ?? 'N/A') ?></div>
-                                    </div>
-                                    <div class="patient-card-detail">
-                                        <div class="patient-card-label">Barangay</div>
-                                        <div class="patient-card-value"><?= htmlspecialchars($patient['barangay_name'] ?? 'N/A') ?></div>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <div class="empty-search">
-                            <i class="fas fa-search fa-2x"></i>
-                            <p>Use the search form above to find patients.</p>
-                            <p>Search results will appear here (maximum 5 results).</p>
-                        </div>
-                    <?php endif; ?>
+                    </div>
                 </div>
             </div>
 
             <!-- Referral Form -->
             <div class="form-section">
                 <form class="profile-card referral-form" id="referralForm" method="post">
-                    <input type="hidden" name="action" value="create_referral">
-                    <input type="hidden" name="patient_id" id="selectedPatientId">
-                    <input type="hidden" name="referred_to_facility_id" id="referredToFacilityId">
+                    <input type="hidden" name="action" value="update_referral">
+                    <input type="hidden" name="referral_id" value="<?= $referral_id ?>">
+                    <input type="hidden" name="patient_id" value="<?= $referral_data['patient_id'] ?>">
+                    <input type="hidden" name="referred_to_facility_id" id="referredToFacilityId" value="<?= $referral_data['referred_to_facility_id'] ?>">
 
-                    <h3><i class="fas fa-share"></i> Create Referral</h3>
+                    <h3><i class="fas fa-edit"></i> Edit Referral</h3>
                     <div class="facility-info" style="background: #e8f4fd; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border-left: 4px solid #0077b6;">
                         <p style="margin: 0; color: #0077b6; font-weight: 600;">
                             <i class="fas fa-hospital"></i> Referring From: <?= htmlspecialchars($employee_facility_name ?: 'Unknown Facility') ?>
                         </p>
-                    </div>
-                    <div id="selectedPatientInfo" class="selected-patient-info" style="display:none;">
-                        <p><strong>Selected Patient:</strong> <span id="selectedPatientName"></span></p>
                     </div>
 
                     <!-- Patient Vitals Section -->
@@ -1277,37 +1176,54 @@ try {
                         <div class="vitals-grid">
                             <div class="form-group">
                                 <label for="systolic_bp">Systolic BP</label>
-                                <input type="number" id="systolic_bp" name="systolic_bp" min="60" max="300" placeholder="120">
+                                <input type="number" id="systolic_bp" name="systolic_bp" min="60" max="300" placeholder="120" 
+                                       value="<?php 
+                                       if ($referral_data['blood_pressure']) {
+                                           $bp_parts = explode('/', $referral_data['blood_pressure']);
+                                           echo htmlspecialchars($bp_parts[0] ?? '');
+                                       }
+                                       ?>">
                             </div>
                             <div class="form-group">
                                 <label for="diastolic_bp">Diastolic BP</label>
-                                <input type="number" id="diastolic_bp" name="diastolic_bp" min="40" max="200" placeholder="80">
+                                <input type="number" id="diastolic_bp" name="diastolic_bp" min="40" max="200" placeholder="80"
+                                       value="<?php 
+                                       if ($referral_data['blood_pressure']) {
+                                           $bp_parts = explode('/', $referral_data['blood_pressure']);
+                                           echo htmlspecialchars($bp_parts[1] ?? '');
+                                       }
+                                       ?>">
                             </div>
                             <div class="form-group">
                                 <label for="heart_rate">Heart Rate</label>
-                                <input type="number" id="heart_rate" name="heart_rate" min="30" max="200" placeholder="72">
+                                <input type="number" id="heart_rate" name="heart_rate" min="30" max="200" placeholder="72" 
+                                       value="<?= htmlspecialchars($referral_data['heart_rate'] ?? '') ?>">
                             </div>
                             <div class="form-group">
                                 <label for="respiratory_rate">Respiratory Rate</label>
-                                <input type="number" id="respiratory_rate" name="respiratory_rate" min="8" max="60" placeholder="18">
+                                <input type="number" id="respiratory_rate" name="respiratory_rate" min="8" max="60" placeholder="18"
+                                       value="<?= htmlspecialchars($referral_data['respiratory_rate'] ?? '') ?>">
                             </div>
                             <div class="form-group">
                                 <label for="temperature">Temperature (°C)</label>
-                                <input type="number" id="temperature" name="temperature" step="0.1" min="30" max="45" placeholder="36.5">
+                                <input type="number" id="temperature" name="temperature" step="0.1" min="30" max="45" placeholder="36.5"
+                                       value="<?= htmlspecialchars($referral_data['temperature'] ?? '') ?>">
                             </div>
                             <div class="form-group">
                                 <label for="weight">Weight (kg)</label>
-                                <input type="number" id="weight" name="weight" step="0.1" min="1" max="500" placeholder="70.0">
+                                <input type="number" id="weight" name="weight" step="0.1" min="1" max="500" placeholder="70.0"
+                                       value="<?= htmlspecialchars($referral_data['weight'] ?? '') ?>">
                             </div>
                             <div class="form-group">
                                 <label for="height">Height (cm)</label>
-                                <input type="number" id="height" name="height" step="0.1" min="50" max="250" placeholder="170.0">
+                                <input type="number" id="height" name="height" step="0.1" min="50" max="250" placeholder="170.0"
+                                       value="<?= htmlspecialchars($referral_data['height'] ?? '') ?>">
                             </div>
                         </div>
                         <div class="form-group">
                             <label for="vitals_remarks">Vitals Remarks</label>
                             <textarea id="vitals_remarks" name="vitals_remarks" rows="3"
-                                placeholder="Any additional notes about the patient's vitals..."></textarea>
+                                placeholder="Any additional notes about the patient's vitals..."><?= htmlspecialchars($referral_data['vitals_remarks'] ?? '') ?></textarea>
                         </div>
                     </div>
 
@@ -1318,7 +1234,7 @@ try {
                             <div class="form-group">
                                 <label for="referral_reason">Reason for Referral *</label>
                                 <textarea id="referral_reason" name="referral_reason" rows="4" required
-                                    placeholder="Describe the medical condition, symptoms, and reason for referral..."></textarea>
+                                    placeholder="Describe the medical condition, symptoms, and reason for referral..."><?= htmlspecialchars($referral_data['referral_reason'] ?? '') ?></textarea>
                             </div>
                         </div>
 
@@ -1334,32 +1250,32 @@ try {
 
                                     // BHW can refer to district, city, and external
                                     if ($current_role === 'bhw'): ?>
-                                        <option value="district_office">District Health Office</option>
-                                        <option value="city_office">City Health Office (Main District)</option>
-                                        <option value="external">External Facility</option>
+                                        <option value="district_office" <?= $referral_data['destination_type'] === 'district_office' ? 'selected' : '' ?>>District Health Office</option>
+                                        <option value="city_office" <?= $referral_data['destination_type'] === 'city_office' ? 'selected' : '' ?>>City Health Office (Main District)</option>
+                                        <option value="external" <?= $referral_data['destination_type'] === 'external' ? 'selected' : '' ?>>External Facility</option>
 
                                     <?php // DHO can refer to city and external
                                     elseif ($current_role === 'dho'): ?>
-                                        <option value="city_office">City Health Office (Main District)</option>
-                                        <option value="external">External Facility</option>
+                                        <option value="city_office" <?= $referral_data['destination_type'] === 'city_office' ? 'selected' : '' ?>>City Health Office (Main District)</option>
+                                        <option value="external" <?= $referral_data['destination_type'] === 'external' ? 'selected' : '' ?>>External Facility</option>
 
                                     <?php // Admin can refer to all destinations, others can refer to city office and external
                                     elseif ($current_role === 'admin'): ?>
-                                        <option value="barangay_center">Barangay Health Center</option>
-                                        <option value="district_office">District Health Office</option>
-                                        <option value="city_office">City Health Office (Main District)</option>
-                                        <option value="external">External Facility</option>
+                                        <option value="barangay_center" <?= $referral_data['destination_type'] === 'barangay_center' ? 'selected' : '' ?>>Barangay Health Center</option>
+                                        <option value="district_office" <?= $referral_data['destination_type'] === 'district_office' ? 'selected' : '' ?>>District Health Office</option>
+                                        <option value="city_office" <?= $referral_data['destination_type'] === 'city_office' ? 'selected' : '' ?>>City Health Office (Main District)</option>
+                                        <option value="external" <?= $referral_data['destination_type'] === 'external' ? 'selected' : '' ?>>External Facility</option>
 
                                     <?php // Doctor, Nurse, Records Officer can refer to city office and external
                                     elseif (in_array($current_role, ['doctor', 'nurse', 'records_officer'])): ?>
-                                        <option value="city_office">City Health Office (Main District)</option>
-                                        <option value="external">External Facility</option>
+                                        <option value="city_office" <?= $referral_data['destination_type'] === 'city_office' ? 'selected' : '' ?>>City Health Office (Main District)</option>
+                                        <option value="external" <?= $referral_data['destination_type'] === 'external' ? 'selected' : '' ?>>External Facility</option>
                                     <?php else:
                                         // Fallback for any other roles - show district, city, and external only 
                                     ?>
-                                        <option value="district_office">District Health Office</option>
-                                        <option value="city_office">City Health Office (Main District)</option>
-                                        <option value="external">External Facility</option>
+                                        <option value="district_office" <?= $referral_data['destination_type'] === 'district_office' ? 'selected' : '' ?>>District Health Office</option>
+                                        <option value="city_office" <?= $referral_data['destination_type'] === 'city_office' ? 'selected' : '' ?>>City Health Office (Main District)</option>
+                                        <option value="external" <?= $referral_data['destination_type'] === 'external' ? 'selected' : '' ?>>External Facility</option>
                                     <?php endif; ?>
                                 </select>
 
@@ -1428,8 +1344,8 @@ try {
                                 <label for="external_facility_type">External Facility Type *</label>
                                 <select id="external_facility_type" name="external_facility_type">
                                     <option value="">Select external facility type...</option>
-                                    <option value="hospital">Hospital</option>
-                                    <option value="other">Other Facility</option>
+                                    <option value="hospital" <?= $referral_data['external_facility_type'] === 'hospital' ? 'selected' : '' ?>>Hospital</option>
+                                    <option value="other" <?= $referral_data['external_facility_type'] === 'other' ? 'selected' : '' ?>>Other Facility</option>
                                 </select>
                             </div>
                         </div>
@@ -1440,10 +1356,10 @@ try {
                                 <label for="hospital_name">Hospital Name *</label>
                                 <select id="hospital_name" name="hospital_name">
                                     <option value="">Select hospital...</option>
-                                    <option value="South Cotabato Provincial Hospital (SCPH)">South Cotabato Provincial Hospital (SCPH)</option>
-                                    <option value="Dr. Arturo P. Pingoy Medical Center">Dr. Arturo P. Pingoy Medical Center</option>
-                                    <option value="Allah Valley Medical Specialists' Center, Inc.">Allah Valley Medical Specialists' Center, Inc.</option>
-                                    <option value="Socomedics Medical Center">Socomedics Medical Center</option>
+                                    <option value="South Cotabato Provincial Hospital (SCPH)" <?= ($referral_data['external_facility_type'] === 'hospital' && $referral_data['facility_name'] === 'South Cotabato Provincial Hospital (SCPH)') ? 'selected' : '' ?>>South Cotabato Provincial Hospital (SCPH)</option>
+                                    <option value="Dr. Arturo P. Pingoy Medical Center" <?= ($referral_data['external_facility_type'] === 'hospital' && $referral_data['facility_name'] === 'Dr. Arturo P. Pingoy Medical Center') ? 'selected' : '' ?>>Dr. Arturo P. Pingoy Medical Center</option>
+                                    <option value="Allah Valley Medical Specialists' Center, Inc." <?= ($referral_data['external_facility_type'] === 'hospital' && $referral_data['facility_name'] === "Allah Valley Medical Specialists' Center, Inc.") ? 'selected' : '' ?>>Allah Valley Medical Specialists' Center, Inc.</option>
+                                    <option value="Socomedics Medical Center" <?= ($referral_data['external_facility_type'] === 'hospital' && $referral_data['facility_name'] === 'Socomedics Medical Center') ? 'selected' : '' ?>>Socomedics Medical Center</option>
                                 </select>
                             </div>
                         </div>
@@ -1454,7 +1370,8 @@ try {
                                 <label for="other_facility_name">Specify Other Facility *</label>
                                 <input type="text" id="other_facility_name" name="other_facility_name"
                                     placeholder="Enter other facility name (minimum 3 characters)"
-                                    minlength="3">
+                                    minlength="3" 
+                                    value="<?= ($referral_data['external_facility_type'] === 'other') ? htmlspecialchars($referral_data['facility_name'] ?? '') : '' ?>">
                                 <small style="color: #666; font-size: 0.85em;">
                                     Please provide the full name of the facility
                                 </small>
@@ -1467,7 +1384,7 @@ try {
                                 <select id="service_id" name="service_id">
                                     <option value="">Select service (optional)...</option>
                                     <?php foreach ($all_services as $service): ?>
-                                        <option value="<?= $service['service_id'] ?>">
+                                        <option value="<?= $service['service_id'] ?>" <?= $referral_data['service_id'] == $service['service_id'] ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($service['name']) ?>
                                             <?php if ($service['description']): ?>
                                                 - <?= htmlspecialchars(substr($service['description'], 0, 50)) ?>...
@@ -1475,7 +1392,7 @@ try {
                                         </option>
                                     <?php endforeach; ?>
                                     <!-- Others option - will be shown/hidden based on destination type -->
-                                    <option value="others" id="othersServiceOption" style="display: none;">Others (Specify below)</option>
+                                    <option value="others" id="othersServiceOption" style="display: none;" <?= $referral_data['service_id'] === 'others' ? 'selected' : '' ?>>Others (Specify below)</option>
                                 </select>
                                 <small style="color: #666; font-size: 0.85em;">
                                     <span id="serviceAvailabilityNote">Note: Service availability may vary by destination facility</span>
@@ -1489,7 +1406,8 @@ try {
                                 <label for="custom_service_name">Specify Other Service *</label>
                                 <input type="text" id="custom_service_name" name="custom_service_name"
                                     placeholder="Enter the specific service name (minimum 3 characters)"
-                                    minlength="3">
+                                    minlength="3" 
+                                    value="<?= htmlspecialchars($referral_data['custom_service_name'] ?? '') ?>">
                                 <small style="color: #666; font-size: 0.85em;">
                                     Please provide the specific service or treatment needed
                                 </small>
@@ -1499,7 +1417,7 @@ try {
 
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary" disabled>
-                            <i class="fas fa-share"></i> Create Referral
+                            <i class="fas fa-save"></i> Update Referral
                         </button>
                     </div>
                 </form>
@@ -1509,6 +1427,48 @@ try {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+
+            // Initialize for edit mode - show correct conditional fields based on existing data
+            <?php if (isset($referral_data)): ?>
+                // Set destination type and show appropriate fields
+                const destinationType = '<?= $referral_data['destination_type'] ?>';
+                if (destinationType) {
+                    document.getElementById('destination_type').value = destinationType;
+                    
+                    // Show appropriate conditional fields
+                    hideAllConditionalFields();
+                    
+                    if (destinationType === 'barangay_center') {
+                        document.getElementById('barangayFacilityField').style.display = 'block';
+                    } else if (destinationType === 'district_office') {
+                        document.getElementById('districtOfficeField').style.display = 'block';
+                    } else if (destinationType === 'city_office') {
+                        document.getElementById('cityOfficeField').style.display = 'block';
+                    } else if (destinationType === 'external') {
+                        document.getElementById('externalFacilityTypeField').style.display = 'block';
+                        
+                        // Show hospital or other facility field based on external_facility_type
+                        const externalType = '<?= $referral_data['external_facility_type'] ?>';
+                        if (externalType === 'hospital') {
+                            document.getElementById('hospitalSelectionField').style.display = 'block';
+                        } else if (externalType === 'other') {
+                            document.getElementById('otherFacilityField').style.display = 'block';
+                        }
+                    }
+                    
+                    // Filter services based on destination type
+                    filterServicesByDestination(destinationType);
+                    
+                    // Show custom service field if "others" is selected
+                    const serviceSelect = document.getElementById('service_id');
+                    if (serviceSelect && serviceSelect.value === 'others') {
+                        document.getElementById('customServiceField').style.display = 'block';
+                    }
+                }
+                
+                // Enable the submit button since this is edit mode with existing data
+                document.querySelector('button[type="submit"]').disabled = false;
+            <?php endif; ?>
 
             // Initialize service filtering on page load
             const destinationTypeSelect = document.getElementById('destination_type');
@@ -1539,83 +1499,12 @@ try {
                 }
             };
 
-            // Patient selection logic
-            const patientCheckboxes = document.querySelectorAll('.patient-checkbox');
+            // Form references for edit mode
             const referralForm = document.getElementById('referralForm');
             const submitBtn = referralForm.querySelector('button[type="submit"]');
-            const selectedPatientId = document.getElementById('selectedPatientId');
-            const selectedPatientInfo = document.getElementById('selectedPatientInfo');
-            const selectedPatientName = document.getElementById('selectedPatientName');
-
-            patientCheckboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
-                    if (this.checked) {
-                        // Uncheck other checkboxes
-                        patientCheckboxes.forEach(cb => {
-                            if (cb !== this) cb.checked = false;
-                        });
-
-                        // Remove previous selections from both desktop and mobile
-                        document.querySelectorAll('.patient-row').forEach(row => {
-                            row.classList.remove('selected-patient');
-                        });
-                        document.querySelectorAll('.patient-card').forEach(card => {
-                            card.classList.remove('selected');
-                        });
-
-                        // Highlight selected row or card
-                        const parentRow = this.closest('.patient-row');
-                        const parentCard = this.closest('.patient-card');
-
-                        if (parentRow) {
-                            parentRow.classList.add('selected-patient');
-                        } else if (parentCard) {
-                            parentCard.classList.add('selected');
-                        }
-
-                        // Enable form
-                        referralForm.classList.add('enabled');
-                        submitBtn.disabled = false;
-                        selectedPatientId.value = this.value;
-                        selectedPatientName.textContent = this.dataset.patientName;
-                        selectedPatientInfo.style.display = 'block';
-
-                        // Fetch patient facility information
-                        fetchPatientFacilities(this.value);
-                    } else {
-                        // Disable form if no patient selected
-                        referralForm.classList.remove('enabled');
-                        submitBtn.disabled = true;
-                        selectedPatientId.value = '';
-                        selectedPatientInfo.style.display = 'none';
-
-                        // Remove selection from both desktop and mobile
-                        const parentRow = this.closest('.patient-row');
-                        const parentCard = this.closest('.patient-card');
-
-                        if (parentRow) {
-                            parentRow.classList.remove('selected-patient');
-                        } else if (parentCard) {
-                            parentCard.classList.remove('selected');
-                        }
-
-                        // Clear facility information
-                        currentPatientFacilities = null;
-                        hideAllConditionalFields();
-
-                        // Clear all form inputs
-                        document.getElementById('destination_type').value = '';
-                        document.getElementById('barangay_facility_display').value = '';
-                        document.getElementById('district_office_display').value = '';
-                        document.getElementById('external_facility_type').value = '';
-                        document.getElementById('hospital_name').value = '';
-                        document.getElementById('other_facility_name').value = '';
-                    }
-                });
-            });
 
             // Intelligent Destination Selection Logic
-            const destinationType = document.getElementById('destination_type');
+            const destinationTypeField = document.getElementById('destination_type');
             const barangayFacilityField = document.getElementById('barangayFacilityField');
             const districtOfficeField = document.getElementById('districtOfficeField');
             const cityOfficeField = document.getElementById('cityOfficeField');
@@ -1646,14 +1535,14 @@ try {
 
             // Handle destination type change
             if (destinationType) {
-                destinationType.addEventListener('change', function() {
+                destinationTypeField.addEventListener('change', function() {
                     hideAllConditionalFields();
 
-                    const selectedPatientId = document.getElementById('selectedPatientId').value;
+                    const patientId = document.querySelector('input[name="patient_id"]').value;
 
                     switch (this.value) {
                         case 'barangay_center':
-                            if (selectedPatientId && currentPatientFacilities) {
+                            if (patientId && currentPatientFacilities) {
                                 populateBarangayFacility();
                             }
                             if (barangayFacilityField) barangayFacilityField.classList.add('show');
@@ -1661,7 +1550,7 @@ try {
                             break;
 
                         case 'district_office':
-                            if (selectedPatientId && currentPatientFacilities) {
+                            if (patientId && currentPatientFacilities) {
                                 populateDistrictOffice();
                             }
                             if (districtOfficeField) districtOfficeField.classList.add('show');
@@ -1862,7 +1751,7 @@ try {
                             currentPatientFacilities = data;
 
                             // Update destination type selection based on current selection
-                            const currentDestinationType = destinationType.value;
+                            const currentDestinationType = destinationTypeField.value;
                             if (currentDestinationType === 'barangay_center') {
                                 populateBarangayFacility();
                             } else if (currentDestinationType === 'district_office') {
@@ -1918,28 +1807,11 @@ try {
                 });
             }
 
-            // Function to populate modal with form data
+            // Function to populate modal with form data for edit mode
             function populateReferralModal() {
-                // Patient information
-                const patientName = document.getElementById('selectedPatientName').textContent;
-                const selectedCheckbox = document.querySelector('.patient-checkbox:checked');
-                let patientId = '-';
-
-                if (selectedCheckbox) {
-                    // Try to get patient ID from table row
-                    const tableRow = selectedCheckbox.closest('tr');
-                    if (tableRow) {
-                        const idCell = tableRow.querySelector('td:nth-child(2)');
-                        patientId = idCell ? idCell.textContent : '-';
-                    } else {
-                        // Try to get patient ID from mobile card
-                        const card = selectedCheckbox.closest('.patient-card');
-                        if (card) {
-                            const idElement = card.querySelector('.patient-card-id');
-                            patientId = idElement ? idElement.textContent : '-';
-                        }
-                    }
-                }
+                // Patient information (from PHP data for edit mode)
+                const patientName = '<?= htmlspecialchars($referral_data['full_name'] ?? '') ?>';
+                const patientId = '<?= htmlspecialchars($referral_data['patient_id_manual'] ?: $referral_data['patient_id']) ?>';
 
                 document.getElementById('modalPatientName').textContent = patientName || '-';
                 document.getElementById('modalPatientId').textContent = patientId || '-';
@@ -2100,7 +1972,7 @@ try {
                 const confirmBtn = document.getElementById('modalConfirmBtn');
                 if (confirmBtn && confirmBtn.disabled) {
                     confirmBtn.disabled = false;
-                    confirmBtn.innerHTML = '<i class="fas fa-check"></i> Create Referral';
+                    confirmBtn.innerHTML = '<i class="fas fa-save"></i> Update Referral';
                 }
 
                 // Resolve with false (user cancelled)
@@ -2119,7 +1991,7 @@ try {
                         // Add loading state to button
                         const originalContent = confirmBtn.innerHTML;
                         confirmBtn.disabled = true;
-                        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Referral...';
+                        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating Referral...';
 
                         // Immediately resolve the promise to proceed with form submission
                         if (window.currentReferralResolve) {
@@ -2369,7 +2241,7 @@ try {
                     <i class="fas fa-times"></i> Cancel
                 </button>
                 <button type="button" class="modal-btn modal-btn-confirm" id="modalConfirmBtn">
-                    <i class="fas fa-check"></i> Create Referral
+                    <i class="fas fa-save"></i> Update Referral
                 </button>
             </div>
         </div>

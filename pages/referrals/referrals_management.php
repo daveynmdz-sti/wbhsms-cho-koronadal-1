@@ -37,7 +37,7 @@ $employee_role = $_SESSION['role'];
 
 // Define role-based permissions for referrals management  
 $canCreateReferrals = true; // All authorized roles can create referrals
-$canEditReferrals = !in_array(strtolower($employee_role), ['records_officer']); // Records officers cannot edit existing referrals
+// Note: Edit functionality has been removed. Users should cancel and create new referrals for modifications.
 $canViewReferrals = true; // All authorized roles can view
 
 // Get jurisdiction restrictions using new permission system
@@ -181,6 +181,7 @@ $first_name = $_GET['first_name'] ?? '';
 $last_name = $_GET['last_name'] ?? '';
 $barangay = $_GET['barangay'] ?? '';
 $status_filter = $_GET['status'] ?? '';
+$notice = $_GET['notice'] ?? '';
 
 // Pagination parameters
 $page = max(1, intval($_GET['page'] ?? 1));
@@ -1864,6 +1865,13 @@ try {
             <?php endif; ?>
         </div>
 
+        <!-- Informational Notice about Edit Policy -->
+        <div class="alert alert-info" style="margin-bottom: 1.5rem; border-left: 4px solid #2196f3;background-color: honeydew;">
+            <i class="fas fa-info-circle"></i> <strong>Referral Modification Policy:</strong> 
+            To modify a referral, please <strong>cancel the existing referral</strong> and <strong>create a new one</strong> with the updated information. 
+            This ensures accuracy and maintains a clear audit trail.
+        </div>
+
         <?php if (!empty($message)): ?>
             <div class="alert alert-success">
                 <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?>
@@ -1873,6 +1881,13 @@ try {
         <?php if (!empty($error)): ?>
             <div class="alert alert-error">
                 <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($notice === 'edit_deprecated'): ?>
+            <div class="alert alert-warning" style="border-left: 4px solid #ff9800;">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Edit Feature Unavailable:</strong> 
+                Referral editing has been disabled. To modify a referral, please <strong>cancel the existing referral</strong> and <strong>create a new one</strong> with the correct information.
             </div>
         <?php endif; ?>
 
@@ -2294,12 +2309,6 @@ try {
             </div>
 
             <div class="referral-modal-actions">
-                <?php if ($canEditReferrals): ?>
-                <!-- Edit Button - Show for Active status -->
-                <button type="button" class="modal-btn modal-btn-warning edit-btn-hidden" onclick="editReferral()" id="editReferralBtn">
-                    <i class="fas fa-edit"></i> Edit
-                </button>
-
                 <!-- Cancel Button - Show for Active status -->
                 <button type="button" class="modal-btn modal-btn-danger edit-btn-hidden" onclick="cancelReferral(currentReferralId)" id="cancelReferralBtn">
                     <i class="fas fa-times-circle"></i> Cancel Referral
@@ -2309,7 +2318,6 @@ try {
                 <button type="button" class="modal-btn modal-btn-success edit-btn-hidden" onclick="reinstateReferral(currentReferralId)" id="reinstateReferralBtn">
                     <i class="fas fa-redo"></i> Reinstate
                 </button>
-                <?php endif; ?>
 
                 <!-- Print Button - Always available -->
                 <button type="button" class="modal-btn modal-btn-primary" onclick="printReferral(currentReferralId)" id="printReferralBtn">
@@ -2642,12 +2650,10 @@ try {
 
         // Update Modal Button Visibility with Creator-Based Permissions
         function updateModalButtons(status, referredBy = null) {
-            const editBtn = document.getElementById('editReferralBtn');
             const cancelBtn = document.getElementById('cancelReferralBtn');
             const reinstateBtn = document.getElementById('reinstateReferralBtn');
 
             // Hide all buttons first
-            if (editBtn) editBtn.style.display = 'none';
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (reinstateBtn) reinstateBtn.style.display = 'none';
 
@@ -2667,11 +2673,11 @@ try {
                     }
                     
                     if (isAdmin) {
-                        permissionInfo.innerHTML = '<i class="fas fa-crown"></i> <strong>Admin Access:</strong> You can modify any referral.';
+                        permissionInfo.innerHTML = '<i class="fas fa-crown"></i> <strong>Admin Access:</strong> You can cancel/reinstate any referral.';
                     } else if (referredBy == currentEmployeeId) {
-                        permissionInfo.innerHTML = '<i class="fas fa-user-check"></i> <strong>Creator Access:</strong> You can modify this referral because you created it.';
+                        permissionInfo.innerHTML = '<i class="fas fa-user-check"></i> <strong>Creator Access:</strong> You can cancel/reinstate this referral because you created it.';
                     } else {
-                        permissionInfo.innerHTML = '<i class="fas fa-info-circle"></i> <strong>View Only:</strong> You can only modify referrals you created. This referral was created by another staff member.';
+                        permissionInfo.innerHTML = '<i class="fas fa-info-circle"></i> <strong>View Only:</strong> You can only cancel/reinstate referrals you created. <br><small><strong>Note:</strong> To modify this referral, cancel it and create a new one with the updated information.</small>';
                     }
                 }
                 return; // Don't show action buttons
@@ -2679,7 +2685,6 @@ try {
 
             // Show buttons based on status (only if user has modify permissions)
             if (status === 'active') {
-                if (editBtn) editBtn.style.display = 'inline-flex';
                 if (cancelBtn) cancelBtn.style.display = 'inline-flex';
             } else if (status === 'cancelled' || status === 'voided') {
                 if (reinstateBtn) reinstateBtn.style.display = 'inline-flex';
@@ -2763,13 +2768,6 @@ try {
                 `;
                 document.body.appendChild(form);
                 form.submit();
-            }
-        }
-
-        function editReferral() {
-            if (currentReferralId) {
-                // Navigate to edit page
-                window.location.href = `edit_referral.php?id=${currentReferralId}`;
             }
         }
 
