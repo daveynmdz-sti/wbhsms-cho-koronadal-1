@@ -1402,7 +1402,7 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                 <div class="modal-body">
                     <div class="card-container" style="box-shadow: none; padding: 0;">
                         <div class="header">
-                            <h5>WBHSMS - CHO Koronadal</h5>
+                            <h5>CITY HEALTH OFFICE - KORONADAL</h5>
                         </div>
                         <div style="text-align: center; padding: 20px 0;">
                             <img src="<?php echo $assets_path; ?>/images/user-default.png" id="patientPhoto" alt="Patient Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #0077b6; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
@@ -1689,7 +1689,7 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                 doc.write('@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }');
                 doc.write('</style></head><body>');
                 doc.write('<div class="card-container">');
-                doc.write('<div class="header"><h5>WBHSMS - CHO Koronadal</h5></div>');
+                doc.write('<div class="header"><h5>CITY HEALTH OFFICE - KORONADAL</h5></div>');
                 doc.write('<div class="photo-section">');
                 doc.write('<img src="' + photoSrc + '" alt="Patient Photo">');
                 doc.write('<h4>' + patientName + '</h4>');

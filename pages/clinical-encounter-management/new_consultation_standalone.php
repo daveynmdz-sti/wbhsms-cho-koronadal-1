@@ -596,7 +596,7 @@ if ($selected_patient_id) {
         .search-actions {
             display: flex;
             gap: 1rem;
-            justify-content: center;
+            justify-content: end;
             flex-wrap: wrap;
         }
 

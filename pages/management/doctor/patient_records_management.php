@@ -1669,7 +1669,7 @@ $barangayResult = $conn->query($barangaySql);
                 doc.write('@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }');
                 doc.write('</style></head><body>');
                 doc.write('<div class="card-container">');
-                doc.write('<div class="header"><h5>WBHSMS - CHO Koronadal</h5></div>');
+                doc.write('<div class="header"><h5>CITY HEALTH OFFICE - KORONADAL</h5></div>');
                 doc.write('<div class="photo-section">');
                 doc.write('<img src="' + photoSrc + '" alt="Patient Photo">');
                 doc.write('<h4>' + patientName + '</h4>');
