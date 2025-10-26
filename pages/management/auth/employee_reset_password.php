@@ -148,7 +148,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'msg' => 'Password reset successful! You can now log in with your new password.'
         ];
         
-        ob_end_clean(); // Clean output buffer before redirect
+        // Clean output buffer before redirect if it exists
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Location: employee_reset_password_success.php');
         exit;
 
@@ -166,7 +169,9 @@ unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? array('type' => 'error', 'msg' => $error) : (!empty($success) ? array('type' => 'success', 'msg' => $success) : null));
 
 // End output buffering and flush content
-ob_end_flush();
+if (ob_get_level()) {
+    ob_end_flush();
+}
 
 // Dynamic asset path detection for production compatibility
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
@@ -293,7 +298,7 @@ $asset_base_url = $protocol . $host . $base_path;
         </div>
     </header>
 
-    <main class="homepage" id="main-content">
+    <main class="homepage" id="main-content" style="padding: 70px 16px 40px;">
         <section class="login-box" aria-labelledby="reset-title">
             <h1 id="reset-title" class="visually-hidden">Set New Password</h1>
 

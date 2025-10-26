@@ -306,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'change_amount' => $change_amount,
                 'payment_status' => $new_status,
                 'patient_name' => $billing['first_name'] . ' ' . $billing['last_name'],
-                'patient_id' => $billing['patient_username'],
+                'patient_id' => $billing['patient_username'] ?? 'N/A',
                 'net_amount' => $billing['net_amount'],
                 'total_paid' => $new_paid_amount
             ];
@@ -1630,7 +1630,7 @@ if ($payment_success_data) {
                                         <td><?= htmlspecialchars($result['billing_id']) ?></td>
                                         <td>
                                             <strong><?= htmlspecialchars($result['first_name'] . ' ' . $result['last_name']) ?></strong><br>
-                                            <small>ID: <?= htmlspecialchars($result['username']) ?></small>
+                                            <small>ID: <?= htmlspecialchars($result['username'] ?? 'N/A') ?></small>
                                         </td>
                                         <td><?= date('M d, Y', strtotime($result['billing_date'])) ?></td>
                                         <td>
@@ -1664,7 +1664,7 @@ if ($payment_success_data) {
                             <div class="patient-card-details">
                                 <div class="patient-card-detail">
                                     <div class="patient-card-label">Patient ID</div>
-                                    <div class="patient-card-value"><?= htmlspecialchars($result['username']) ?></div>
+                                    <div class="patient-card-value"><?= htmlspecialchars($result['username'] ?? 'N/A') ?></div>
                                 </div>
                                 <div class="patient-card-detail">
                                     <div class="patient-card-label">Invoice Date</div>
@@ -1713,7 +1713,7 @@ if ($payment_success_data) {
                                 <div class="patient-banner-info">
                                     <div class="patient-banner-title">Selected Patient</div>
                                     <div class="patient-banner-name"><?= htmlspecialchars($invoice_data['first_name'] . ' ' . $invoice_data['last_name']) ?></div>
-                                    <div class="patient-banner-id">ID: <?= htmlspecialchars($invoice_data['patient_username']) ?></div>
+                                    <div class="patient-banner-id">ID: <?= htmlspecialchars($invoice_data['patient_username'] ?? 'N/A') ?></div>
                                 </div>
                             </div>
                         </div>
@@ -1758,7 +1758,7 @@ if ($payment_success_data) {
                                 <div class="invoice-card-content">
                                     <div class="info-item">
                                         <span class="info-label">Patient ID</span>
-                                        <span class="info-value"><?= htmlspecialchars($invoice_data['patient_username']) ?></span>
+                                        <span class="info-value"><?= htmlspecialchars($invoice_data['patient_username'] ?? 'N/A') ?></span>
                                     </div>
                                     <div class="info-item">
                                         <span class="info-label">Full Name</span>
@@ -1972,11 +1972,11 @@ if ($payment_success_data) {
 
                     <div class="receipt-row">
                         <span>Patient:</span>
-                        <span><?= htmlspecialchars($payment_success_data['patient_name']) ?></span>
+                        <span><?= htmlspecialchars($payment_success_data['patient_name'] ?? '') ?></span>
                     </div>
                     <div class="receipt-row">
                         <span>Patient ID:</span>
-                        <span><?= htmlspecialchars($payment_success_data['patient_id']) ?></span>
+                        <span><?= htmlspecialchars($payment_success_data['patient_id'] ?? 'N/A') ?></span>
                     </div>
                     <div class="receipt-row">
                         <span>Invoice ID:</span>

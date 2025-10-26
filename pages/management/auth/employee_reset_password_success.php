@@ -22,7 +22,10 @@ header('X-XSS-Protection: 1; mode=block');
 
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
-    ob_end_clean(); // Clean output buffer before redirect
+    // Clean output buffer before redirect if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
@@ -37,7 +40,9 @@ $flash = $sessionFlash;
 $autoRedirect = true;
 
 // End output buffering and flush content
-ob_end_flush();
+if (ob_get_level()) {
+    ob_end_flush();
+}
 
 // Dynamic asset path detection for production compatibility
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";

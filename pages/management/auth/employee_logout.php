@@ -88,7 +88,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || (!empty($provided_token) && hash_eq
 // Show logout confirmation form
 
 // End output buffering and flush content
-ob_end_flush();
+if (ob_get_level()) {
+    ob_end_flush();
+}
 
 // Dynamic asset path detection for production compatibility
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
