@@ -62,6 +62,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid OTP.']);
     exit;
 }
+
+// Dynamic asset path detection for production compatibility
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'];
+
+// For production, use root path. For localhost, detect project folder.
+if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false) {
+    // Local development - detect project folder
+    $request_uri = $_SERVER['REQUEST_URI'];
+    $uri_parts = explode('/', trim($request_uri, '/'));
+    $base_path = '';
+    
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0];
+    }
+    
+    $asset_base_url = $protocol . $host . $base_path;
+} else {
+    // Production - use root path
+    $asset_base_url = $protocol . $host;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -70,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Verify OTP • Forgot Password</title>
-    <link rel="stylesheet" href="../../assets/css/login.css" />
+    <link rel="stylesheet" href="<?= $asset_base_url ?>/assets/css/login.css" />
     <style>
         :root {
             --brand: #007bff;

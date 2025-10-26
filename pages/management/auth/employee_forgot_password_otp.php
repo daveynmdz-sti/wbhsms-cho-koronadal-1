@@ -9,9 +9,6 @@ if (!$debug) {
     ini_set('log_errors', '1');
 }
 
-// Start output buffering to prevent header issues
-ob_start();
-
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 require_once __DIR__ . '/../../../config/db.php';
@@ -23,10 +20,6 @@ header('X-XSS-Protection: 1; mode=block');
 
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
-    // Clean output buffer before redirect if it exists
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
@@ -38,10 +31,6 @@ if (empty($_SESSION['reset_otp']) || empty($_SESSION['reset_user_id'])) {
         'type' => 'error',
         'msg' => 'Invalid session. Please start the password reset process again.'
     ];
-    // Clean output buffer before redirect if it exists
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
     header('Location: employee_forgot_password.php');
     exit;
 }
@@ -54,10 +43,6 @@ if (time() - $otp_time > 900) {
         'type' => 'error',
         'msg' => 'OTP has expired. Please request a new password reset.'
     ];
-    // Clean output buffer before redirect if it exists
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
     header('Location: employee_forgot_password.php');
     exit;
 }
@@ -97,10 +82,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // OTP is valid - redirect to new password page
         $_SESSION['reset_otp_verified'] = true;
-        // Clean output buffer before redirect if it exists
-        if (ob_get_level()) {
-            ob_end_clean();
-        }
         header('Location: employee_reset_password.php');
         exit;
 
@@ -117,26 +98,26 @@ $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? array('type' => 'error', 'msg' => $error) : (!empty($success) ? array('type' => 'success', 'msg' => $success) : null));
 
-// End output buffering and flush content safely
-if (ob_get_level()) {
-    ob_end_flush();
-}
-
 // Dynamic asset path detection for production compatibility
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
 $host = $_SERVER['HTTP_HOST'];
-$request_uri = $_SERVER['REQUEST_URI'];
 
-// Extract base path from REQUEST_URI
-$uri_parts = explode('/', trim($request_uri, '/'));
-$base_path = '';
-
-// Detect project folder for localhost development
-if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
-    $base_path = '/' . $uri_parts[0];
+// For production, use root path. For localhost, detect project folder.
+if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false) {
+    // Local development - detect project folder
+    $request_uri = $_SERVER['REQUEST_URI'];
+    $uri_parts = explode('/', trim($request_uri, '/'));
+    $base_path = '';
+    
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0];
+    }
+    
+    $asset_base_url = $protocol . $host . $base_path;
+} else {
+    // Production - use root path
+    $asset_base_url = $protocol . $host;
 }
-
-$asset_base_url = $protocol . $host . $base_path;
 ?>
 <!DOCTYPE html>
 <html lang="en">

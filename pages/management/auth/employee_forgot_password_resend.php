@@ -14,9 +14,11 @@ if (!$debug) {
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 require_once __DIR__ . '/../../../config/db.php';
+require_once __DIR__ . '/../../../config/env.php'; // Add explicit env loading
 require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
 // Only accept POST requests
@@ -74,7 +76,7 @@ try {
     $mail = new PHPMailer(true);
     
     try {
-        // Email configuration (matching patient system)
+        // Email configuration matching working patient system
         $mail->isSMTP();
         $mail->Host       = $_ENV['SMTP_HOST'] ?? getenv('SMTP_HOST') ?? 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
@@ -106,6 +108,10 @@ try {
             $_SESSION[$resend_key]++;
             $_SESSION['last_resend_time'] = time();
             
+            if ($debug) {
+                error_log('[employee_forgot_password_resend] OTP resent successfully to: ' . $_SESSION['reset_email']);
+            }
+            
             echo json_encode([
                 'success' => true, 
                 'message' => 'New OTP sent to ' . $_SESSION['reset_email'] . '. Please check your inbox.'
@@ -116,12 +122,21 @@ try {
         
     } catch (Exception $e) {
         error_log('[employee_forgot_password_resend] Email send failed: ' . $e->getMessage());
+        error_log('[employee_forgot_password_resend] Email details - Host: ' . ($mail->Host ?? 'not set') . ', User: ' . ($mail->Username ?? 'not set') . ', Port: ' . ($mail->Port ?? 'not set'));
         
-        // Still return success to avoid revealing email issues
-        echo json_encode([
-            'success' => true, 
-            'message' => 'New OTP sent to ' . $_SESSION['reset_email'] . '. If you don\'t receive it, please contact IT support.'
-        ]);
+        // In debug mode, show the actual error
+        if ($debug) {
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Email sending failed: ' . $e->getMessage()
+            ]);
+        } else {
+            // Still return success to avoid revealing email issues
+            echo json_encode([
+                'success' => true, 
+                'message' => 'New OTP sent to ' . $_SESSION['reset_email'] . '. If you don\'t receive it, please contact IT support.'
+            ]);
+        }
     }
 
 } catch (Exception $e) {

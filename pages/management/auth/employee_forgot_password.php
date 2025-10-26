@@ -9,31 +9,27 @@ if (!$debug) {
     ini_set('log_errors', '1');
 }
 
-// Start output buffering to prevent header issues
-ob_start();
-
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
-
 require_once __DIR__ . '/../../../config/db.php';
+require_once __DIR__ . '/../../../config/env.php'; // Add explicit env loading
 require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
-// Security headers
-header('X-Content-Type-Options: nosniff');
-header('X-Frame-Options: DENY');
-header('X-XSS-Protection: 1; mode=block');
-
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
-    ob_end_clean(); // Clean output buffer before redirect
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
 }
+
+// Security headers
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
 
 // CSRF token generation
 if (empty($_SESSION['csrf_token'])) {
@@ -119,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mail = new PHPMailer(true);
             
             try {
-                // Email configuration (matching patient system)
+                // Email configuration matching working patient system
                 $mail->isSMTP();
                 $mail->Host       = $_ENV['SMTP_HOST'] ?? getenv('SMTP_HOST') ?? 'smtp.gmail.com';
                 $mail->SMTPAuth   = true;
@@ -146,6 +142,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $mail->send();
                 
+                // Log like patient system
+                error_log('[employee_forgot_password] Mail sent to ' . $employee['email']);
+                
                 // Success - redirect to OTP verification page
                 unset($_SESSION[$rate_limit_key], $_SESSION['employee_last_forgot_attempt']);
                 
@@ -155,13 +154,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'msg' => 'Identity verified! OTP sent to ' . $employee['email'] . '. Check your inbox and enter the code below.'
                 ];
                 
-                ob_end_clean(); // Clean output buffer before redirect
                 header('Location: employee_forgot_password_otp.php');
                 exit;
                 
             } catch (Exception $e) {
-                error_log('[employee_forgot_password] Email send failed: ' . $e->getMessage());
-                // Continue to redirect even if email fails (like patient system)
+                error_log('[employee_forgot_password] Mailer Error: ' . ($mail->ErrorInfo ?? $e->getMessage()));
             }
             
             // Success redirect (whether email sent or not)
@@ -170,10 +167,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'type' => 'success', 
                 'msg' => 'Identity verified! OTP sent to ' . $employee['email'] . '. Check your inbox and enter the code below.'
             ];
-            // Clean output buffer before redirect if it exists
-            if (ob_get_level()) {
-                ob_end_clean();
-            }
             header('Location: employee_forgot_password_otp.php');
             exit;
             
@@ -196,26 +189,26 @@ $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? array('type' => 'error', 'msg' => $error) : (!empty($success) ? array('type' => 'success', 'msg' => $success) : null));
 
-// End output buffering and flush content safely
-if (ob_get_level()) {
-    ob_end_flush();
-}
-
 // Dynamic asset path detection for production compatibility
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
 $host = $_SERVER['HTTP_HOST'];
-$request_uri = $_SERVER['REQUEST_URI'];
 
-// Extract base path from REQUEST_URI
-$uri_parts = explode('/', trim($request_uri, '/'));
-$base_path = '';
-
-// Detect project folder for localhost development
-if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
-    $base_path = '/' . $uri_parts[0];
+// For production, use root path. For localhost, detect project folder.
+if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false) {
+    // Local development - detect project folder
+    $request_uri = $_SERVER['REQUEST_URI'];
+    $uri_parts = explode('/', trim($request_uri, '/'));
+    $base_path = '';
+    
+    if (count($uri_parts) > 0 && $uri_parts[0] && $uri_parts[0] !== 'pages') {
+        $base_path = '/' . $uri_parts[0];
+    }
+    
+    $asset_base_url = $protocol . $host . $base_path;
+} else {
+    // Production - use root path
+    $asset_base_url = $protocol . $host;
 }
-
-$asset_base_url = $protocol . $host . $base_path;
 ?>
 <!DOCTYPE html>
 <html lang="en">
