@@ -177,6 +177,59 @@ try {
     error_log("Error fetching referrals: " . $e->getMessage());
 }
 
+// Check facility availability based on referral conditions
+$facility_availability = [
+    'bhc_enabled' => true,  // Default: BHC available (primary care)
+    'dho_enabled' => false, // Default: DHO disabled (needs referral)
+    'cho_enabled' => false  // Default: CHO disabled (needs referral)
+];
+
+try {
+    // Query to check facility availability conditions
+    $facility_check_query = "
+        SELECT 
+            COUNT(CASE WHEN DATE(referral_date) = CURDATE() AND status = 'active' THEN 1 END) as same_day_active_referrals,
+            COUNT(CASE WHEN referred_to_facility_id IN (1,2,3) AND status = 'active' THEN 1 END) as any_facility_active_referrals,
+            COUNT(CASE WHEN referred_to_facility_id IN (2,3) AND status = 'active' THEN 1 END) as dho_referrals,
+            COUNT(CASE WHEN referred_to_facility_id = 1 AND status = 'active' THEN 1 END) as cho_referrals
+        FROM referrals 
+        WHERE patient_id = ?
+    ";
+    
+    $stmt = $conn->prepare($facility_check_query);
+    if ($stmt) {
+        $stmt->bind_param("i", $patient_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $facility_data = $result->fetch_assoc();
+        $stmt->close();
+        
+        if ($facility_data) {
+            // BHC Logic: Enable only if NO same-day active referral exists AND no active referrals to facilities 1,2,3
+            $facility_availability['bhc_enabled'] = ($facility_data['same_day_active_referrals'] == 0 && $facility_data['any_facility_active_referrals'] == 0);
+            
+            // DHO Logic: Enable if referral to facilities 2 or 3 exists
+            $facility_availability['dho_enabled'] = ($facility_data['dho_referrals'] > 0);
+            
+            // CHO Logic: Enable if referral to facility 1 exists
+            $facility_availability['cho_enabled'] = ($facility_data['cho_referrals'] > 0);
+            
+            // Debug logging
+            error_log("DEBUG - Facility Availability Check:");
+            error_log("  - Same day active referrals: " . $facility_data['same_day_active_referrals']);
+            error_log("  - Any facility (1,2,3) active referrals: " . $facility_data['any_facility_active_referrals']);
+            error_log("  - DHO referrals (facilities 2,3): " . $facility_data['dho_referrals']);
+            error_log("  - CHO referrals (facility 1): " . $facility_data['cho_referrals']);
+            error_log("  - BHC enabled: " . ($facility_availability['bhc_enabled'] ? 'true' : 'false'));
+            error_log("  - DHO enabled: " . ($facility_availability['dho_enabled'] ? 'true' : 'false'));
+            error_log("  - CHO enabled: " . ($facility_availability['cho_enabled'] ? 'true' : 'false'));
+        }
+    }
+} catch (Exception $e) {
+    error_log("Error checking facility availability: " . $e->getMessage());
+    // On error, keep defaults (BHC enabled, others disabled)
+}
+
 // Fetch available services for the frontend
 $services = [];
 try {
@@ -402,6 +455,41 @@ try {
 
         .facility-card.selected::before {
             background: rgba(255, 255, 255, 0.3);
+        }
+
+        .facility-card.disabled {
+            background: #f8f8f8;
+            border-color: #d6d6d6;
+            color: #666;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .facility-card.disabled:hover {
+            background: #f8f8f8;
+            border-color: #d6d6d6;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .facility-card.disabled::before {
+            background: #d6d6d6;
+        }
+
+        .facility-card.disabled:hover::before {
+            background: #d6d6d6;
+        }
+
+        .facility-card.disabled .icon {
+            color: #999;
+        }
+
+        .facility-card.disabled h3 {
+            color: #666;
+        }
+
+        .facility-card.disabled p {
+            color: #999;
         }
 
         .facility-card .icon {
@@ -1126,28 +1214,28 @@ try {
                 <h3 style="margin-bottom: 2rem;">Step 1: Select Healthcare Facility</h3>
                 
                 <div class="facility-selection">
-                    <div class="facility-card" data-type="bhc" onclick="selectFacility('bhc')">
+                    <div class="facility-card <?php echo !$facility_availability['bhc_enabled'] ? 'disabled' : ''; ?>" data-type="bhc" onclick="selectFacility('bhc')">
                         <div class="icon">
                             <i class="fas fa-home"></i>
                         </div>
                         <h3>Barangay Health Center</h3>
-                        <p>Primary care services in your locality<br><small>No referral required</small></p>
+                        <p>Primary care services in your locality<br><small><?php echo !$facility_availability['bhc_enabled'] ? 'Not available - Active referral exists' : 'No referral required'; ?></small></p>
                     </div>
                     
-                    <div class="facility-card" data-type="dho" onclick="selectFacility('dho')">
+                    <div class="facility-card <?php echo !$facility_availability['dho_enabled'] ? 'disabled' : ''; ?>" data-type="dho" onclick="selectFacility('dho')">
                         <div class="icon">
                             <i class="fas fa-hospital"></i>
                         </div>
                         <h3>District Health Office</h3>
-                        <p>Secondary care services<br><small>Referral required</small></p>
+                        <p>Secondary care services<br><small><?php echo !$facility_availability['dho_enabled'] ? 'No active referral found' : 'Referral required'; ?></small></p>
                     </div>
                     
-                    <div class="facility-card" data-type="cho" onclick="selectFacility('cho')">
+                    <div class="facility-card <?php echo !$facility_availability['cho_enabled'] ? 'disabled' : ''; ?>" data-type="cho" onclick="selectFacility('cho')">
                         <div class="icon">
                             <i class="fas fa-hospital-alt"></i>
                         </div>
                         <h3>City Health Office</h3>
-                        <p>Tertiary care services<br><small>Referral required</small></p>
+                        <p>Tertiary care services<br><small><?php echo !$facility_availability['cho_enabled'] ? 'No active referral found' : 'Referral required'; ?></small></p>
                     </div>
                 </div>
 
@@ -1201,6 +1289,10 @@ try {
                 </div>
 
                 <div id="selected-service-info" class="hidden">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Service Pre-selected:</strong> The service has been automatically assigned based on your active referral and cannot be modified. This ensures you receive the specific care recommended by your referring healthcare provider.
+                    </div>
                     <div class="form-group">
                         <label>Selected Service:</label>
                         <input type="text" id="service-display" class="form-control" readonly>
@@ -1319,6 +1411,7 @@ try {
         let availableServices = <?php echo json_encode($services); ?>;
         let preselectedReferral = <?php echo json_encode($preselected_referral); ?>;
         let selectedReferralId = <?php echo json_encode($selected_referral_id); ?>;
+        let facilityAvailability = <?php echo json_encode($facility_availability); ?>;
         
         // Debug output
         console.log('Active Referrals:', activeReferrals);
@@ -1415,13 +1508,33 @@ try {
         });
 
         function selectFacility(facilityType) {
+            // Check if facility is disabled
+            const facilityCard = document.querySelector(`[data-type="${facilityType}"]`);
+            if (facilityCard.classList.contains('disabled')) {
+                // Show warning modal instead of selecting
+                let warningMessage = '';
+                switch(facilityType) {
+                    case 'bhc':
+                        warningMessage = 'Barangay Health Center is not available because you have an active referral. Please use your referral to book at the designated facility (either DHO or CHO).';
+                        break;
+                    case 'dho':
+                        warningMessage = 'District Health Office is not available. You need an active referral to a district-level facility to book this appointment.';
+                        break;
+                    case 'cho':
+                        warningMessage = 'City Health Office is not available. You need an active referral to the city health office to book this appointment.';
+                        break;
+                }
+                showWarningModal(warningMessage);
+                return;
+            }
+
             // Remove previous selection
             document.querySelectorAll('.facility-card').forEach(card => {
                 card.classList.remove('selected');
             });
 
             // Select current facility
-            document.querySelector(`[data-type="${facilityType}"]`).classList.add('selected');
+            facilityCard.classList.add('selected');
             selectedFacility = facilityType;
 
             // Show facility info
