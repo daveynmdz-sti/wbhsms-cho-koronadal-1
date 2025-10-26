@@ -560,6 +560,7 @@ unset($_SESSION['registration']);
                 opacity: 0;
                 transform: scale(0.8);
             }
+
             to {
                 opacity: 1;
                 transform: scale(1);
@@ -1316,35 +1317,40 @@ unset($_SESSION['registration']);
                                         <select id="philhealth_type" name="philhealth_type" class="input-field">
                                             <option value="">Select Membership Type</option>
                                             <optgroup label="Direct Contributors">
-                                                <option value="Employees" <?php echo $formData['philhealth_type'] === 'Employees' ? 'selected' : ''; ?>>Employees (with formal employment)</option>
-                                                <option value="Kasambahay" <?php echo $formData['philhealth_type'] === 'Kasambahay' ? 'selected' : ''; ?>>Kasambahay</option>
-                                                <option value="Self-earning" <?php echo $formData['philhealth_type'] === 'Self-earning' ? 'selected' : ''; ?>>Self-earning individuals; Professional practitioners</option>
+                                                <option value="Employed Private" <?php echo $formData['philhealth_type'] === 'Employed Private' ? 'selected' : ''; ?>>Employees (with formal employment)</option>
+                                                <option value="Employed Private" <?php echo $formData['philhealth_type'] === 'Employed Private' ? 'selected' : ''; ?>>Kasambahay</option>
+                                                <option value="Individual Paying" <?php echo $formData['philhealth_type'] === 'Individual Paying' ? 'selected' : ''; ?>>Self-earning individuals; Professional practitioners</option>
                                                 <option value="OFW" <?php echo $formData['philhealth_type'] === 'OFW' ? 'selected' : ''; ?>>Overseas Filipino Workers</option>
-                                                <option value="Filipinos_abroad" <?php echo $formData['philhealth_type'] === 'Filipinos_abroad' ? 'selected' : ''; ?>>Filipinos living abroad and those with dual citizenship</option>
-                                                <option value="Lifetime" <?php echo $formData['philhealth_type'] === 'Lifetime' ? 'selected' : ''; ?>>Lifetime members (21+ years, capacity to pay)</option>
+                                                <option value="Individual Paying" <?php echo $formData['philhealth_type'] === 'Individual Paying' ? 'selected' : ''; ?>>Filipinos living abroad and those with dual citizenship</option>
+                                                <option value="Lifetime Member" <?php echo $formData['philhealth_type'] === 'Lifetime Member' ? 'selected' : ''; ?>>Lifetime members (21+ years, capacity to pay)</option>
                                             </optgroup>
                                             <optgroup label="Indirect Contributors">
-                                                <option value="Indigents" <?php echo $formData['philhealth_type'] === 'Indigents' ? 'selected' : ''; ?>>Indigents (identified by DSWD)</option>
-                                                <option value="4Ps" <?php echo $formData['philhealth_type'] === '4Ps' ? 'selected' : ''; ?>>Pantawid Pamilyang Pilipino Program beneficiaries</option>
-                                                <option value="Senior_citizens" <?php echo $formData['philhealth_type'] === 'Senior_citizens' ? 'selected' : ''; ?>>Senior citizens</option>
+                                                <option value="Indigent" <?php echo $formData['philhealth_type'] === 'Indigent' ? 'selected' : ''; ?>>Indigents (identified by DSWD)</option>
+                                                <option value="Sponsored" <?php echo $formData['philhealth_type'] === 'Sponsored' ? 'selected' : ''; ?>>Pantawid Pamilyang Pilipino Program beneficiaries</option>
+                                                <option value="Senior Citizen" <?php echo $formData['philhealth_type'] === 'Senior Citizen' ? 'selected' : ''; ?>>Senior citizens</option>
                                                 <option value="PWD" <?php echo $formData['philhealth_type'] === 'PWD' ? 'selected' : ''; ?>>Persons with disability</option>
-                                                <option value="SK_officials" <?php echo $formData['philhealth_type'] === 'SK_officials' ? 'selected' : ''; ?>>Sangguniang Kabataan officials</option>
-                                                <option value="LGU_sponsored" <?php echo $formData['philhealth_type'] === 'LGU_sponsored' ? 'selected' : ''; ?>>Point-of-service / LGU sponsored</option>
-                                                <option value="No_capacity" <?php echo $formData['philhealth_type'] === 'No_capacity' ? 'selected' : ''; ?>>Filipinos 21+ years without capacity to pay</option>
-                                                <option value="Solo_parent" <?php echo $formData['philhealth_type'] === 'Solo_parent' ? 'selected' : ''; ?>>Solo Parent</option>
+                                                <option value="Employed Government" <?php echo $formData['philhealth_type'] === 'Employed Government' ? 'selected' : ''; ?>>Sangguniang Kabataan officials</option>
+                                                <option value="Sponsored" <?php echo $formData['philhealth_type'] === 'Sponsored' ? 'selected' : ''; ?>>Point-of-service / LGU sponsored</option>
+                                                <option value="Indigent" <?php echo $formData['philhealth_type'] === 'Indigent' ? 'selected' : ''; ?>>Filipinos 21+ years without capacity to pay</option>
+                                                <option value="Sponsored" <?php echo $formData['philhealth_type'] === 'Sponsored' ? 'selected' : ''; ?>>Solo Parent</option>
                                             </optgroup>
                                         </select>
                                     </div>
                                     <div>
                                         <label for="philhealth_id_number">PhilHealth ID Number</label>
                                         <input type="text" id="philhealth_id_number" name="philhealth_id_number" class="input-field"
-                                            placeholder="Enter PhilHealth ID (12 digits)" maxlength="12"
+                                            placeholder="XX-XXXXXXXXX-X (12 digits)" maxlength="14"
+                                            pattern="\d{2}-\d{9}-\d{1}" 
+                                            title="Enter PhilHealth ID in XX-XXXXXXXXX-X format (12 digits with hyphens)"
                                             value="<?php echo $formData['philhealth_id_number']; ?>" />
+                                        <small style="color: #666; font-size: 0.85em; margin-top: 4px; display: block;">
+                                            Format: XX-XXXXXXXXX-X (e.g., 12-345678901-2)
+                                        </small>
                                     </div>
                                     <div class="philhealth-info">
                                         <i class="fas fa-info-circle"></i>
                                         <strong>Need help?</strong> Visit <a href="https://www.philhealth.gov.ph/members/" target="_blank" rel="noopener">philhealth.gov.ph/members/</a> for detailed membership guidance.<br>
-                                        <strong>Note:</strong> CHO Management will verify all PhilHealth memberships.
+                                        <strong>Note:</strong> City Health Office of Koronadal Management will verify all PhilHealth memberships.
                                     </div>
                                 </div>
                             </div>
@@ -2211,6 +2217,107 @@ unset($_SESSION['registration']);
                     dobInput.value = originalValue; // Restore formatted value
                 }
             });
+        }
+
+        // --- PhilHealth ID Formatting ---
+        const philhealthInput = document.getElementById('philhealth_id_number');
+        
+        if (philhealthInput) {
+            // Format PhilHealth ID as user types (XX-XXXXXXXXX-X)
+            philhealthInput.addEventListener('input', function() {
+                // Allow only numeric input, limit to 12 digits
+                let value = this.value.replace(/\D/g, ''); // Remove non-digits
+
+                if (value.length > 12) {
+                    value = value.substring(0, 12);
+                }
+
+                // Format as XX-XXXXXXXXX-X while typing
+                let formattedValue = value;
+                if (value.length >= 3) {
+                    formattedValue = value.substring(0, 2) + '-' + value.substring(2);
+                }
+                if (value.length >= 12) {
+                    formattedValue = value.substring(0, 2) + '-' + value.substring(2, 11) + '-' + value.substring(11);
+                }
+
+                // Store the cursor position
+                const cursorPosition = this.selectionStart;
+                const oldLength = this.value.length;
+
+                this.value = formattedValue;
+
+                // Adjust cursor position after formatting
+                const newLength = this.value.length;
+                const lengthDiff = newLength - oldLength;
+                this.setSelectionRange(cursorPosition + lengthDiff, cursorPosition + lengthDiff);
+
+                // Visual feedback for complete PhilHealth ID
+                if (value.length === 12) {
+                    this.classList.remove('invalid');
+                    this.classList.add('valid');
+                } else if (value.length > 0) {
+                    this.classList.remove('valid', 'invalid');
+                } else {
+                    this.classList.remove('valid', 'invalid');
+                }
+            });
+
+            philhealthInput.addEventListener('blur', function() {
+                const value = this.value.trim();
+                const cleanValue = value.replace(/\D/g, ''); // Remove hyphens for validation
+
+                if (value === '') return; // Don't validate empty on blur
+
+                if (cleanValue.length > 0 && cleanValue.length < 12) {
+                    showSnackbar('PhilHealth ID must be exactly 12 digits (XX-XXXXXXXXX-X)', 'warning', 3000);
+                    this.classList.add('invalid');
+                } else if (cleanValue.length === 12) {
+                    this.classList.remove('invalid');
+                    this.classList.add('valid');
+                }
+            });
+
+            philhealthInput.addEventListener('paste', function(e) {
+                // Allow paste but filter to numbers only
+                e.preventDefault();
+                let paste = (e.clipboardData || window.clipboardData).getData('text');
+                let cleanPaste = paste.replace(/\D/g, '').substring(0, 12);
+
+                // Format the pasted value with hyphens
+                let formattedPaste = cleanPaste;
+                if (cleanPaste.length >= 3) {
+                    formattedPaste = cleanPaste.substring(0, 2) + '-' + cleanPaste.substring(2);
+                }
+                if (cleanPaste.length >= 12) {
+                    formattedPaste = cleanPaste.substring(0, 2) + '-' + cleanPaste.substring(2, 11) + '-' + cleanPaste.substring(11);
+                }
+
+                this.value = formattedPaste;
+
+                // Trigger input event to validate
+                this.dispatchEvent(new Event('input'));
+            });
+
+            // Initialize formatting for existing value
+            if (philhealthInput.value) {
+                const cleanValue = philhealthInput.value.replace(/\D/g, '');
+                if (cleanValue.length > 0) {
+                    let formattedValue = cleanValue;
+                    if (cleanValue.length >= 3) {
+                        formattedValue = cleanValue.substring(0, 2) + '-' + cleanValue.substring(2);
+                    }
+                    if (cleanValue.length >= 12) {
+                        formattedValue = cleanValue.substring(0, 2) + '-' + cleanValue.substring(2, 11) + '-' + cleanValue.substring(11);
+                    }
+                    philhealthInput.value = formattedValue;
+
+                    // Add visual feedback for complete ID
+                    if (cleanValue.length === 12) {
+                        philhealthInput.classList.add('valid');
+                    }
+                }
+            }
         }
 
         // --- Utilities for error display ---
