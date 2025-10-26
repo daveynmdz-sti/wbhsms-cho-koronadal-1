@@ -10,6 +10,9 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
+// Include referral permissions utility
+require_once $root_path . '/utils/referral_permissions.php';
+
 // Check if user is logged in
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
     http_response_code(401);
@@ -65,6 +68,11 @@ try {
     // Validate required fields
     if (empty($referral_id) || !is_numeric($referral_id)) {
         throw new Exception('Invalid referral ID provided.');
+    }
+
+    // Check if employee can edit this referral (creator-only permission)
+    if (!canEmployeeEditReferral($conn, $employee_id, $referral_id, $employee_role)) {
+        throw new Exception('Access denied. You can only cancel referrals you created.');
     }
 
     if (empty($reason)) {

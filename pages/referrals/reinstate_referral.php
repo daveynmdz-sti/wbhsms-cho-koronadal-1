@@ -10,6 +10,9 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
+// Include referral permissions utility
+require_once $root_path . '/utils/referral_permissions.php';
+
 // Check if user is logged in
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
     http_response_code(401);
@@ -61,6 +64,11 @@ try {
     // Validate required fields
     if (empty($referral_id) || !is_numeric($referral_id)) {
         throw new Exception('Invalid referral ID provided.');
+    }
+
+    // Check if employee has permission to reinstate this referral
+    if (!canEmployeeEditReferral($conn, $employee_id, $referral_id, $role)) {
+        throw new Exception('You do not have permission to reinstate this referral.');
     }
 
     // Get employee information for logging

@@ -39,8 +39,10 @@ if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
 
 // Database connection
 require_once $root_path . '/config/db.php';
-// Use relative path for assets - more reliable than absolute URLs
-$assets_path = '../../../../assets';
+// Include paths configuration for production-friendly URLs
+require_once $root_path . '/config/paths.php';
+// Use dynamic path resolution for assets
+$assets_path = 'assets';
 
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
@@ -109,7 +111,7 @@ $date_filter = $_GET['appointment_date'] ?? '';
 
 // Sorting parameters
 $sort_column = $_GET['sort'] ?? 'scheduled_date';
-$sort_direction = $_GET['dir'] ?? 'ASC';
+$sort_direction = $_GET['dir'] ?? 'DESC';
 
 // Validate sort parameters
 $allowed_columns = [
@@ -174,7 +176,7 @@ try {
     
     // Add secondary sort for consistency
     if ($sort_column !== 'scheduled_date') {
-        $order_by .= ', a.scheduled_date ASC';
+        $order_by .= ', a.scheduled_date DESC';
     }
     if ($sort_column !== 'scheduled_time' && $sort_column !== 'scheduled_date') {
         $order_by .= ', a.scheduled_time ASC';
@@ -294,9 +296,10 @@ function getSortIcon($column, $current_sort, $current_direction) {
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="<?php echo WBHSMS_BASE_URL; ?>/">
     <title>CHO Koronadal — Appointments Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
+    <link rel="stylesheet" href="assets/css/sidebar.css">
     <!-- CSS Files - loaded by sidebar -->
     <style>
         .content-wrapper {
@@ -1434,7 +1437,7 @@ function getSortIcon($column, $current_sort, $current_direction) {
             document.getElementById('viewAppointmentModal').style.display = 'block';
 
             // Get appointment data
-            fetch(`../../../../api/get_appointment_details.php?appointment_id=${appointmentId}`, {
+            fetch(`api/get_appointment_details.php?appointment_id=${appointmentId}`, {
                 method: 'GET',
                 credentials: 'same-origin',
                 headers: {

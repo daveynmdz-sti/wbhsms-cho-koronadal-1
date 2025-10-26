@@ -10,6 +10,9 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
+// Include referral permissions utility
+require_once $root_path . '/utils/referral_permissions.php';
+
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
     die("Database connection failed. Please contact administrator.");
@@ -53,73 +56,36 @@ try {
     $error_message = "Unable to retrieve employee facility information.";
 }
 
-// DHO and BHW Access Control - Get jurisdiction restrictions for patient search
+// Get jurisdiction restrictions for patient search (creation permissions)
+// For creation, employees can only create referrals for patients in their jurisdiction
 $jurisdiction_restriction = '';
 $jurisdiction_params = [];
 $jurisdiction_param_types = '';
 $employee_role = strtolower($_SESSION['role']);
 
-if ($employee_role === 'dho') {
-    try {
-        // Get DHO's district_id from their facility assignment
-        $dho_district_sql = "SELECT f.district_id 
-                             FROM employees e 
-                             JOIN facilities f ON e.facility_id = f.facility_id 
-                             WHERE e.employee_id = ? AND e.role_id = 5";
-        $dho_district_stmt = $conn->prepare($dho_district_sql);
-        $dho_district_stmt->bind_param("i", $employee_id);
-        $dho_district_stmt->execute();
-        $dho_district_result = $dho_district_stmt->get_result();
-
-        if ($dho_district_result->num_rows === 0) {
-            die('Error: Access denied - No facility assignment found for DHO.');
-        }
-
-        $dho_district = $dho_district_result->fetch_assoc()['district_id'];
-        $dho_district_stmt->close();
-
-        // Add district restriction to patient search
-        $jurisdiction_restriction = " AND b.district_id = ?";
-        $jurisdiction_params[] = $dho_district;
-        $jurisdiction_param_types .= 'i';
-
-        error_log("DHO create referrals access: Employee ID $employee_id restricted to district $dho_district");
-
-    } catch (Exception $e) {
-        error_log("DHO create referrals access control error: " . $e->getMessage());
-        die('Error: Access validation failed.');
-    }
-} elseif ($employee_role === 'bhw') {
-    try {
-        // Get BHW's barangay_id from their facility assignment
-        $bhw_barangay_sql = "SELECT f.barangay_id 
-                             FROM employees e 
-                             JOIN facilities f ON e.facility_id = f.facility_id 
-                             WHERE e.employee_id = ? AND e.role_id = 6";
-        $bhw_barangay_stmt = $conn->prepare($bhw_barangay_sql);
-        $bhw_barangay_stmt->bind_param("i", $employee_id);
-        $bhw_barangay_stmt->execute();
-        $bhw_barangay_result = $bhw_barangay_stmt->get_result();
-
-        if ($bhw_barangay_result->num_rows === 0) {
-            die('Error: Access denied - No facility assignment found for BHW.');
-        }
-
-        $bhw_barangay = $bhw_barangay_result->fetch_assoc()['barangay_id'];
-        $bhw_barangay_stmt->close();
-
-        // Add barangay restriction to patient search
+// Use permission utility to get creation restrictions (not hybrid viewing)
+if ($employee_role === 'bhw') {
+    $employee_barangay = getEmployeeBHWBarangay($conn, $employee_id);
+    if ($employee_barangay) {
         $jurisdiction_restriction = " AND p.barangay_id = ?";
-        $jurisdiction_params[] = $bhw_barangay;
+        $jurisdiction_params[] = $employee_barangay;
         $jurisdiction_param_types .= 'i';
-
-        error_log("BHW create referrals access: Employee ID $employee_id restricted to barangay $bhw_barangay");
-
-    } catch (Exception $e) {
-        error_log("BHW create referrals access control error: " . $e->getMessage());
-        die('Error: Access validation failed.');
+        error_log("BHW create referrals: Employee ID $employee_id restricted to barangay $employee_barangay");
+    } else {
+        die('Error: Access denied - No barangay assignment found for BHW.');
+    }
+} elseif ($employee_role === 'dho') {
+    $employee_district = getEmployeeDHODistrict($conn, $employee_id);
+    if ($employee_district) {
+        $jurisdiction_restriction = " AND b.district_id = ?";
+        $jurisdiction_params[] = $employee_district;
+        $jurisdiction_param_types .= 'i';
+        error_log("DHO create referrals: Employee ID $employee_id restricted to district $employee_district");
+    } else {
+        die('Error: Access denied - No district assignment found for DHO.');
     }
 }
+// Admin, Doctor, Nurse, Records Officer can create for any patient
 
 // Handle form submissions
 $success_message = '';
@@ -134,6 +100,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Get form data
             $patient_id = (int)($_POST['patient_id'] ?? 0);
+            
+            // Validate jurisdiction permission for this patient
+            if (!canEmployeeCreateReferralForPatient($conn, $employee_id, $patient_id, $_SESSION['role'])) {
+                throw new Exception("Access denied. You can only create referrals for patients within your jurisdiction.");
+            }
+            
             $referral_reason = trim($_POST['referral_reason'] ?? '');
             $destination_type = trim($_POST['destination_type'] ?? ''); // barangay_center, district_office, city_office, external
             $referred_to_facility_id = !empty($_POST['referred_to_facility_id']) ? (int)$_POST['referred_to_facility_id'] : null;

@@ -40,8 +40,8 @@ if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
 
 // Database connection
 require_once $root_path . '/config/db.php';
-// Use relative path for assets - more reliable than absolute URLs
-$assets_path = '../../../../assets';
+// Use relative path for assets - production friendly
+$assets_path = '../../../assets';
 
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
@@ -153,7 +153,7 @@ $date_filter = $_GET['appointment_date'] ?? '';
 
 // Sorting parameters
 $sort_column = $_GET['sort'] ?? 'scheduled_date';
-$sort_direction = $_GET['dir'] ?? 'ASC';
+$sort_direction = $_GET['dir'] ?? 'DESC';
 
 // Validate sort parameters
 $allowed_columns = [
@@ -225,7 +225,7 @@ try {
     
     // Add secondary sort for consistency
     if ($sort_column !== 'scheduled_date') {
-        $order_by .= ', a.scheduled_date ASC';
+        $order_by .= ', a.scheduled_date DESC';
     }
     if ($sort_column !== 'scheduled_time' && $sort_column !== 'scheduled_date') {
         $order_by .= ', a.scheduled_time ASC';
@@ -305,7 +305,7 @@ try {
 
     $stats_where = !empty($stats_where_conditions) ? 'WHERE ' . implode(' AND ', $stats_where_conditions) : '';
 
-    $stmt = $conn->prepare("SELECT status, COUNT(*) as count FROM appointments a LEFT JOIN facilities f ON a.facility_id = f.facility_id $stats_where GROUP BY status");
+    $stmt = $conn->prepare("SELECT a.status, COUNT(*) as count FROM appointments a LEFT JOIN facilities f ON a.facility_id = f.facility_id $stats_where GROUP BY a.status");
     if (!empty($stats_params) && !empty($stats_types)) {
         $stmt->bind_param($stats_types, ...$stats_params);
     }
@@ -361,7 +361,7 @@ function getSortIcon($column, $current_sort, $current_direction) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CHO Koronadal — DHO Appointments Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../../../assets/css/sidebar.css">
     <!-- CSS Files - loaded by sidebar -->
     <style>
         .content-wrapper {
@@ -1499,7 +1499,7 @@ function getSortIcon($column, $current_sort, $current_direction) {
             document.getElementById('viewAppointmentModal').style.display = 'block';
 
             // Get appointment data
-            fetch(`../../../../api/get_appointment_details.php?appointment_id=${appointmentId}`, {
+            fetch(`../../../api/get_appointment_details.php?appointment_id=${appointmentId}`, {
                 method: 'GET',
                 credentials: 'same-origin',
                 headers: {

@@ -3,10 +3,30 @@
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
-// Include database connection
+// Include database connection and session
 // Use absolute path resolution
 $root_path = dirname(dirname(__DIR__));
+require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
+require_once $root_path . '/utils/referral_permissions.php';
+
+// Check if user is logged in
+if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Unauthorized access']);
+    exit;
+}
+
+// Check if role is authorized
+$authorized_roles = ['doctor', 'bhw', 'dho', 'records_officer', 'admin'];
+if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Unauthorized role']);
+    exit;
+}
+
+$employee_id = $_SESSION['employee_id'];
+$role = $_SESSION['role'];
 
 // Check if patient_id is provided
 $patient_id = isset($_GET['patient_id']) ? (int)$_GET['patient_id'] : 0;
@@ -17,6 +37,13 @@ if (!$patient_id) {
 }
 
 try {
+    // Check if employee can view this patient based on jurisdiction
+    if (!canEmployeeViewPatient($conn, $employee_id, $patient_id, $role)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'You do not have permission to view facilities for this patient']);
+        exit;
+    }
+
     // Get patient's barangay and district information using proper joins
     $stmt = $conn->prepare("
         SELECT p.barangay_id, b.barangay_name, b.district_id, d.district_name 
@@ -94,6 +121,9 @@ try {
     $stmt->execute();
     $result = $stmt->get_result();
     $city_office = $result->fetch_assoc();
+    
+    // Audit log the patient facility lookup
+    auditReferralAction($conn, $employee_id, 'patient_facilities_lookup', "Viewed facilities for patient ID: $patient_id");
     
     echo json_encode([
         'success' => true,

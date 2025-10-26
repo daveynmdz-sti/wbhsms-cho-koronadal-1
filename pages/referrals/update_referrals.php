@@ -9,6 +9,7 @@ header('Expires: 0');
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
+require_once $root_path . '/utils/referral_permissions.php';
 
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
@@ -225,6 +226,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($_POST['service_id']) && $_POST['service_id'] === 'others' && !empty($custom_service_name)) {
                 $final_service_id = null; // Set to null for "others"
                 $final_referral_reason .= "\n\nRequested Service: " . $custom_service_name;
+            }
+            
+            // Check if employee has permission to edit this referral
+            if (!canEmployeeEditReferral($conn, $employee_id, $referral_id, $_SESSION['role'])) {
+                throw new Exception('You do not have permission to update this referral.');
             }
             
             // Update referral

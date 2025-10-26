@@ -8,6 +8,9 @@ header('Expires: 0');
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 
+// Include referral permissions utility
+require_once $root_path . '/utils/referral_permissions.php';
+
 header('Content-Type: application/json');
 
 // If user is not logged in, bounce to login
@@ -32,6 +35,17 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 }
 
 $referral_id = intval($_GET['id']);
+$employee_id = $_SESSION['employee_id'];
+$employee_role = $_SESSION['role'];
+
+// Check if employee can view this referral
+if (!canEmployeeViewReferral($conn, $employee_id, $referral_id, $employee_role)) {
+    echo json_encode(['error' => 'Access denied. You do not have permission to view this referral.']);
+    exit();
+}
+
+// Log the access for audit trail
+logReferralAccess($conn, $employee_id, $referral_id, 'view', 'Referral details viewed via API');
 
 try {
     // Fetch complete referral details with patient and issuer information

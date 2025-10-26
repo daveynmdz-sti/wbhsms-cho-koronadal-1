@@ -24,6 +24,9 @@ if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
 // Database connection
 require_once $root_path . '/config/db.php';
 
+// Include referral permissions utility
+require_once $root_path . '/utils/referral_permissions.php';
+
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
     die("Database connection failed. Please contact administrator.");
@@ -32,77 +35,85 @@ if (!isset($conn) || $conn->connect_error) {
 $employee_id = $_SESSION['employee_id'];
 $employee_role = $_SESSION['role'];
 
-// Define role-based permissions for referrals management
+// Define role-based permissions for referrals management  
 $canCreateReferrals = true; // All authorized roles can create referrals
 $canEditReferrals = !in_array(strtolower($employee_role), ['records_officer']); // Records officers cannot edit existing referrals
 $canViewReferrals = true; // All authorized roles can view
 
-// DHO and BHW Access Control - Get jurisdiction restrictions
-$jurisdiction_restriction = '';
-$jurisdiction_params = [];
+// Get jurisdiction restrictions using new permission system
+$jurisdiction_data = getEmployeeJurisdictionRestriction($conn, $employee_id, $employee_role);
+$jurisdiction_restriction = $jurisdiction_data['restriction'];
+$jurisdiction_params = $jurisdiction_data['params'];
+
+// Build parameter types string for prepared statements
 $jurisdiction_param_types = '';
-
-if (strtolower($employee_role) === 'dho') {
-    try {
-        // Get DHO's district_id from their facility assignment
-        $dho_district_sql = "SELECT f.district_id 
-                             FROM employees e 
-                             JOIN facilities f ON e.facility_id = f.facility_id 
-                             WHERE e.employee_id = ? AND e.role_id = 5";
-        $dho_district_stmt = $conn->prepare($dho_district_sql);
-        $dho_district_stmt->bind_param("i", $employee_id);
-        $dho_district_stmt->execute();
-        $dho_district_result = $dho_district_stmt->get_result();
-
-        if ($dho_district_result->num_rows === 0) {
-            die('Error: Access denied - No facility assignment found for DHO.');
-        }
-
-        $dho_district = $dho_district_result->fetch_assoc()['district_id'];
-        $dho_district_stmt->close();
-
-        // Add district restriction to queries
-        $jurisdiction_restriction = " AND b.district_id = ?";
-        $jurisdiction_params[] = $dho_district;
-        $jurisdiction_param_types .= 'i';
-
-        error_log("DHO referrals access: Employee ID $employee_id restricted to district $dho_district");
-
-    } catch (Exception $e) {
-        error_log("DHO referrals access control error: " . $e->getMessage());
-        die('Error: Access validation failed.');
-    }
-} elseif (strtolower($employee_role) === 'bhw') {
-    try {
-        // Get BHW's barangay_id from their facility assignment
-        $bhw_barangay_sql = "SELECT f.barangay_id 
-                             FROM employees e 
-                             JOIN facilities f ON e.facility_id = f.facility_id 
-                             WHERE e.employee_id = ? AND e.role_id = 6";
-        $bhw_barangay_stmt = $conn->prepare($bhw_barangay_sql);
-        $bhw_barangay_stmt->bind_param("i", $employee_id);
-        $bhw_barangay_stmt->execute();
-        $bhw_barangay_result = $bhw_barangay_stmt->get_result();
-
-        if ($bhw_barangay_result->num_rows === 0) {
-            die('Error: Access denied - No facility assignment found for BHW.');
-        }
-
-        $bhw_barangay = $bhw_barangay_result->fetch_assoc()['barangay_id'];
-        $bhw_barangay_stmt->close();
-
-        // Add barangay restriction to queries
-        $jurisdiction_restriction = " AND p.barangay_id = ?";
-        $jurisdiction_params[] = $bhw_barangay;
-        $jurisdiction_param_types .= 'i';
-
-        error_log("BHW referrals access: Employee ID $employee_id restricted to barangay $bhw_barangay");
-
-    } catch (Exception $e) {
-        error_log("BHW referrals access control error: " . $e->getMessage());
-        die('Error: Access validation failed.');
-    }
+foreach ($jurisdiction_params as $param) {
+    $jurisdiction_param_types .= is_int($param) ? 'i' : 's';
 }
+
+// Log jurisdiction access for audit
+error_log("Referrals access: Employee ID $employee_id (Role: $employee_role) with restriction: " . 
+    ($jurisdiction_restriction ?: 'none'));
+
+// Debug output for jurisdiction restrictions (only if debug parameter is set)
+if (isset($_GET['debug']) && $_GET['debug'] == '1') {
+    echo "<div style='background: #f0f0f0; padding: 10px; margin: 10px; border: 1px solid #ccc;'>";
+    echo "<h4>Debug Information:</h4>";
+    echo "Employee ID: $employee_id<br>";
+    echo "Employee Role: $employee_role<br>";
+    echo "Jurisdiction Restriction: " . ($jurisdiction_restriction ?: 'none') . "<br>";
+    echo "Jurisdiction Params: " . implode(', ', $jurisdiction_params) . "<br>";
+    
+    // Quick diagnosis
+    echo "<br><strong>Issue Diagnosis:</strong><br>";
+    
+    // Check if getEmployeeBHWBarangay returns something
+    $test_barangay = getEmployeeBHWBarangay($conn, $employee_id);
+    echo "BHW Barangay ID from function: " . ($test_barangay ?: 'NULL') . "<br>";
+    
+    // Check employee record with EMP format
+    $emp_formatted = 'EMP' . str_pad($employee_id, 5, '0', STR_PAD_LEFT);
+    echo "Formatted Employee ID: $emp_formatted<br>";
+    
+    $test_stmt = $conn->prepare("SELECT e.employee_id, r.role_name, e.facility_id FROM employees e LEFT JOIN roles r ON e.role_id = r.role_id WHERE e.employee_id = ?");
+    $test_stmt->bind_param('s', $emp_formatted);
+    $test_stmt->execute();
+    $test_result = $test_stmt->get_result()->fetch_assoc();
+    
+    if ($test_result) {
+        echo "✓ Employee found: " . json_encode($test_result) . "<br>";
+        
+        if ($test_result['facility_id']) {
+            $facility_stmt = $conn->prepare("SELECT facility_id, name, barangay_id FROM facilities WHERE facility_id = ?");
+            $facility_stmt->bind_param('i', $test_result['facility_id']);
+            $facility_stmt->execute();
+            $facility_result = $facility_stmt->get_result()->fetch_assoc();
+            
+            if ($facility_result) {
+                echo "✓ Facility found: " . json_encode($facility_result) . "<br>";
+                
+                if ($facility_result['barangay_id']) {
+                    echo "✓ Barangay ID found: " . $facility_result['barangay_id'] . "<br>";
+                    echo "<strong>EXPECTED RESTRICTION:</strong> AND (r.referred_by = ? OR p.barangay_id = ?)<br>";
+                    echo "<strong>EXPECTED PARAMS:</strong> $employee_id, " . $facility_result['barangay_id'] . "<br>";
+                } else {
+                    echo "✗ Facility has no barangay_id assigned<br>";
+                }
+            } else {
+                echo "✗ Facility not found for facility_id: " . $test_result['facility_id'] . "<br>";
+            }
+        } else {
+            echo "✗ Employee has no facility_id assigned<br>";
+        }
+    } else {
+        echo "✗ Employee not found with ID: $emp_formatted<br>";
+    }
+    
+    echo "</div>";
+}
+
+// Get employee's jurisdiction name for display
+$jurisdiction_name = getEmployeeJurisdictionName($conn, $employee_id, $employee_role);
 
 // Handle status updates and actions
 $message = '';
@@ -114,35 +125,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!empty($referral_id) && is_numeric($referral_id)) {
         try {
-            switch ($action) {
-                case 'complete':
-                    $stmt = $conn->prepare("UPDATE referrals SET status = 'completed' WHERE referral_id = ?");
-                    $stmt->bind_param("i", $referral_id);
-                    $stmt->execute();
-                    $message = "Referral marked as completed successfully.";
-                    $stmt->close();
-                    break;
-
-                case 'void':
-                    $void_reason = trim($_POST['void_reason'] ?? '');
-                    if (empty($void_reason)) {
-                        $error = "Void reason is required.";
-                    } else {
-                        $stmt = $conn->prepare("UPDATE referrals SET status = 'voided' WHERE referral_id = ?");
+            // Check permission before performing any action
+            if (!canEmployeeEditReferral($conn, $employee_id, $referral_id, $employee_role)) {
+                $error = "Access denied. You can only modify referrals you created.";
+            } else {
+                switch ($action) {
+                    case 'complete':
+                        $stmt = $conn->prepare("UPDATE referrals SET status = 'completed' WHERE referral_id = ?");
                         $stmt->bind_param("i", $referral_id);
                         $stmt->execute();
-                        $message = "Referral voided successfully.";
+                        $message = "Referral marked as completed successfully.";
                         $stmt->close();
-                    }
-                    break;
+                        
+                        // Log the action
+                        logReferralAccess($conn, $employee_id, $referral_id, 'complete', 'Referral marked as completed');
+                        break;
 
-                case 'reactivate':
-                    $stmt = $conn->prepare("UPDATE referrals SET status = 'active' WHERE referral_id = ?");
-                    $stmt->bind_param("i", $referral_id);
-                    $stmt->execute();
-                    $message = "Referral reactivated successfully.";
-                    $stmt->close();
-                    break;
+                    case 'void':
+                        $void_reason = trim($_POST['void_reason'] ?? '');
+                        if (empty($void_reason)) {
+                            $error = "Void reason is required.";
+                        } else {
+                            $stmt = $conn->prepare("UPDATE referrals SET status = 'voided' WHERE referral_id = ?");
+                            $stmt->bind_param("i", $referral_id);
+                            $stmt->execute();
+                            $message = "Referral voided successfully.";
+                            $stmt->close();
+                            
+                            // Log the action
+                            logReferralAccess($conn, $employee_id, $referral_id, 'void', 'Referral voided: ' . $void_reason);
+                        }
+                        break;
+
+                    case 'reactivate':
+                        $stmt = $conn->prepare("UPDATE referrals SET status = 'active' WHERE referral_id = ?");
+                        $stmt->bind_param("i", $referral_id);
+                        $stmt->execute();
+                        $message = "Referral reactivated successfully.";
+                        $stmt->close();
+                        
+                        // Log the action
+                        logReferralAccess($conn, $employee_id, $referral_id, 'reactivate', 'Referral reactivated');
+                        break;
+                }
             }
         } catch (Exception $e) {
             $error = "Failed to update referral: " . $e->getMessage();
@@ -205,6 +230,17 @@ if (!empty($where_conditions)) {
     $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
 }
 
+// Add jurisdiction restriction to WHERE clause
+if (!empty($jurisdiction_restriction)) {
+    if (empty($where_clause)) {
+        // No existing WHERE clause, start with WHERE
+        $where_clause = 'WHERE ' . ltrim($jurisdiction_restriction, ' AND');
+    } else {
+        // Existing WHERE clause, append with AND
+        $where_clause .= $jurisdiction_restriction;
+    }
+}
+
 try {
     // Auto-update expired referrals (over 48 hours old and still active/pending)
     $expire_stmt = $conn->prepare("
@@ -225,7 +261,6 @@ try {
         LEFT JOIN employees e ON r.referred_by = e.employee_id
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         $where_clause
-        $jurisdiction_restriction
     ";
 
     $count_stmt = $conn->prepare($count_sql);
@@ -246,7 +281,7 @@ try {
 
     $sql = "
         SELECT r.referral_id, r.referral_num, r.patient_id, r.referral_reason, r.destination_type, 
-               r.referred_to_facility_id, r.external_facility_name, r.referral_date, r.status,
+               r.referred_to_facility_id, r.external_facility_name, r.referral_date, r.status, r.referred_by,
                p.first_name, p.middle_name, p.last_name, p.username as patient_number, 
                b.barangay_name as barangay,
                e.first_name as issuer_first_name, e.last_name as issuer_last_name,
@@ -257,7 +292,6 @@ try {
         LEFT JOIN employees e ON r.referred_by = e.employee_id
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         $where_clause
-        $jurisdiction_restriction
         ORDER BY r.referral_date DESC
         LIMIT ? OFFSET ?
     ";
@@ -299,13 +333,17 @@ $stats = [
 
 try {
     // Statistics query with jurisdiction restrictions
+    $stats_where_clause = '';
+    if (!empty($jurisdiction_restriction)) {
+        $stats_where_clause = 'WHERE ' . ltrim($jurisdiction_restriction, ' AND');
+    }
+    
     $stats_sql = "
         SELECT r.status, COUNT(*) as count 
         FROM referrals r
         LEFT JOIN patients p ON r.patient_id = p.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
-        WHERE 1=1
-        $jurisdiction_restriction
+        $stats_where_clause
         GROUP BY r.status
     ";
     
@@ -2399,6 +2437,11 @@ try {
 
         let currentReferralId = null;
         let currentAction = null;
+        
+        // Employee permission variables for JavaScript
+        const currentEmployeeId = <?= $employee_id ?>;
+        const currentEmployeeRole = '<?= strtolower($employee_role) ?>';
+        const isAdmin = currentEmployeeRole === 'admin';
 
         // Modal Management Functions
         function openModal(modalId) {
@@ -2593,12 +2636,12 @@ try {
 
             modalBody.innerHTML = modalContent;
 
-            // Update button visibility based on status
-            updateModalButtons(referral.status);
+            // Update button visibility based on status and creator
+            updateModalButtons(referral.status, referral.referred_by);
         }
 
-        // Update Modal Button Visibility
-        function updateModalButtons(status) {
+        // Update Modal Button Visibility with Creator-Based Permissions
+        function updateModalButtons(status, referredBy = null) {
             const editBtn = document.getElementById('editReferralBtn');
             const cancelBtn = document.getElementById('cancelReferralBtn');
             const reinstateBtn = document.getElementById('reinstateReferralBtn');
@@ -2608,7 +2651,33 @@ try {
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (reinstateBtn) reinstateBtn.style.display = 'none';
 
-            // Show buttons based on status
+            // Check if current employee can modify this referral
+            const canModify = isAdmin || (referredBy && referredBy == currentEmployeeId);
+            
+            if (!canModify) {
+                // Show info message about permissions
+                const buttonContainer = document.querySelector('.referral-modal-actions');
+                if (buttonContainer) {
+                    let permissionInfo = buttonContainer.querySelector('.permission-info');
+                    if (!permissionInfo) {
+                        permissionInfo = document.createElement('div');
+                        permissionInfo.className = 'permission-info';
+                        permissionInfo.style.cssText = 'margin: 1rem 0; padding: 0.75rem; background: #e3f2fd; border-left: 4px solid #2196f3; border-radius: 4px; font-size: 0.9rem; color: #1976d2;';
+                        buttonContainer.appendChild(permissionInfo);
+                    }
+                    
+                    if (isAdmin) {
+                        permissionInfo.innerHTML = '<i class="fas fa-crown"></i> <strong>Admin Access:</strong> You can modify any referral.';
+                    } else if (referredBy == currentEmployeeId) {
+                        permissionInfo.innerHTML = '<i class="fas fa-user-check"></i> <strong>Creator Access:</strong> You can modify this referral because you created it.';
+                    } else {
+                        permissionInfo.innerHTML = '<i class="fas fa-info-circle"></i> <strong>View Only:</strong> You can only modify referrals you created. This referral was created by another staff member.';
+                    }
+                }
+                return; // Don't show action buttons
+            }
+
+            // Show buttons based on status (only if user has modify permissions)
             if (status === 'active') {
                 if (editBtn) editBtn.style.display = 'inline-flex';
                 if (cancelBtn) cancelBtn.style.display = 'inline-flex';
