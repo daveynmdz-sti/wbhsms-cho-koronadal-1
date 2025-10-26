@@ -6,14 +6,52 @@
 
 // Include dependencies
 $root_path = dirname(__DIR__);
-require_once $root_path . '/config/session/patient_session.php';
+
+// Determine session type based on referer or query parameter
+$is_employee_context = false;
+$referer = $_SERVER['HTTP_REFERER'] ?? '';
+
+// Check if called from management portal
+if (strpos($referer, '/management/') !== false || 
+    strpos($referer, '/admin/') !== false || 
+    strpos($referer, '/dho/') !== false || 
+    strpos($referer, '/bhw/') !== false ||
+    isset($_GET['employee_access'])) {
+    $is_employee_context = true;
+}
+
+// Load appropriate session
+if ($is_employee_context) {
+    require_once $root_path . '/config/session/employee_session.php';
+} else {
+    require_once $root_path . '/config/session/patient_session.php';
+}
+
 require_once $root_path . '/config/db.php';
 
-// Check if patient is logged in
-if (!isset($_SESSION['patient_id'])) {
-    http_response_code(401);
-    echo '<h1>Unauthorized Access</h1><p>Please log in as a patient to view this referral.</p>';
-    exit();
+// Check authorization based on session type
+if ($is_employee_context) {
+    // Employee access - check for employee login and permissions
+    if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
+        http_response_code(401);
+        echo '<h1>Unauthorized Access</h1><p>Please log in as an employee to view this referral.</p>';
+        exit();
+    }
+    
+    // Check if role is authorized for referrals
+    $authorized_roles = ['doctor', 'nurse', 'admin', 'records_officer', 'bhw', 'dho'];
+    if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
+        http_response_code(403);
+        echo '<h1>Access Denied</h1><p>You do not have permission to view referrals.</p>';
+        exit();
+    }
+} else {
+    // Patient access - check for patient login
+    if (!isset($_SESSION['patient_id'])) {
+        http_response_code(401);
+        echo '<h1>Unauthorized Access</h1><p>Please log in as a patient to view this referral.</p>';
+        exit();
+    }
 }
 
 // Check database connection
@@ -23,7 +61,15 @@ if (!isset($conn) || $conn->connect_error) {
     exit();
 }
 
-$patient_id = $_SESSION['patient_id'];
+// Get patient ID based on session type
+$patient_id = null;
+if ($is_employee_context) {
+    // For employee access, patient ID will be determined from the referral
+    $patient_id = null; // Will be set after fetching referral
+} else {
+    // For patient access, use session patient ID
+    $patient_id = $_SESSION['patient_id'];
+}
 
 // Get referral ID from GET or POST data
 $referral_id = 0;
@@ -44,33 +90,64 @@ if (!$referral_id || $referral_id <= 0) {
 }
 
 try {
-    // Get referral with complete patient information - ONLY for logged-in patient
-    $referral_stmt = $conn->prepare("
-        SELECT r.referral_id, r.referral_num, r.patient_id, r.referral_reason, 
-               r.destination_type, r.referred_to_facility_id, r.external_facility_name,
-               r.referral_date, r.status, r.referred_by, r.service_id,
-               p.first_name, p.middle_name, p.last_name, p.username as patient_number,
-               p.date_of_birth, p.sex, p.contact_number,
-               b.barangay_name as barangay,
-               e.first_name as issuer_first_name, e.last_name as issuer_last_name, 
-               rol.role_name as issuer_position,
-               f.name as facility_name, f.type as facility_type,
-               s.name as service_name
-        FROM referrals r
-        LEFT JOIN patients p ON r.patient_id = p.patient_id
-        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
-        LEFT JOIN employees e ON r.referred_by = e.employee_id
-        LEFT JOIN roles rol ON e.role_id = rol.role_id
-        LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
-        LEFT JOIN services s ON r.service_id = s.service_id
-        WHERE r.referral_id = ? AND r.patient_id = ?
-    ");
-
-    if (!$referral_stmt) {
-        throw new Exception('Database prepare failed: ' . $conn->error);
+    // Prepare query based on access context
+    if ($is_employee_context) {
+        // Employee can access any referral - no patient restriction
+        $referral_stmt = $conn->prepare("
+            SELECT r.referral_id, r.referral_num, r.patient_id, r.referral_reason, 
+                   r.destination_type, r.referred_to_facility_id, r.external_facility_name,
+                   r.referral_date, r.status, r.referred_by, r.service_id,
+                   p.first_name, p.middle_name, p.last_name, p.username as patient_number,
+                   p.date_of_birth, p.sex, p.contact_number,
+                   b.barangay_name as barangay,
+                   e.first_name as issuer_first_name, e.last_name as issuer_last_name, 
+                   rol.role_name as issuer_position,
+                   f.name as facility_name, f.type as facility_type,
+                   s.name as service_name
+            FROM referrals r
+            LEFT JOIN patients p ON r.patient_id = p.patient_id
+            LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+            LEFT JOIN employees e ON r.referred_by = e.employee_id
+            LEFT JOIN roles rol ON e.role_id = rol.role_id
+            LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
+            LEFT JOIN services s ON r.service_id = s.service_id
+            WHERE r.referral_id = ?
+        ");
+        
+        if (!$referral_stmt) {
+            throw new Exception('Database prepare failed: ' . $conn->error);
+        }
+        
+        $referral_stmt->bind_param("i", $referral_id);
+    } else {
+        // Patient can only access their own referrals
+        $referral_stmt = $conn->prepare("
+            SELECT r.referral_id, r.referral_num, r.patient_id, r.referral_reason, 
+                   r.destination_type, r.referred_to_facility_id, r.external_facility_name,
+                   r.referral_date, r.status, r.referred_by, r.service_id,
+                   p.first_name, p.middle_name, p.last_name, p.username as patient_number,
+                   p.date_of_birth, p.sex, p.contact_number,
+                   b.barangay_name as barangay,
+                   e.first_name as issuer_first_name, e.last_name as issuer_last_name, 
+                   rol.role_name as issuer_position,
+                   f.name as facility_name, f.type as facility_type,
+                   s.name as service_name
+            FROM referrals r
+            LEFT JOIN patients p ON r.patient_id = p.patient_id
+            LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+            LEFT JOIN employees e ON r.referred_by = e.employee_id
+            LEFT JOIN roles rol ON e.role_id = rol.role_id
+            LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
+            LEFT JOIN services s ON r.service_id = s.service_id
+            WHERE r.referral_id = ? AND r.patient_id = ?
+        ");
+        
+        if (!$referral_stmt) {
+            throw new Exception('Database prepare failed: ' . $conn->error);
+        }
+        
+        $referral_stmt->bind_param("ii", $referral_id, $patient_id);
     }
-
-    $referral_stmt->bind_param("ii", $referral_id, $patient_id);
     $referral_stmt->execute();
     $referral_result = $referral_stmt->get_result();
 

@@ -259,7 +259,10 @@ try {
             margin: 0 auto;
             padding: 1rem;
         }
-        
+
+        .topbar {
+            z-index: 99999;
+        }
         .page-header {
             margin-bottom: 1.5rem;
         }

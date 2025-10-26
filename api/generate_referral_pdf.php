@@ -25,9 +25,9 @@ if (!$dompdf_available) {
     $referral_id = $_GET['referral_id'] ?? '';
     $display = $_GET['display'] ?? 'inline';
     
-    // Redirect to HTML print version with informational message
+    // Redirect to HTML print version with informational message and employee access flag
     $message = urlencode("PDF generation is currently unavailable. Using print-friendly view instead.");
-    header("Location: patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display) . "&info_message=" . $message);
+    header("Location: patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display) . "&info_message=" . $message . "&employee_access=1");
     exit();
 }
 
