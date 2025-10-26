@@ -13,49 +13,28 @@ require_once $root_path . '/config/db.php';
 $dompdf_available = false;
 if (file_exists($root_path . '/vendor/autoload.php')) {
     require_once $root_path . '/vendor/autoload.php';
-    $dompdf_available = class_exists('Dompdf\Dompdf') && class_exists('Dompdf\Options');
+    
+    // Check if DomPDF and its dependencies are available
+    $dompdf_available = class_exists('Dompdf\Dompdf') && 
+                       class_exists('Dompdf\Options') && 
+                       class_exists('Masterminds\HTML5');  // Check for required HTML5 parser
 }
 
-// If dompdf is not available, show user-friendly error page or redirect to HTML print
+// If dompdf is not available or missing dependencies, redirect to HTML print version
 if (!$dompdf_available) {
     $referral_id = $_GET['referral_id'] ?? '';
     $display = $_GET['display'] ?? 'inline';
     
-    // Check if this is an AJAX request or API call
-    $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
-    
-    if ($is_ajax) {
-        // Return JSON error response for AJAX requests
-        http_response_code(503);
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => false,
-            'message' => 'PDF generation is temporarily unavailable. Please use the print view instead.',
-            'fallback_url' => "patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display)
-        ]);
-        exit();
-    } else {
-        // Redirect to HTML print version with informational message
-        $message = urlencode("PDF generation is currently unavailable. Using print-friendly view instead.");
-        header("Location: patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display) . "&info_message=" . $message);
-        exit();
-    }
+    // Redirect to HTML print version with informational message
+    $message = urlencode("PDF generation is currently unavailable. Using print-friendly view instead.");
+    header("Location: patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display) . "&info_message=" . $message);
+    exit();
 }
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-    exit();
-}
-
-// If dompdf is not available, redirect to HTML print view
-if (!$dompdf_available) {
-    $referral_id = $_GET['referral_id'] ?? '';
-    $display = $_GET['display'] ?? 'inline';
-    
-    // Redirect to HTML print version with appropriate parameters
-    header("Location: patient_referral_print.php?referral_id=" . urlencode($referral_id) . "&display=" . urlencode($display));
     exit();
 }
 
@@ -152,213 +131,64 @@ try {
     $referral_date = date('F d, Y g:i A', strtotime($referral['referral_date']));
     $current_date = date('F d, Y g:i A');
 
-    // Generate HTML content for PDF - Optimized for A4
-    $html = '
-    <!DOCTYPE html>
-    <html lang="en">
+    // Generate simple, DomPDF-compatible HTML content
+    $html = '<!DOCTYPE html>
+    <html>
     <head>
         <meta charset="UTF-8">
-        <style>
-            @page {
-                margin: 15mm;
-                size: A4 portrait;
-            }
-            
+        <style type="text/css">
             body {
-                font-family: "Times New Roman", serif;
-                font-size: 10pt;
-                line-height: 1.3;
+                font-family: Arial, sans-serif;
+                font-size: 11pt;
+                line-height: 1.4;
+                margin: 20px;
                 color: #000;
-                margin: 0;
-                padding: 0;
             }
-            
             .header {
                 text-align: center;
-                margin-bottom: 15px;
+                margin-bottom: 20px;
                 border-bottom: 2px solid #0077b6;
                 padding-bottom: 10px;
             }
-            
             .header h1 {
+                font-size: 16pt;
                 color: #0077b6;
-                font-size: 18pt;
-                font-weight: bold;
-                margin: 0 0 3px 0;
-            }
-            
-            .header h2 {
-                color: #023e8a;
-                font-size: 14pt;
-                font-weight: normal;
                 margin: 0 0 5px 0;
             }
-            
-            .header .subtitle {
-                font-size: 8pt;
-                color: #666;
-                margin-top: 5px;
-            }
-            
-            .document-title {
-                text-align: center;
+            .header h2 {
                 font-size: 14pt;
-                font-weight: bold;
-                color: #0077b6;
-                margin: 15px 0 10px 0;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
+                color: #023e8a;
+                margin: 0 0 5px 0;
             }
-            
-            .referral-number {
-                text-align: center;
-                font-size: 11pt;
-                font-weight: bold;
+            .section {
                 margin-bottom: 15px;
-                background: #f8f9fa;
-                padding: 8px;
-                border: 1px solid #dee2e6;
+                border: 1px solid #ccc;
+                padding: 10px;
             }
-            
-            .info-section {
-                margin-bottom: 12px;
-                border: 1px solid #dee2e6;
-                border-radius: 3px;
-                overflow: hidden;
-                page-break-inside: avoid;
-            }
-            
-            .section-header {
+            .section-title {
                 background: #0077b6;
                 color: white;
-                padding: 6px 10px;
+                padding: 5px 10px;
+                margin: -10px -10px 10px -10px;
                 font-weight: bold;
-                font-size: 11pt;
             }
-            
-            .section-content {
-                padding: 10px;
-                background: #fff;
-            }
-            
-            .info-grid {
-                display: table;
-                width: 100%;
+            .field {
                 margin-bottom: 8px;
             }
-            
-            .info-row {
-                display: table-row;
-            }
-            
-            .info-label {
-                display: table-cell;
+            .label {
                 font-weight: bold;
-                padding: 2px 10px 2px 0;
-                width: 28%;
-                vertical-align: top;
-                font-size: 9pt;
-            }
-            
-            .info-value {
-                display: table-cell;
-                padding: 2px 0;
-                vertical-align: top;
-                font-size: 9pt;
-            }
-            
-            .reason-box {
-                background: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 3px;
-                padding: 8px;
-                margin: 8px 0;
-                font-style: italic;
-                min-height: 30px;
-                font-size: 9pt;
-            }
-            
-            .vitals-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 5px;
-                font-size: 8pt;
-            }
-            
-            .vitals-table th,
-            .vitals-table td {
-                border: 1px solid #dee2e6;
-                padding: 4px 6px;
-                text-align: left;
-            }
-            
-            .vitals-table th {
-                background: #f8f9fa;
-                font-weight: bold;
-                font-size: 8pt;
-            }
-            
-            .status-badge {
                 display: inline-block;
-                padding: 2px 8px;
-                border-radius: 10px;
-                font-weight: bold;
-                font-size: 8pt;
-                text-transform: uppercase;
-                letter-spacing: 0.3px;
+                width: 150px;
             }
-            
-            .status-active { background: #d4edda; color: #155724; }
-            .status-pending { background: #fff3cd; color: #856404; }
-            .status-completed { background: #d1ecf1; color: #0c5460; }
-            .status-cancelled { background: #f8d7da; color: #721c24; }
-            
-            .footer {
-                margin-top: 20px;
-                padding-top: 10px;
-                border-top: 1px solid #dee2e6;
-                font-size: 8pt;
-                color: #666;
-                page-break-inside: avoid;
+            .value {
+                display: inline-block;
             }
-            
-            .signatures {
-                margin-top: 20px;
-                display: table;
-                width: 100%;
-                page-break-inside: avoid;
-            }
-            
-            .signature-block {
-                display: table-cell;
-                width: 50%;
-                text-align: center;
+            .reason-box {
+                background: #f5f5f5;
+                border: 1px solid #ddd;
                 padding: 10px;
-                vertical-align: top;
-            }
-            
-            .signature-line {
-                border-top: 1px solid #000;
-                margin-top: 30px;
-                padding-top: 3px;
-                font-weight: bold;
-                font-size: 9pt;
-            }
-            
-            .signature-title {
-                font-size: 8pt;
-                color: #666;
-                margin-top: 3px;
-            }
-            
-            /* Ensure content fits on one page */
-            .page-break-avoid {
-                page-break-inside: avoid;
-            }
-            
-            .compact-spacing {
-                margin: 0;
-                padding: 0;
+                margin: 10px 0;
+                font-style: italic;
             }
         </style>
     </head>
@@ -366,158 +196,195 @@ try {
         <div class="header">
             <h1>City Health Office</h1>
             <h2>Koronadal City, South Cotabato</h2>
-            <div class="subtitle">
-                "Committed to Health, Dedicated to Care"<br>
-                Tel: (083) 228-6012 | Email: cho.koronadal@gmail.com
+            <p>"Committed to Health, Dedicated to Care"</p>
+            <p>Tel: (083) 228-6012 | Email: cho.koronadal@gmail.com</p>
+            <h2 style="margin-top: 15px;">Medical Referral</h2>
+            <p><strong>Referral No: ' . htmlspecialchars($referral['referral_num']) . '</strong></p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Patient Information</div>
+            <div class="field">
+                <span class="label">Patient Name:</span>
+                <span class="value">' . htmlspecialchars($patient_name) . '</span>
             </div>
-        </div>
-        
-        <div class="document-title">Medical Referral</div>
-        
-        <div class="referral-number">
-            Referral No: ' . htmlspecialchars($referral['referral_num']) . '
-        </div>
-        
-        <div class="info-section">
-            <div class="section-header">Patient Information</div>
-            <div class="section-content">
-                <div class="info-grid">
-                    <div class="info-row">
-                        <div class="info-label">Patient Name:</div>
-                        <div class="info-value">' . htmlspecialchars($patient_name) . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Patient ID:</div>
-                        <div class="info-value">' . htmlspecialchars($referral['patient_number']) . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Date of Birth:</div>
-                        <div class="info-value">' . ($referral['date_of_birth'] ? date('F d, Y', strtotime($referral['date_of_birth'])) : 'Not specified') . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Age:</div>
-                        <div class="info-value">' . ($referral['age'] ? $referral['age'] . ' years old' : 'Not specified') . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Sex:</div>
-                        <div class="info-value">' . htmlspecialchars($referral['sex'] ?: 'Not specified') . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Address:</div>
-                        <div class="info-value">' . htmlspecialchars($referral['barangay'] ?: 'Not specified') . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Contact Number:</div>
-                        <div class="info-value">' . htmlspecialchars($referral['contact_number'] ?: 'Not specified') . '</div>
-                    </div>
-                </div>
+            <div class="field">
+                <span class="label">Patient ID:</span>
+                <span class="value">' . htmlspecialchars($referral['patient_number']) . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Date of Birth:</span>
+                <span class="value">' . ($referral['date_of_birth'] ? date('F d, Y', strtotime($referral['date_of_birth'])) : 'Not specified') . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Age:</span>
+                <span class="value">' . ($referral['age'] ? $referral['age'] . ' years old' : 'Not specified') . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Sex:</span>
+                <span class="value">' . htmlspecialchars($referral['sex'] ?: 'Not specified') . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Address:</span>
+                <span class="value">' . htmlspecialchars($referral['barangay'] ?: 'Not specified') . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Contact Number:</span>
+                <span class="value">' . htmlspecialchars($referral['contact_number'] ?: 'Not specified') . '</span>
             </div>
         </div>';
 
     // Add vitals section if available
     if ($vitals && !empty($vitals['blood_pressure'])) {
         $html .= '
-        <div class="info-section page-break-avoid">
-            <div class="section-header">Latest Vital Signs</div>
-            <div class="section-content">
-                <table class="vitals-table">
-                    <thead>
-                        <tr>
-                            <th>BP</th>
-                            <th>HR</th>
-                            <th>RR</th>
-                            <th>Temp</th>
-                            <th>Wt</th>
-                            <th>Ht</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>' . htmlspecialchars($vitals['blood_pressure'] ?: 'N/A') . '</td>
-                            <td>' . htmlspecialchars($vitals['heart_rate'] ? $vitals['heart_rate'] . ' bpm' : 'N/A') . '</td>
-                            <td>' . htmlspecialchars($vitals['respiratory_rate'] ? $vitals['respiratory_rate'] . '/min' : 'N/A') . '</td>
-                            <td>' . htmlspecialchars($vitals['temperature'] ? $vitals['temperature'] . '°C' : 'N/A') . '</td>
-                            <td>' . htmlspecialchars($vitals['weight'] ? $vitals['weight'] . ' kg' : 'N/A') . '</td>
-                            <td>' . htmlspecialchars($vitals['height'] ? $vitals['height'] . ' cm' : 'N/A') . '</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p style="font-size: 8pt; color: #666; margin: 5px 0 0 0;">
-                    Recorded: ' . ($vitals['recorded_at'] ? date('M d, Y g:i A', strtotime($vitals['recorded_at'])) : 'Not recorded') . '
-                </p>
+        <div class="section">
+            <div class="section-title">Latest Vital Signs</div>
+            <div class="field">
+                <span class="label">Blood Pressure:</span>
+                <span class="value">' . htmlspecialchars($vitals['blood_pressure'] ?: 'N/A') . '</span>
             </div>
+            <div class="field">
+                <span class="label">Heart Rate:</span>
+                <span class="value">' . htmlspecialchars($vitals['heart_rate'] ? $vitals['heart_rate'] . ' bpm' : 'N/A') . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Temperature:</span>
+                <span class="value">' . htmlspecialchars($vitals['temperature'] ? $vitals['temperature'] . '°C' : 'N/A') . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Weight:</span>
+                <span class="value">' . htmlspecialchars($vitals['weight'] ? $vitals['weight'] . ' kg' : 'N/A') . '</span>
+            </div>
+            <p style="font-size: 9pt; color: #666; margin: 10px 0 0 0;">
+                Recorded: ' . ($vitals['recorded_at'] ? date('M d, Y g:i A', strtotime($vitals['recorded_at'])) : 'Not recorded') . '
+            </p>
         </div>';
     }
 
     $html .= '
-        <div class="info-section page-break-avoid">
-            <div class="section-header">Referral Details</div>
-            <div class="section-content">
-                <div class="info-grid">
-                    <div class="info-row">
-                        <div class="info-label">Referred To:</div>
-                        <div class="info-value">' . htmlspecialchars($destination) . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Service:</div>
-                        <div class="info-value">' . htmlspecialchars($referral['service_name'] ?: 'General Consultation') . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Referral Date:</div>
-                        <div class="info-value">' . date('M d, Y g:i A', strtotime($referral['referral_date'])) . '</div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Status:</div>
-                        <div class="info-value">
-                            <span class="status-badge status-' . strtolower($referral['status']) . '">' . ucfirst($referral['status']) . '</span>
+        <div class="section">
+            <div class="section-title">Referral Details</div>
+            <div class="field">
+                <span class="label">Referred To:</span>
+                <span class="value">' . htmlspecialchars($destination) . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Service:</span>
+                <span class="value">' . htmlspecialchars($referral['service_name'] ?: 'General Consultation') . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Referral Date:</span>
+                <span class="value">' . date('M d, Y g:i A', strtotime($referral['referral_date'])) . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Status:</span>
+                <span class="value">' . ucfirst($referral['status']) . '</span>
+            </div>
+            <div class="field">
+                <span class="label">Referred By:</span>
+                <span class="value">' . htmlspecialchars($issuer_name) . ' (' . htmlspecialchars($referral['issuer_position'] ?: 'Healthcare Provider') . ')</span>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <strong>Reason for Referral:</strong>
+                <div class="reason-box">
+                    ' . nl2br(htmlspecialchars($referral['referral_reason'] ?: 'No specific reason provided.')) . '
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 30px; text-align: center;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="width: 50%; text-align: center; padding: 20px;">
+                        <div style="border-top: 1px solid #000; margin-top: 40px; padding-top: 5px;">
+                            <strong>' . htmlspecialchars($issuer_name) . '</strong><br>
+                            <small>Referring Healthcare Provider</small><br>
+                            <small>Date: ' . date('M d, Y', strtotime($referral['referral_date'])) . '</small>
                         </div>
-                    </div>
-                    <div class="info-row">
-                        <div class="info-label">Referred By:</div>
-                        <div class="info-value">' . htmlspecialchars($issuer_name) . ' (' . htmlspecialchars($referral['issuer_position'] ?: 'Healthcare Provider') . ')</div>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 12px;">
-                    <strong style="font-size: 9pt;">Reason for Referral:</strong>
-                    <div class="reason-box">
-                        ' . nl2br(htmlspecialchars($referral['referral_reason'] ?: 'No specific reason provided.')) . '
-                    </div>
-                </div>
-            </div>
+                    </td>
+                    <td style="width: 50%; text-align: center; padding: 20px;">
+                        <div style="border-top: 1px solid #000; margin-top: 40px; padding-top: 5px;">
+                            <strong>_________________________</strong><br>
+                            <small>Receiving Healthcare Provider</small><br>
+                            <small>Date: _______________</small>
+                        </div>
+                    </td>
+                </tr>
+            </table>
         </div>
         
-        <div class="signatures page-break-avoid">
-            <div class="signature-block">
-                <div class="signature-line">' . htmlspecialchars($issuer_name) . '</div>
-                <div class="signature-title">Referring Healthcare Provider</div>
-                <div class="signature-title">Date: ' . date('M d, Y', strtotime($referral['referral_date'])) . '</div>
-            </div>
-            <div class="signature-block">
-                <div class="signature-line">_________________________</div>
-                <div class="signature-title">Receiving Healthcare Provider</div>
-                <div class="signature-title">Date: _______________</div>
-            </div>
-        </div>
-        
-        <div class="footer page-break-avoid">
-            <p style="margin: 0 0 3px 0;"><strong>Note:</strong> This is an official medical referral document. Please present this to the receiving healthcare facility.</p>
-            <p style="margin: 0;">Generated: ' . date('M d, Y g:i A') . ' | CHO Koronadal WBHSMS</p>
+        <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #ccc; font-size: 9pt; color: #666;">
+            <p><strong>Note:</strong> This is an official medical referral document. Please present this to the receiving healthcare facility.</p>
+            <p>Generated: ' . date('M d, Y g:i A') . ' | CHO Koronadal WBHSMS</p>
         </div>
     </body>
     </html>';
 
-    // Configure Dompdf using fully qualified class names
+    // Configure Dompdf using fully qualified class names with strict security
     $options = new \Dompdf\Options();
-    $options->set('defaultFont', 'Times New Roman');
-    $options->set('isRemoteEnabled', true);
-    $options->set('isHtml5ParserEnabled', true);
+    $options->set('defaultFont', 'Arial');  // Use built-in font
+    $options->set('isRemoteEnabled', false);  // Disable remote content for security
+    $options->set('isHtml5ParserEnabled', false);  // Disable HTML5 parser to avoid missing dependency
+    $options->set('isPhpEnabled', false);  // Disable PHP for security
+    $options->set('isCssFloatEnabled', false);  // Disable CSS float
+    $options->set('isJavascriptEnabled', false);  // Disable JavaScript
+    $options->set('debugKeepTemp', false);  // Don't keep temp files
+    $options->set('debugCss', false);  // Disable CSS debugging
+    $options->set('debugLayout', false);  // Disable layout debugging
 
     // Create Dompdf instance
     $dompdf = new \Dompdf\Dompdf($options);
-    $dompdf->loadHtml($html);
-    $dompdf->setPaper('A4', 'portrait');
-    $dompdf->render();
+    
+    try {
+        // Use loadHTML with XML-compatible HTML (no HTML5 features)
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+    } catch (Exception $e) {
+        error_log("DomPDF Render Error: " . $e->getMessage());
+        
+        // Try fallback: simplified HTML without complex CSS
+        $simple_html = '<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 12pt; }
+                .header { text-align: center; margin-bottom: 20px; }
+                .section { margin-bottom: 15px; }
+                .label { font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>City Health Office - Koronadal City</h1>
+                <h2>Medical Referral</h2>
+                <p>Referral No: ' . htmlspecialchars($referral['referral_num']) . '</p>
+            </div>
+            <div class="section">
+                <div class="label">Patient Name:</div>
+                <div>' . htmlspecialchars($patient_name) . '</div>
+            </div>
+            <div class="section">
+                <div class="label">Referred To:</div>
+                <div>' . htmlspecialchars($destination) . '</div>
+            </div>
+            <div class="section">
+                <div class="label">Reason:</div>
+                <div>' . nl2br(htmlspecialchars($referral['referral_reason'] ?: 'No specific reason provided.')) . '</div>
+            </div>
+            <div class="section">
+                <div class="label">Date:</div>
+                <div>' . date('M d, Y g:i A', strtotime($referral['referral_date'])) . '</div>
+            </div>
+        </body>
+        </html>';
+        
+        $dompdf->loadHtml($simple_html);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+    }
 
     // Generate filename
     $filename = 'Referral_' . $referral['referral_num'] . '_' . date('Y-m-d') . '.pdf';
