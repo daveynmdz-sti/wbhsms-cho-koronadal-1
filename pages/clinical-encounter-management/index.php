@@ -497,11 +497,10 @@ try {
 
         /* Page Header */
         .page-header {
-            display: flex;
-            justify-content: space-between;
+
             align-items: center;
             margin-bottom: 2rem;
-            flex-wrap: wrap;
+
         }
 
         .page-header h1 {
@@ -1064,7 +1063,7 @@ try {
             background: white;
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            margin: 2rem 0;
+            margin: 0.25rem 0;
             overflow: hidden;
             border: 1px solid #e8f0fe;
         }
@@ -2109,22 +2108,23 @@ try {
                         </select>
                     </div>
                 <?php endif; ?>
-
-                <div class="form-group">
-                    <label>&nbsp;</label>
-                    <div class="filter-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-search"></i> Search Consultations
-                        </button>
-                        <a href="?" class="btn btn-secondary">
-                            <i class="fas fa-refresh"></i> Reset Filters
-                        </a>
-                    </div>
-                </div>
             </form>
+
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <div class="filter-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Search Consultations
+                    </button>
+                    <a href="?" class="btn btn-secondary">
+                        <i class="fas fa-refresh"></i> Reset Filters
+                    </a>
+                </div>
+            </div>
         </div>
 
         <!-- Encounters Table -->
+         <div class="card-container">
         <div class="encounters-card">
             <div class="encounters-header">
                 <div class="encounters-title">
@@ -2380,7 +2380,7 @@ try {
                 <?php endif; ?>
             </div>
         </div>
-
+                </div>
         <!-- Pagination -->
         <?php if ($total_pages > 1): ?>
             <div class="pagination">

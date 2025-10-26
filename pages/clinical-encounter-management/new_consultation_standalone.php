@@ -140,9 +140,9 @@ if (isset($_GET['action'])) {
             }
             
             if (!empty($search_barangay)) {
-                $search_conditions[] = "b.barangay_name LIKE ?";
-                $search_params[] = "%{$search_barangay}%";
-                $param_types .= 's';
+                $search_conditions[] = "p.barangay_id = ?";
+                $search_params[] = $search_barangay;
+                $param_types .= 'i';
             }
             
             if (empty($search_conditions)) {
@@ -509,6 +509,17 @@ try {
     // Continue without services - form will still work
 }
 
+// Fetch available barangays for dropdown
+$barangays = [];
+try {
+    $stmt = $conn->prepare("SELECT barangay_id, barangay_name FROM barangay ORDER BY barangay_name");
+    $stmt->execute();
+    $barangays = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+} catch (Exception $e) {
+    error_log("Error fetching barangays: " . $e->getMessage());
+    // Continue without barangays - form will still work
+}
+
 // If we have a selected patient after form submission, load their data
 if ($selected_patient_id) {
     try {
@@ -572,6 +583,9 @@ if ($selected_patient_id) {
     <link rel="stylesheet" href="../../assets/css/edit.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <style>
+        .profile-wrapper{
+            max-width: 1200px;
+        }
         .search-container {
             background: white;
             border-radius: 10px;
@@ -1133,12 +1147,16 @@ if ($selected_patient_id) {
                         </div>
                         <div class="form-group">
                             <label>Barangay</label>
-                            <input type="text" 
-                                   id="barangaySearch" 
-                                   name="barangay"
-                                   class="form-control" 
-                                   placeholder="Enter barangay"
-                                   autocomplete="off">
+                            <select id="barangaySearch" 
+                                    name="barangay"
+                                    class="form-control">
+                                <option value="">Select Barangay</option>
+                                <?php foreach ($barangays as $barangay): ?>
+                                    <option value="<?= htmlspecialchars($barangay['barangay_id']) ?>">
+                                        <?= htmlspecialchars($barangay['barangay_name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
                     
