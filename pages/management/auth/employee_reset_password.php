@@ -23,7 +23,10 @@ header('X-XSS-Protection: 1; mode=block');
 
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
-    ob_end_clean(); // Clean output buffer before redirect
+    // Clean output buffer before redirect if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
@@ -35,7 +38,10 @@ if (empty($_SESSION['reset_otp_verified']) || empty($_SESSION['reset_user_id']))
         'type' => 'error',
         'msg' => 'Your password reset session has expired. Please start the password reset process again.'
     ];
-    ob_end_clean(); // Clean output buffer before redirect
+    // Clean output buffer before redirect if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Location: employee_forgot_password.php');
     exit;
 }
@@ -56,7 +62,10 @@ if (time() - $reset_time > 1800) { // 30 minutes
         'type' => 'error',
         'msg' => 'Your password reset session has expired for security. Please start over.'
     ];
-    ob_end_clean(); // Clean output buffer before redirect
+    // Clean output buffer before redirect if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Location: employee_forgot_password.php');
     exit;
 }

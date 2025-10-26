@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $elapsed = microtime(true) - $start_time;
         $target_time = 0.5; // 500ms target
         if ($elapsed < $target_time) {
-            usleep(($target_time - $elapsed) * 1000000);
+            usleep((int)(($target_time - $elapsed) * 1000000));
         }
 
         if ($employee) {
@@ -170,7 +170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'type' => 'success', 
                 'msg' => 'Identity verified! OTP sent to ' . $employee['email'] . '. Check your inbox and enter the code below.'
             ];
-            ob_end_clean(); // Clean output buffer before redirect
+            // Clean output buffer before redirect if it exists
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
             header('Location: employee_forgot_password_otp.php');
             exit;
             
@@ -193,8 +196,10 @@ $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? array('type' => 'error', 'msg' => $error) : (!empty($success) ? array('type' => 'success', 'msg' => $success) : null));
 
-// End output buffering and flush content
-ob_end_flush();
+// End output buffering and flush content safely
+if (ob_get_level()) {
+    ob_end_flush();
+}
 
 // Dynamic asset path detection for production compatibility
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";

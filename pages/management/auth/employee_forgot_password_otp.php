@@ -23,7 +23,10 @@ header('X-XSS-Protection: 1; mode=block');
 
 // Redirect if already logged in
 if (!empty($_SESSION['employee_id'])) {
-    ob_end_clean(); // Clean output buffer before redirect
+    // Clean output buffer before redirect if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     $role = strtolower($_SESSION['role']);
     header('Location: ../' . $role . '/dashboard.php');
     exit;
@@ -35,7 +38,10 @@ if (empty($_SESSION['reset_otp']) || empty($_SESSION['reset_user_id'])) {
         'type' => 'error',
         'msg' => 'Invalid session. Please start the password reset process again.'
     ];
-    ob_end_clean(); // Clean output buffer before redirect
+    // Clean output buffer before redirect if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Location: employee_forgot_password.php');
     exit;
 }
@@ -48,7 +54,10 @@ if (time() - $otp_time > 900) {
         'type' => 'error',
         'msg' => 'OTP has expired. Please request a new password reset.'
     ];
-    ob_end_clean(); // Clean output buffer before redirect
+    // Clean output buffer before redirect if it exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Location: employee_forgot_password.php');
     exit;
 }
@@ -88,7 +97,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // OTP is valid - redirect to new password page
         $_SESSION['reset_otp_verified'] = true;
-        ob_end_clean(); // Clean output buffer before redirect
+        // Clean output buffer before redirect if it exists
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Location: employee_reset_password.php');
         exit;
 
@@ -105,8 +117,10 @@ $sessionFlash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 $flash = $sessionFlash ?: (!empty($error) ? array('type' => 'error', 'msg' => $error) : (!empty($success) ? array('type' => 'success', 'msg' => $success) : null));
 
-// End output buffering and flush content
-ob_end_flush();
+// End output buffering and flush content safely
+if (ob_get_level()) {
+    ob_end_flush();
+}
 
 // Dynamic asset path detection for production compatibility
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
