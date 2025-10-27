@@ -28,75 +28,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     try {
         $action = $_POST['action'];
         $employee_id = intval($_POST['employee_id'] ?? 0);
-        
+
         if ($employee_id <= 0) {
             throw new Exception('Invalid employee ID');
         }
-        
+
         // Prevent admin from deactivating themselves
         if ($employee_id == $_SESSION['employee_id'] && in_array($action, ['deactivate', 'delete'])) {
             throw new Exception('You cannot deactivate or delete your own account');
         }
-        
+
         $conn->begin_transaction();
-        
+
         switch ($action) {
             case 'deactivate':
                 $stmt = $conn->prepare("UPDATE employees SET status = 'inactive' WHERE employee_id = ?");
                 $stmt->bind_param("i", $employee_id);
                 $stmt->execute();
-                
+
                 // Log activity
                 $log_description = "Deactivated employee ID: $employee_id";
                 break;
-                
+
             case 'activate':
                 $stmt = $conn->prepare("UPDATE employees SET status = 'active' WHERE employee_id = ?");
                 $stmt->bind_param("i", $employee_id);
                 $stmt->execute();
-                
+
                 // Log activity
                 $log_description = "Activated employee ID: $employee_id";
                 break;
-                
+
             case 'reset_password':
                 // Generate new secure password
                 $new_password = 'CHO' . date('Y') . '@' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
                 $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
-                
+
                 $stmt = $conn->prepare("UPDATE employees SET password = ?, must_change_password = 1, password_changed_at = NOW() WHERE employee_id = ?");
                 $stmt->bind_param("si", $hashed_password, $employee_id);
                 $stmt->execute();
-                
+
                 // Log activity
                 $log_description = "Reset password for employee ID: $employee_id";
                 $success_message = "Password reset successfully! New password: <strong>$new_password</strong><br><small>Please share this securely with the employee.</small>";
                 break;
-                
+
             default:
                 throw new Exception('Invalid action');
         }
-        
+
         // Log the activity
         if (isset($log_description)) {
             $log_stmt = $conn->prepare("
                 INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description, ip_address, user_agent) 
                 VALUES (?, ?, ?, ?, ?, ?)
             ");
-            
+
             $ip_address = $_SERVER['REMOTE_ADDR'] ?? null;
             $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-            
+
             $log_stmt->bind_param("iissss", $_SESSION['employee_id'], $employee_id, $action, $log_description, $ip_address, $user_agent);
             $log_stmt->execute();
         }
-        
+
         $conn->commit();
-        
+
         if (empty($success_message)) {
             $success_message = ucfirst($action) . " completed successfully!";
         }
-        
     } catch (Exception $e) {
         $conn->rollback();
         $error_message = "Action failed: " . $e->getMessage();
@@ -212,15 +211,16 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Employee Management - User Management System</title>
-    
+
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
-    
+
     <style>
         /* Exact CSS from referrals_management.php */
 
@@ -353,7 +353,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             border-color: #0077b6;
             box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.1);
         }
-        
+
         .btn {
             padding: 0.75rem 1.5rem;
             border: none;
@@ -413,7 +413,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             background: #17a2b8;
             color: white;
         }
-        
+
         .card-container {
             background: white;
             border-radius: 10px;
@@ -428,7 +428,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             background: white;
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
         .table-wrapper {
@@ -468,7 +468,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         .table tbody tr:hover {
             background: #f8f9fa;
         }
-        
+
         .actions-group {
             display: flex;
             gap: 0.25rem;
@@ -530,7 +530,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             background: #6c757d;
             color: white;
         }
-        
+
         .empty-state {
             text-align: center;
             padding: 3rem;
@@ -657,7 +657,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             background: #6c757d;
             color: white;
         }
-        
+
         /* Pagination */
         .pagination-wrapper {
             background: white;
@@ -715,9 +715,10 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             color: #666;
             font-size: 0.9rem;
         }
-        
+
         /* Mobile responsive */
         @media (max-width: 768px) {
+
             .table th,
             .table td {
                 padding: 0.5rem 0.25rem;
@@ -756,318 +757,319 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 <body>
     <!-- Include sidebar -->
     <?php include $root_path . '/includes/sidebar_admin.php'; ?>
-    
+
     <div class="homepage">
         <div class="content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb" style="margin-top: 50px;">
-            <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
-            <i class="fas fa-chevron-right"></i>
-            <span>Employee Management</span>
-        </div>
+            <!-- Breadcrumb Navigation -->
+            <div class="breadcrumb" style="margin-top: 50px;">
+                <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+                <i class="fas fa-chevron-right"></i>
+                <span>Employee Management</span>
+            </div>
 
-        <!-- Page Header -->
-        <div class="page-header">
-            <h1><i class="fas fa-users-cog"></i> Employee Management</h1>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <a href="user_activity_logs.php" class="btn btn-outline-info">
-                    <i class="fas fa-history"></i> View Activity Logs
-                </a>
-                <a href="add_employee.php" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Add Employee
-                </a>
-            </div>
-        </div>
-                    
-        <!-- Success/Error Messages -->
-        <?php if (!empty($success_message)): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?= $success_message ?>
-                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
-            </div>
-        <?php endif; ?>
-        
-        <?php if (!empty($error_message)): ?>
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-triangle"></i> <?= htmlspecialchars($error_message) ?>
-                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
-            </div>
-        <?php endif; ?>
-        
-        <!-- Statistics Cards -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number"><?= number_format($total_records) ?></div>
-                <div class="stat-label">Total Employees</div>
-            </div>
-            <div class="stat-card">
-                <?php
-                $active_count = array_reduce($employees, function($carry, $emp) { 
-                    return $carry + ($emp['status'] === 'active' ? 1 : 0); 
-                }, 0);
-                ?>
-                <div class="stat-number success"><?= $active_count ?></div>
-                <div class="stat-label">Active</div>
-            </div>
-            <div class="stat-card">
-                <?php
-                $inactive_count = array_reduce($employees, function($carry, $emp) { 
-                    return $carry + ($emp['status'] === 'inactive' ? 1 : 0); 
-                }, 0);
-                ?>
-                <div class="stat-number warning"><?= $inactive_count ?></div>
-                <div class="stat-label">Inactive</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number info"><?= count($roles) ?></div>
-                <div class="stat-label">Roles</div>
-            </div>
-        </div>
-        
-        <!-- Search and Filter Section -->
-        <div class="filters-container">
-            <div class="section-header" style="padding: 0 0 15px 0;margin-bottom: 15px;border-bottom: 1px solid rgba(0, 119, 182, 0.2);">
-                <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
-                    <i class="fas fa-filter"></i> Search & Filter Options
-                </h4>
-            </div>
-            <form method="GET" class="filters-grid">
-                <div class="form-group">
-                    <label for="search">Search</label>
-                    <input type="text" id="search" name="search" 
-                           value="<?= htmlspecialchars($search) ?>" 
-                           placeholder="Name, email, employee number...">
-                </div>
-                <div class="form-group">
-                    <label for="role_filter">Role</label>
-                    <select id="role_filter" name="role_filter">
-                        <option value="">All Roles</option>
-                        <?php foreach ($roles as $role): ?>
-                            <option value="<?= $role['role_id'] ?>" 
-                                    <?= ($role_filter == $role['role_id']) ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($role['role_name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="status_filter">Status</label>
-                    <select id="status_filter" name="status_filter">
-                        <option value="">All Status</option>
-                        <option value="active" <?= ($status_filter === 'active') ? 'selected' : '' ?>>Active</option>
-                        <option value="inactive" <?= ($status_filter === 'inactive') ? 'selected' : '' ?>>Inactive</option>
-                        <option value="on_leave" <?= ($status_filter === 'on_leave') ? 'selected' : '' ?>>On Leave</option>
-                        <option value="retired" <?= ($status_filter === 'retired') ? 'selected' : '' ?>>Retired</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="facility_filter">Facility</label>
-                    <select id="facility_filter" name="facility_filter">
-                        <option value="">All Facilities</option>
-                        <?php foreach ($facilities as $facility): ?>
-                            <option value="<?= $facility['facility_id'] ?>" 
-                                    <?= ($facility_filter == $facility['facility_id']) ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($facility['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                </div>
-                <div class="form-group">
-                    <a href="?" class="btn btn-secondary" style="margin-top: 0.5rem;">
-                        <i class="fas fa-times"></i> Clear
+            <!-- Page Header -->
+            <div class="page-header">
+                <h1><i class="fas fa-users-cog"></i> Employee Management</h1>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <a href="user_activity_logs.php" class="btn btn-outline-info">
+                        <i class="fas fa-history"></i> View Activity Logs
+                    </a>
+                    <a href="add_employee.php" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Employee
                     </a>
                 </div>
-            </form>
-        </div>
-        
-        <!-- Employee Table -->
-        <div class="card-container">
-            <div class="section-header" style="padding: 0 0 15px 0;margin-bottom: 15px;border-bottom: 1px solid rgba(0, 119, 182, 0.2);">
-                <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
-                    <i class="fas fa-users"></i> Employee Directory
-                </h4>
             </div>
-            <div class="table-container">
-                <div class="table-wrapper">
-                    <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Employee #</th>
-                            <th>Name</th>
-                            <th>Role</th>
-                            <th>Facility</th>
-                            <th>Contact</th>
-                            <th>Status</th>
-                            <th>Last Login</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($employees)): ?>
-                            <tr>
-                                <td colspan="8">
-                                    <div class="empty-state">
-                                        <i class="fas fa-users"></i>
-                                        <br>No employees found matching your criteria.
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($employees as $employee): ?>
-                                <tr>
-                                    <td>
-                                        <strong><?= htmlspecialchars($employee['employee_number']) ?></strong>
-                                    </td>
-                                    <td>
-                                        <div>
-                                            <strong><?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?></strong>
-                                            <?php if ($employee['must_change_password']): ?>
-                                                <br><small style="color: #856404;"><i class="fas fa-exclamation-triangle"></i> Must change password</small>
-                                            <?php endif; ?>
-                                        </div>
-                                        <small style="color: #6c757d;"><?= htmlspecialchars($employee['email']) ?></small>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-info"><?= htmlspecialchars($employee['role_name']) ?></span>
-                                    </td>
-                                    <td>
-                                        <small><?= htmlspecialchars($employee['facility_name']) ?></small>
-                                        <br><small style="color: #6c757d;"><?= htmlspecialchars($employee['facility_type']) ?></small>
-                                    </td>
-                                    <td>
-                                        <small><?= htmlspecialchars($employee['contact_num']) ?></small>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-<?= $employee['status'] ?>">
-                                            <?= ucfirst($employee['status']) ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <small>
-                                            <?= $employee['last_login'] ? 
-                                                date('M j, Y g:i A', strtotime($employee['last_login'])) : 
-                                                '<span style="color: #6c757d;">Never</span>' ?>
-                                        </small>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            <a href="edit_employee.php?id=<?= $employee['employee_id'] ?>" 
-                                               class="btn-action btn-outline-primary" 
-                                               title="Edit Employee">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
-                                            
-                                            <?php if ($employee['status'] === 'active'): ?>
-                                                <form method="POST" style="display: inline;">
-                                                    <input type="hidden" name="action" value="deactivate">
-                                                    <input type="hidden" name="employee_id" value="<?= $employee['employee_id'] ?>">
-                                                    <button type="submit" class="btn-action btn-outline-warning" 
-                                                            title="Deactivate Employee"
-                                                            onclick="return confirm('Are you sure you want to deactivate this employee?')">
-                                                        <i class="fas fa-user-times"></i>
-                                                    </button>
-                                                </form>
-                                            <?php else: ?>
-                                                <form method="POST" style="display: inline;">
-                                                    <input type="hidden" name="action" value="activate">
-                                                    <input type="hidden" name="employee_id" value="<?= $employee['employee_id'] ?>">
-                                                    <button type="submit" class="btn-action btn-outline-success" 
-                                                            title="Activate Employee">
-                                                        <i class="fas fa-user-check"></i>
-                                                    </button>
-                                                </form>
-                                            <?php endif; ?>
-                                            
-                                            <form method="POST" style="display: inline;">
-                                                <input type="hidden" name="action" value="reset_password">
-                                                <input type="hidden" name="employee_id" value="<?= $employee['employee_id'] ?>">
-                                                <button type="submit" class="btn-action btn-outline-info" 
-                                                        title="Reset Password"
-                                                        onclick="return confirm('Are you sure you want to reset this employee\'s password?')">
-                                                    <i class="fas fa-key"></i>
-                                                </button>
-                                            </form>
-                                            
-                                            <a href="../staff-management/staff_assignments.php?employee_filter=<?= $employee['employee_id'] ?>" 
-                                               class="btn-action btn-outline-secondary" 
-                                               title="Assign Stations">
-                                                <i class="fas fa-map-marker-alt"></i>
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
+
+            <!-- Success/Error Messages -->
+            <?php if (!empty($success_message)): ?>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> <?= $success_message ?>
+                    <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($error_message)): ?>
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> <?= htmlspecialchars($error_message) ?>
+                    <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+                </div>
+            <?php endif; ?>
+
+            <!-- Statistics Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number"><?= number_format($total_records) ?></div>
+                    <div class="stat-label">Total Employees</div>
+                </div>
+                <div class="stat-card">
+                    <?php
+                    $active_count = array_reduce($employees, function ($carry, $emp) {
+                        return $carry + ($emp['status'] === 'active' ? 1 : 0);
+                    }, 0);
+                    ?>
+                    <div class="stat-number success"><?= $active_count ?></div>
+                    <div class="stat-label">Active</div>
+                </div>
+                <div class="stat-card">
+                    <?php
+                    $inactive_count = array_reduce($employees, function ($carry, $emp) {
+                        return $carry + ($emp['status'] === 'inactive' ? 1 : 0);
+                    }, 0);
+                    ?>
+                    <div class="stat-number warning"><?= $inactive_count ?></div>
+                    <div class="stat-label">Inactive</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number info"><?= count($roles) ?></div>
+                    <div class="stat-label">Roles</div>
+                </div>
+            </div>
+
+            <!-- Search and Filter Section -->
+            <div class="filters-container">
+                <div class="section-header" style="padding: 0 0 15px 0;margin-bottom: 15px;border-bottom: 1px solid rgba(0, 119, 182, 0.2);">
+                    <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
+                        <i class="fas fa-filter"></i> Search & Filter Options
+                    </h4>
+                </div>
+                <form method="GET" class="filters-grid">
+                    <div class="form-group">
+                        <label for="search">Search</label>
+                        <input type="text" id="search" name="search"
+                            value="<?= htmlspecialchars($search) ?>"
+                            placeholder="Name, email, employee number...">
+                    </div>
+                    <div class="form-group">
+                        <label for="role_filter">Role</label>
+                        <select id="role_filter" name="role_filter">
+                            <option value="">All Roles</option>
+                            <?php foreach ($roles as $role): ?>
+                                <option value="<?= $role['role_id'] ?>"
+                                    <?= ($role_filter == $role['role_id']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($role['role_name']) ?>
+                                </option>
                             <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status_filter">Status</label>
+                        <select id="status_filter" name="status_filter">
+                            <option value="">All Status</option>
+                            <option value="active" <?= ($status_filter === 'active') ? 'selected' : '' ?>>Active</option>
+                            <option value="inactive" <?= ($status_filter === 'inactive') ? 'selected' : '' ?>>Inactive</option>
+                            <option value="on_leave" <?= ($status_filter === 'on_leave') ? 'selected' : '' ?>>On Leave</option>
+                            <option value="retired" <?= ($status_filter === 'retired') ? 'selected' : '' ?>>Retired</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="facility_filter">Facility</label>
+                        <select id="facility_filter" name="facility_filter">
+                            <option value="">All Facilities</option>
+                            <?php foreach ($facilities as $facility): ?>
+                                <option value="<?= $facility['facility_id'] ?>"
+                                    <?= ($facility_filter == $facility['facility_id']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($facility['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <a href="?" class="btn btn-secondary" style="margin-top: 0.5rem;">
+                            <i class="fas fa-times"></i> Clear
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Employee Table -->
+            <div class="card-container">
+                <div class="section-header" style="padding: 0 0 15px 0;margin-bottom: 15px;border-bottom: 1px solid rgba(0, 119, 182, 0.2);">
+                    <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
+                        <i class="fas fa-users"></i> Employee Directory
+                    </h4>
                 </div>
+                <div class="table-container">
+                    <div class="table-wrapper">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Employee #</th>
+                                        <th>Name</th>
+                                        <th>Role</th>
+                                        <th>Facility</th>
+                                        <th>Contact</th>
+                                        <th>Status</th>
+                                        <th>Last Login</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($employees)): ?>
+                                        <tr>
+                                            <td colspan="8">
+                                                <div class="empty-state">
+                                                    <i class="fas fa-users"></i>
+                                                    <br>No employees found matching your criteria.
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($employees as $employee): ?>
+                                            <tr>
+                                                <td>
+                                                    <strong><?= htmlspecialchars($employee['employee_number']) ?></strong>
+                                                </td>
+                                                <td>
+                                                    <div>
+                                                        <strong><?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?></strong>
+                                                        <?php if ($employee['must_change_password']): ?>
+                                                            <br><small style="color: #856404;"><i class="fas fa-exclamation-triangle"></i> Must change password</small>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <small style="color: #6c757d;"><?= htmlspecialchars($employee['email']) ?></small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-info"><?= htmlspecialchars($employee['role_name']) ?></span>
+                                                </td>
+                                                <td>
+                                                    <small><?= htmlspecialchars($employee['facility_name']) ?></small>
+                                                    <br><small style="color: #6c757d;"><?= htmlspecialchars($employee['facility_type']) ?></small>
+                                                </td>
+                                                <td>
+                                                    <small><?= htmlspecialchars($employee['contact_num']) ?></small>
+                                                </td>
+                                                <td>
+                                                    <span class="status-badge status-<?= $employee['status'] ?>">
+                                                        <?= ucfirst($employee['status']) ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <small>
+                                                        <?= $employee['last_login'] ?
+                                                            date('M j, Y g:i A', strtotime($employee['last_login'])) :
+                                                            '<span style="color: #6c757d;">Never</span>' ?>
+                                                    </small>
+                                                </td>
+                                                <td>
+                                                    <div class="action-buttons">
+                                                        <a href="edit_employee.php?id=<?= $employee['employee_id'] ?>"
+                                                            class="btn-action btn-outline-primary"
+                                                            title="Edit Employee">
+                                                            <i class="fas fa-edit"></i>
+                                                        </a>
+
+                                                        <?php if ($employee['status'] === 'active'): ?>
+                                                            <form method="POST" style="display: inline;">
+                                                                <input type="hidden" name="action" value="deactivate">
+                                                                <input type="hidden" name="employee_id" value="<?= $employee['employee_id'] ?>">
+                                                                <button type="submit" class="btn-action btn-outline-warning"
+                                                                    title="Deactivate Employee"
+                                                                    onclick="return confirm('Are you sure you want to deactivate this employee?')">
+                                                                    <i class="fas fa-user-times"></i>
+                                                                </button>
+                                                            </form>
+                                                        <?php else: ?>
+                                                            <form method="POST" style="display: inline;">
+                                                                <input type="hidden" name="action" value="activate">
+                                                                <input type="hidden" name="employee_id" value="<?= $employee['employee_id'] ?>">
+                                                                <button type="submit" class="btn-action btn-outline-success"
+                                                                    title="Activate Employee">
+                                                                    <i class="fas fa-user-check"></i>
+                                                                </button>
+                                                            </form>
+                                                        <?php endif; ?>
+
+                                                        <form method="POST" style="display: inline;">
+                                                            <input type="hidden" name="action" value="reset_password">
+                                                            <input type="hidden" name="employee_id" value="<?= $employee['employee_id'] ?>">
+                                                            <button type="submit" class="btn-action btn-outline-info"
+                                                                title="Reset Password"
+                                                                onclick="return confirm('Are you sure you want to reset this employee\'s password?')">
+                                                                <i class="fas fa-key"></i>
+                                                            </button>
+                                                        </form>
+
+                                                        <a href="../staff-management/staff_assignments.php?employee_filter=<?= $employee['employee_id'] ?>"
+                                                            class="btn-action btn-outline-secondary"
+                                                            title="Assign Stations">
+                                                            <i class="fas fa-map-marker-alt"></i>
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <?php if ($total_pages > 1): ?>
+                    <div class="pagination-wrapper">
+                        <ul class="pagination">
+                            <?php if ($page > 1): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>">
+                                        <i class="fas fa-chevron-left"></i> Previous
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+
+                            <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
+                                <li class="page-item <?= ($i === $page) ? 'active' : '' ?>">
+                                    <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>">
+                                        <?= $i ?>
+                                    </a>
+                                </li>
+                            <?php endfor; ?>
+
+                            <?php if ($page < $total_pages): ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>">
+                                        Next <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                        </ul>
+
+                        <div class="pagination-info">
+                            Showing <?= min($offset + 1, $total_records) ?> to <?= min($offset + $per_page, $total_records) ?>
+                            of <?= number_format($total_records) ?> employees
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
-        
-        <!-- Pagination -->
-        <?php if ($total_pages > 1): ?>
-            <div class="pagination-wrapper">
-                <ul class="pagination">
-                    <?php if ($page > 1): ?>
-                        <li class="page-item">
-                            <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>">
-                                <i class="fas fa-chevron-left"></i> Previous
-                            </a>
-                        </li>
-                    <?php endif; ?>
-                    
-                    <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
-                        <li class="page-item <?= ($i === $page) ? 'active' : '' ?>">
-                            <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>">
-                                <?= $i ?>
-                            </a>
-                        </li>
-                    <?php endfor; ?>
-                    
-                    <?php if ($page < $total_pages): ?>
-                        <li class="page-item">
-                            <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>">
-                                Next <i class="fas fa-chevron-right"></i>
-                            </a>
-                        </li>
-                    <?php endif; ?>
-                </ul>
-                
-                <div class="pagination-info">
-                    Showing <?= min($offset + 1, $total_records) ?> to <?= min($offset + $per_page, $total_records) ?> 
-                    of <?= number_format($total_records) ?> employees
-                </div>
-            </div>
-        <?php endif; ?>
-        </div>
-    </div>
-    
-    <script>
-        // Auto-dismiss alerts after 8 seconds
-        setTimeout(function() {
-            document.querySelectorAll('.alert').forEach(function(alert) {
-                alert.style.opacity = '0';
-                setTimeout(() => alert.remove(), 300);
-            });
-        }, 8000);
-        
-        // Confirm bulk actions
-        document.querySelectorAll('form[method="POST"]').forEach(function(form) {
-            form.addEventListener('submit', function(e) {
-                const action = form.querySelector('input[name="action"]').value;
-                if (['deactivate', 'delete', 'reset_password'].includes(action)) {
-                    if (!confirm(`Are you sure you want to ${action.replace('_', ' ')} this employee?`)) {
-                        e.preventDefault();
+
+        <script>
+            // Auto-dismiss alerts after 8 seconds
+            setTimeout(function() {
+                document.querySelectorAll('.alert').forEach(function(alert) {
+                    alert.style.opacity = '0';
+                    setTimeout(() => alert.remove(), 300);
+                });
+            }, 8000);
+
+            // Confirm bulk actions
+            document.querySelectorAll('form[method="POST"]').forEach(function(form) {
+                form.addEventListener('submit', function(e) {
+                    const action = form.querySelector('input[name="action"]').value;
+                    if (['deactivate', 'delete', 'reset_password'].includes(action)) {
+                        if (!confirm(`Are you sure you want to ${action.replace('_', ' ')} this employee?`)) {
+                            e.preventDefault();
+                        }
                     }
-                }
+                });
             });
-        });
-    </script>
+        </script>
 </body>
+
 </html>

@@ -1322,10 +1322,10 @@ if (isset($_GET['logout'])) {
                         style="background:#2980b9;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(41,128,185,0.08);cursor:pointer;transition:background 0.18s;">
                         <i class="fas fa-file-download"></i> <span class="hide-on-mobile">Download Patient File</span>
                     </button>
-                    <button class="utility-btn" onclick="downloadPatientID()" title="Download Patient ID Card"
-                        style="background:#16a085;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(22,160,133,0.08);cursor:pointer;transition:background 0.18s;">
-                        <i class="fas fa-id-card"></i> <span class="hide-on-mobile">Download ID Card</span>
-                    </button>
+                    <a href="id_card.php" class="utility-btn" title="View My ID Card"
+                        style="background:#16a085;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(22,160,133,0.08);cursor:pointer;transition:background 0.18s;text-decoration:none;">
+                        <i class="fas fa-id-card"></i> <span class="hide-on-mobile">View My ID Card</span>
+                    </a>
                     <button class="utility-btn" onclick="openUserSettings()" title="User Settings"
                         style="background:#f39c12;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(243,156,18,0.08);cursor:pointer;transition:background 0.18s;">
                         <i class="fas fa-cog"></i> <span class="hide-on-mobile">User Settings</span>

@@ -235,7 +235,7 @@ $activePage = 'queue_status';
             padding: 1.5rem;
         }
 
-        /* Breadcrumb and Page Header Styles - matching appointments.php */
+        /* Breadcrumb and Page Header Styles - Responsive Design */
         .breadcrumb {
             font-size: 0.9rem;
             color: #6c757d;
@@ -261,9 +261,10 @@ $activePage = 'queue_status';
         .page-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 2rem 0rem;
-            gap: 1rem;
+            align-items: flex-start;
+            padding: 1.5rem 0;
+            gap: 1.5rem;
+            flex-wrap: wrap;
         }
 
         .page-header h1 {
@@ -273,13 +274,22 @@ $activePage = 'queue_status';
             margin: 0;
             display: flex;
             align-items: center;
+            gap: 0.5rem;
             flex: 1;
+            min-width: 250px;
+            line-height: 1.2;
+        }
+
+        .page-header h1 i {
+            font-size: 1.8rem;
+            flex-shrink: 0;
         }
 
         .action-buttons {
             display: flex;
             gap: 0.75rem;
             flex-shrink: 0;
+            align-items: flex-start;
         }
 
         .action-buttons .btn {
@@ -294,6 +304,7 @@ $activePage = 'queue_status';
             transition: var(--cho-transition);
             cursor: pointer;
             font-size: 0.9rem;
+            white-space: nowrap;
         }
 
         .action-buttons .btn-primary {
@@ -318,12 +329,32 @@ $activePage = 'queue_status';
             box-shadow: var(--cho-shadow);
         }
 
-        @media (max-width: 768px) {
+        /* Tablet and Mobile Responsiveness */
+        @media (max-width: 992px) {
             .page-header {
                 flex-direction: column;
-                align-items: flex-start;
+                align-items: stretch;
                 gap: 1.5rem;
-                padding: 1.5rem;
+                padding: 1.25rem 0;
+            }
+
+            .page-header h1 {
+                font-size: 2rem;
+                min-width: auto;
+                justify-content: center;
+                text-align: center;
+            }
+
+            .action-buttons {
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-header {
+                padding: 1rem 0;
+                gap: 1.25rem;
             }
 
             .page-header h1 {
@@ -338,6 +369,7 @@ $activePage = 'queue_status';
             .action-buttons .btn {
                 flex: 1;
                 justify-content: center;
+                min-width: 120px;
             }
 
             .hide-on-mobile {
@@ -346,12 +378,26 @@ $activePage = 'queue_status';
         }
 
         @media (max-width: 480px) {
+            .page-header {
+                padding: 0.75rem 0;
+                gap: 1rem;
+            }
+
             .page-header h1 {
                 font-size: 1.5rem;
+                flex-direction: column;
+                gap: 0.25rem;
+                margin-top: 1rem;
             }
 
             .action-buttons {
-                flex-direction: column;
+                flex-direction: row;
+                gap: 0.5rem;
+            }
+
+            .action-buttons .btn {
+                padding: 0.875rem 1rem;
+                font-size: 0.85rem;
             }
         }
 
@@ -374,27 +420,10 @@ $activePage = 'queue_status';
             text-decoration: underline;
         }
 
-        /* Page header styling - matching dashboard.php */
-        .queue-dashboard-container .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 2rem 0rem;
-            gap: 1rem;
-        }
-
+        /* Page header styling - integrated with responsive design above */
         .queue-dashboard-container .page-header h1 {
-            font-size: 2.2rem;
-            font-weight: 800;
-            color: var(--cho-primary);
+            /* Additional styling for queue dashboard context */
             margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .queue-dashboard-container .page-header h1 i {
-            font-size: 1.8rem;
         }
 
         .queue-dashboard-container .page-header p {
@@ -871,14 +900,6 @@ $activePage = 'queue_status';
                 grid-template-columns: 1fr;
             }
 
-            .queue-dashboard-container .page-header {
-                padding: 1.5rem;
-            }
-
-            .queue-dashboard-container .page-header h1 {
-                font-size: 1.8rem;
-            }
-
             .queue-dashboard-container .dashboard-section .section-header {
                 padding: 1rem 1.5rem 0.75rem 1.5rem;
             }
@@ -893,13 +914,6 @@ $activePage = 'queue_status';
                 font-size: 2rem;
                 letter-spacing: 1px;
             }
-
-            .queue-dashboard-container .page-header h1 {
-                font-size: 1.5rem;
-                flex-direction: column;
-                text-align: center;
-                gap: 0.5rem;
-            }
         }
     </style>
 </head>
@@ -911,7 +925,7 @@ $activePage = 'queue_status';
         <div class="queue-dashboard-container">
             <div class="content-area">
                 <!-- Breadcrumb Navigation -->
-                <div class="breadcrumb" style="margin-top: 50px;">
+                <div class="breadcrumb">
                     <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
                     <span> > </span>
                     <span style="color: #0077b6; font-weight: 600;">My Queue Status</span>
@@ -1163,7 +1177,7 @@ $activePage = 'queue_status';
                                                      alt="Appointment QR Code" 
                                                      style="width: 180px; height: 180px; border: 1px solid #dee2e6; border-radius: 4px;">
                                             </div>
-                                            <?php if ($latest_cho_appointment['qr_verification_code']): ?>
+                                            <?php if (isset($latest_cho_appointment['qr_verification_code']) && $latest_cho_appointment['qr_verification_code']): ?>
                                                 <div style="margin-top: 1rem;">
                                                     <div class="summary-item">
                                                         <div class="summary-label">Verification Code</div>
