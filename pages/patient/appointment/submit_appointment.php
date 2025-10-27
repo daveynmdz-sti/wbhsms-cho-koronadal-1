@@ -137,75 +137,7 @@ try {
         throw new Exception('Invalid facility type selected');
     }
     
-    // Check slot availability (double-check to prevent overbooking)
-    $stmt = $conn->prepare("
-        SELECT COUNT(*) as booking_count
-        FROM appointments a
-        LEFT JOIN services s ON a.service_id = s.service_id
-        LEFT JOIN facilities f ON a.facility_id = f.facility_id
-        WHERE a.scheduled_date = ? 
-        AND a.scheduled_time = ? 
-        AND s.name = ? 
-        AND f.type = ?
-        AND a.status = 'confirmed'
-        FOR UPDATE
-    ");
-    
-    $stmt->bind_param("ssss", $appointment_date, $appointment_time, $service, $db_facility_type);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $current_bookings = (int)$row['booking_count'];
-    $stmt->close();
-    
-    if ($current_bookings >= 20) {
-        throw new Exception('This time slot is fully booked. Please select another time.');
-    }
-    
-    // Check for duplicate appointments
-    $stmt = $conn->prepare("
-        SELECT COUNT(*) as existing_count
-        FROM appointments 
-        WHERE patient_id = ? 
-        AND scheduled_date = ? 
-        AND status = 'confirmed'
-    ");
-    
-    $stmt->bind_param("is", $patient_id, $appointment_date);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $existing_appointments = (int)$row['existing_count'];
-    $stmt->close();
-    
-    if ($existing_appointments > 0) {
-        throw new Exception('You already have an appointment on this date. Please select a different date.');
-    }
-    
-    // If referral is provided, validate it belongs to the patient and is active
-    if ($referral_id) {
-        $stmt = $conn->prepare("
-            SELECT referral_id, status 
-            FROM referrals 
-            WHERE referral_id = ? AND patient_id = ?
-        ");
-        
-        $stmt->bind_param("ii", $referral_id, $patient_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $referral = $result->fetch_assoc();
-        $stmt->close();
-        
-        if (!$referral) {
-            throw new Exception('Invalid referral selected');
-        }
-        
-        if ($referral['status'] !== 'active') {
-            throw new Exception('Selected referral is not active');
-        }
-    }
-    
-    // Get patient information for appointment creation and email
+    // Get patient information first (needed for facility determination)
     $stmt = $conn->prepare("
         SELECT p.*, b.barangay_name
         FROM patients p
@@ -223,11 +155,7 @@ try {
         throw new Exception('Patient information not found');
     }
     
-    // Get service_id and facility_id based on the selections
-    $service_id = null;
-    $facility_id = null;
-    
-    // Get service_id
+    // Get service_id first
     $stmt = $conn->prepare("SELECT service_id FROM services WHERE name = ?");
     $stmt->bind_param("s", $service);
     $stmt->execute();
@@ -280,6 +208,97 @@ try {
     }
     $facility_id = $facility_row['facility_id'];
     $facility_name = $facility_row['name'];
+    
+    // Now check slot availability with facility_id (improved double booking prevention)
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as booking_count
+        FROM appointments 
+        WHERE scheduled_date = ? 
+        AND scheduled_time = ? 
+        AND facility_id = ?
+        AND status = 'confirmed'
+        FOR UPDATE
+    ");
+    
+    $stmt->bind_param("ssi", $appointment_date, $appointment_time, $facility_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $current_bookings = (int)$row['booking_count'];
+    $stmt->close();
+    
+    if ($current_bookings >= 20) {
+        throw new Exception('This time slot is fully booked at ' . $facility_name . '. Please select another time.');
+    }
+    
+    // Check for duplicate appointments - prevent same patient booking same facility on same date/time
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as existing_count
+        FROM appointments 
+        WHERE patient_id = ? 
+        AND facility_id = ?
+        AND scheduled_date = ? 
+        AND scheduled_time = ?
+        AND status = 'confirmed'
+    ");
+    
+    $stmt->bind_param("iiss", $patient_id, $facility_id, $appointment_date, $appointment_time);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $existing_appointments = (int)$row['existing_count'];
+    $stmt->close();
+    
+    if ($existing_appointments > 0) {
+        throw new Exception('You already have an appointment at ' . $facility_name . ' for this date and time. Please select a different time slot.');
+    }
+    
+    // Optional: Check for conflicts with appointments at other facilities (same date/time)
+    // Comment out this section if you want to allow patients to book multiple facilities simultaneously
+    $stmt = $conn->prepare("
+        SELECT f.name as facility_name
+        FROM appointments a
+        JOIN facilities f ON a.facility_id = f.facility_id
+        WHERE a.patient_id = ? 
+        AND a.scheduled_date = ? 
+        AND a.scheduled_time = ?
+        AND a.facility_id != ?
+        AND a.status = 'confirmed'
+        LIMIT 1
+    ");
+    
+    $stmt->bind_param("issi", $patient_id, $appointment_date, $appointment_time, $facility_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $conflict_appointment = $result->fetch_assoc();
+    $stmt->close();
+    
+    if ($conflict_appointment) {
+        throw new Exception('You already have an appointment at ' . $conflict_appointment['facility_name'] . ' on this date and time. Please select a different time slot or cancel your existing appointment.');
+    }
+    
+    // If referral is provided, validate it belongs to the patient and is active
+    if ($referral_id) {
+        $stmt = $conn->prepare("
+            SELECT referral_id, status 
+            FROM referrals 
+            WHERE referral_id = ? AND patient_id = ?
+        ");
+        
+        $stmt->bind_param("ii", $referral_id, $patient_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $referral = $result->fetch_assoc();
+        $stmt->close();
+        
+        if (!$referral) {
+            throw new Exception('Invalid referral selected');
+        }
+        
+        if ($referral['status'] !== 'active') {
+            throw new Exception('Selected referral is not active');
+        }
+    }
     
     // Debug: Log appointment insertion details
     error_log("DEBUG: About to insert appointment - patient_id: $patient_id, facility_id: $facility_id, service_id: $service_id, date: $appointment_date, time: $appointment_time");
