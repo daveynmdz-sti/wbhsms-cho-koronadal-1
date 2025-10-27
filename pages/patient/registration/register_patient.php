@@ -63,7 +63,10 @@ function back_with_error(string $msg, int $http_code = 303): void
     $_SESSION['registration_error'] = $msg;
     http_response_code($http_code);
     global $return_page;
-    ob_end_clean(); // Clean output buffer before redirect
+    // Only clean output buffer if one exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header('Location: ' . $return_page, true, $http_code);
     exit;
 }
@@ -374,7 +377,10 @@ try {
                 $_SESSION['dev_message'] = "DEVELOPMENT MODE: Your OTP is {$otp}";
             }
             
-            ob_end_clean(); // Clean output buffer before redirect
+            // Only clean output buffer if one exists
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
             header('Location: ' . $otp_page, true, 303);
             exit;
         }
@@ -434,7 +440,10 @@ try {
             $mail->send();
 
             // Success → redirect to OTP page
-            ob_end_clean(); // Clean output buffer before redirect
+            // Only clean output buffer if one exists
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
             header('Location: ' . $otp_page, true, 303);
             exit;
         } catch (Exception $e) {

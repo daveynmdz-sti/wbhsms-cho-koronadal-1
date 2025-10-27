@@ -14,6 +14,13 @@ ini_set('log_errors', 1);      // Log errors instead
 
 // Determine the correct path to config files - use absolute paths
 $base_path = realpath(dirname(__FILE__) . '/../../../../');
+
+// Helper function to safely clean output buffer
+function safe_ob_clean() {
+    if (ob_get_level()) {
+    safe_ob_clean();
+    }
+}
 $session_path = $base_path . '/config/session/patient_session.php';
 $db_path = $base_path . '/config/db.php';
 
@@ -26,14 +33,20 @@ try {
     require_once $session_path;
     require_once $db_path;
 } catch (Exception | Error $e) {
-    ob_end_clean();
+    // Only clean output buffer if one exists
+    if (ob_get_level()) {
+    safe_ob_clean();
+    }
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => 'Configuration error: ' . $e->getMessage()]);
     exit();
 }
 
 if (!isset($_SESSION['patient_id'])) {
-    ob_end_clean();
+    // Only clean output buffer if one exists
+    if (ob_get_level()) {
+    safe_ob_clean();
+    }
     http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'Unauthorized - No patient session']);
     exit();
@@ -53,7 +66,7 @@ $table = get_post('table');
 $id = get_post('id');
 
 if (!$id) {
-    ob_end_clean();
+    safe_ob_clean();
     error_log("Update failed: Missing ID");
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'Missing record ID']);
@@ -72,7 +85,7 @@ $allowed_tables = [
 ];
 
 if (!in_array($table, $allowed_tables)) {
-    ob_end_clean();
+    safe_ob_clean();
     error_log("Update failed: Invalid table - " . $table);
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'Invalid table: ' . $table]);
@@ -81,7 +94,7 @@ if (!in_array($table, $allowed_tables)) {
 
 // Check if PDO connection exists
 if (!isset($pdo)) {
-    ob_end_clean();
+    safe_ob_clean();
     error_log("Database connection not found");
     echo json_encode(['success' => false, 'error' => 'Database connection failed']);
     exit();
@@ -169,11 +182,11 @@ try {
         throw new Exception('Record not found or no changes made');
     }
     
-    ob_end_clean();
+    safe_ob_clean();
     echo json_encode(['success' => true, 'message' => 'Record updated successfully']);
     exit();
 } catch (Exception $e) {
-    ob_end_clean();
+    safe_ob_clean();
     error_log("Exception in update_medical_history.php: " . $e->getMessage());
     error_log("Stack trace: " . $e->getTraceAsString());
     

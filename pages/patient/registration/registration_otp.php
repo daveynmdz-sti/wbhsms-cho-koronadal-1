@@ -35,14 +35,20 @@ function mapPhilhealthType($formValue) {
 function respond($isAjax, $ok, $payload = [])
 {
     if ($isAjax) {
-        ob_end_clean(); // Clean output buffer before JSON response
+        // Only clean output buffer if one exists
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(array_merge(['success' => $ok], $payload));
         exit;
     } else {
         // For non-AJAX: put message in session and redirect back to OTP page or success page
         $_SESSION['flash'] = $payload['message'] ?? ($ok ? 'OK' : 'Error');
-        ob_end_clean(); // Clean output buffer before redirect
+        // Only clean output buffer if one exists
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
         if ($ok && !empty($payload['redirect'])) {
             header('Location: ' . $payload['redirect']);
         } else {

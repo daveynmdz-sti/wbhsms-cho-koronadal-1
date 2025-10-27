@@ -10,7 +10,10 @@ require_once $root_path . '/config/db.php';
 
 // Check if user is logged in and has admin permissions
 if (!isset($_SESSION['employee_id']) || $_SESSION['role'] !== 'admin') {
-    ob_end_clean();
+    // Only clean output buffer if one exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
     header('Location: /pages/management/auth/employee_login.php');
     exit();
