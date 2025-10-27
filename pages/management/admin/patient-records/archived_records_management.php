@@ -10,7 +10,10 @@ $assets_path = '../../../../assets';
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id'])) {
-    ob_end_clean();
+    // Only clean output buffer if one exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
     header("Location: /pages/management/auth/employee_login.php");
     exit();
@@ -335,48 +338,117 @@ $barangayResult = $conn->query($barangaySql);
 
 // Handle patient reactivation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reactivate_patient' && $canEdit) {
+    // Prevent any output before JSON response
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Start fresh output buffer
+    ob_start();
+    
     header('Content-Type: application/json');
+    
+    try {
+        // Check database connection
+        if (!$conn || $conn->connect_error) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+            exit;
+        }
+        
+        $patient_id = intval($_POST['patient_id']);
+        $admin_password = $_POST['admin_password'] ?? '';
 
-    $patient_id = intval($_POST['patient_id']);
-    $admin_password = $_POST['admin_password'];
+        // Validate inputs
+        if (empty($patient_id) || $patient_id <= 0) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Invalid patient ID']);
+            exit;
+        }
 
-    // Verify admin password
-    $admin_id = $_SESSION['employee_id'];
-    $adminCheckSql = "SELECT password_hash FROM employees WHERE employee_id = ? AND role = 'admin'";
-    $adminCheckStmt = $conn->prepare($adminCheckSql);
-    $adminCheckStmt->bind_param("i", $admin_id);
-    $adminCheckStmt->execute();
-    $adminResult = $adminCheckStmt->get_result();
+        if (empty($admin_password)) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Admin password is required']);
+            exit;
+        }
 
-    if ($adminResult->num_rows === 0) {
-        echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-        exit;
+        // Verify admin password
+        $admin_id = $_SESSION['employee_id'];
+        $adminCheckSql = "SELECT e.password FROM employees e 
+                         LEFT JOIN roles r ON e.role_id = r.role_id 
+                         WHERE e.employee_id = ? AND r.role_name = 'admin'";
+        $adminCheckStmt = $conn->prepare($adminCheckSql);
+        if (!$adminCheckStmt) {
+            error_log("Failed to prepare admin check statement: " . $conn->error);
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Database error occurred']);
+            exit;
+        }
+        
+        $adminCheckStmt->bind_param("i", $admin_id);
+        $adminCheckStmt->execute();
+        $adminResult = $adminCheckStmt->get_result();
+
+        if ($adminResult->num_rows === 0) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Unauthorized access - Admin not found']);
+            exit;
+        }
+
+        $adminData = $adminResult->fetch_assoc();
+
+        if (!password_verify($admin_password, $adminData['password'])) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Incorrect password']);
+            exit;
+        }
+
+        // Reactivate the patient
+        $updateSql = "UPDATE patients SET status = 'active' WHERE patient_id = ? AND status = 'inactive'";
+        $updateStmt = $conn->prepare($updateSql);
+        if (!$updateStmt) {
+            error_log("Failed to prepare update statement: " . $conn->error);
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Database error occurred']);
+            exit;
+        }
+        
+        $updateStmt->bind_param("i", $patient_id);
+
+        if ($updateStmt->execute()) {
+            if ($updateStmt->affected_rows > 0) {
+                // Log the reactivation (optional - don't fail if this fails)
+                try {
+                    $logSql = "INSERT INTO activity_logs (employee_id, action, details, timestamp) VALUES (?, 'Patient Reactivated', ?, NOW())";
+                    $logStmt = $conn->prepare($logSql);
+                    if ($logStmt) {
+                        $logDetails = "Reactivated patient ID: $patient_id";
+                        $logStmt->bind_param("is", $admin_id, $logDetails);
+                        $logStmt->execute();
+                    }
+                } catch (Exception $logError) {
+                    error_log("Failed to log patient reactivation: " . $logError->getMessage());
+                    // Continue anyway - don't fail the reactivation because of logging
+                }
+
+                ob_clean();
+                echo json_encode(['success' => true, 'message' => 'Patient account reactivated successfully']);
+            } else {
+                ob_clean();
+                echo json_encode(['success' => false, 'message' => 'Patient not found or already active']);
+            }
+        } else {
+            error_log("Failed to execute update statement: " . $updateStmt->error);
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Failed to reactivate patient account']);
+        }
+    } catch (Exception $e) {
+        error_log("Exception in patient reactivation: " . $e->getMessage());
+        ob_clean();
+        echo json_encode(['success' => false, 'message' => 'An unexpected error occurred: ' . $e->getMessage()]);
     }
-
-    $adminData = $adminResult->fetch_assoc();
-
-    if (!password_verify($admin_password, $adminData['password_hash'])) {
-        echo json_encode(['success' => false, 'message' => 'Incorrect password']);
-        exit;
-    }
-
-    // Reactivate the patient
-    $updateSql = "UPDATE patients SET status = 'active' WHERE patient_id = ? AND status = 'inactive'";
-    $updateStmt = $conn->prepare($updateSql);
-    $updateStmt->bind_param("i", $patient_id);
-
-    if ($updateStmt->execute() && $updateStmt->affected_rows > 0) {
-        // Log the reactivation
-        $logSql = "INSERT INTO activity_logs (employee_id, action, details, timestamp) VALUES (?, 'Patient Reactivated', ?, NOW())";
-        $logStmt = $conn->prepare($logSql);
-        $logDetails = "Reactivated patient ID: $patient_id";
-        $logStmt->bind_param("is", $admin_id, $logDetails);
-        $logStmt->execute();
-
-        echo json_encode(['success' => true, 'message' => 'Patient account reactivated successfully']);
-    } else {
-        echo json_encode(['success' => false, 'message' => 'Failed to reactivate patient account']);
-    }
+    
+    ob_end_flush();
     exit;
 }
 ?>
@@ -1304,6 +1376,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 text-align: center;
             }
         }
+
+        /* Button styles for modals */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #52b788, #2d6a4f);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #40916c, #1b4332);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(45, 106, 79, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef476f, #d00000);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #e63946, #9d0208);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(208, 0, 0, 0.3);
+        }
     </style>
 </head>
 
@@ -1326,6 +1435,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <div class="total-count">
                     <span class="badge bg-danger"><?php echo $totalRecords; ?> Archived Patients</span>
                 </div>
+            </div>
+
+            <!-- Information Alert -->
+            <div class="alert alert-info" style="background-color: #d1ecf1; color: #0c5460; border-color: #bee5eb; border-left-color: #17a2b8;">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Info:</strong> This page shows inactive/archived patient records. 
+                After reactivating a patient, they will appear in the 
+                <a href="patient_records_management.php" style="color: #0c5460; text-decoration: underline; font-weight: bold;">Active Patient Records</a> page.
             </div>
 
             <!-- Search and Filter Section -->
@@ -1491,7 +1608,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                         </td>
                                         <td>
                                             <div class="action-buttons">
-                                                <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>"
+                                                <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>&back_url=archived_records_management.php"
                                                     class="action-btn btn-info" title="View Patient Profile (Admin)">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
@@ -1612,7 +1729,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="contactModalLabel">Patient ID Card</h5>
+                    <h5 class="modal-title" id="contactModalLabel">Patient Record Summary</h5>
                     <button type="button" class="btn-close" id="closeContactModal" aria-label="Close">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -1645,8 +1762,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <button type="button" class="action-btn btn-secondary" id="closeModalBtn">
                         <i class="fas fa-times"></i> Close
                     </button>
-                    <button type="button" class="action-btn btn-primary" id="printIdCard">
+                    <!--<button type="button" class="action-btn btn-primary" id="printIdCard">
                         <i class="fas fa-print"></i> Print ID Card
+                    </button>-->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal fade" id="successModal" tabindex="-1" role="dialog" aria-labelledby="successModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: var(--success); color: white;">
+                    <h5 class="modal-title" id="successModalLabel">
+                        <i class="fas fa-check-circle"></i> Success
+                    </h5>
+                    <button type="button" class="btn-close" id="closeSuccessModal" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center">
+                        <i class="fas fa-check-circle" style="font-size: 3rem; color: var(--success); margin-bottom: 1rem;"></i>
+                        <p id="successMessage" style="font-size: 1.1rem; margin-bottom: 1rem;"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" id="successOkButton">
+                        <i class="fas fa-check"></i> OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: var(--danger); color: white;">
+                    <h5 class="modal-title" id="errorModalLabel">
+                        <i class="fas fa-exclamation-triangle"></i> Error
+                    </h5>
+                    <button type="button" class="btn-close" id="closeErrorModal" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: var(--danger); margin-bottom: 1rem;"></i>
+                        <p id="errorMessage" style="font-size: 1.1rem; margin-bottom: 1rem;"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" id="errorOkButton">
+                        <i class="fas fa-times"></i> OK
                     </button>
                 </div>
             </div>
@@ -1668,6 +1835,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     timeout = setTimeout(() => func.apply(context, args), delay);
                 };
             }
+
+            // Modal functions for success and error messages
+            function showSuccessModal(message, callback = null) {
+                $('#successMessage').text(message);
+                $('#successModal').addClass('show');
+                
+                // Store callback for later use
+                if (callback) {
+                    $('#successModal').data('callback', callback);
+                }
+            }
+
+            function showErrorModal(message, callback = null) {
+                $('#errorMessage').text(message);
+                $('#errorModal').addClass('show');
+                
+                // Store callback for later use
+                if (callback) {
+                    $('#errorModal').data('callback', callback);
+                }
+            }
+
+            // Success modal event handlers
+            $(document).on('click', '#closeSuccessModal, #successOkButton', function() {
+                $('#successModal').removeClass('show');
+                
+                // Execute callback if provided
+                const callback = $('#successModal').data('callback');
+                if (callback && typeof callback === 'function') {
+                    callback();
+                    $('#successModal').removeData('callback');
+                }
+            });
+
+            // Error modal event handlers
+            $(document).on('click', '#closeErrorModal, #errorOkButton', function() {
+                $('#errorModal').removeClass('show');
+                
+                // Execute callback if provided
+                const callback = $('#errorModal').data('callback');
+                if (callback && typeof callback === 'function') {
+                    callback();
+                    $('#errorModal').removeData('callback');
+                }
+            });
+
+            // Close modals when clicking outside
+            $(document).on('click', '.modal', function(e) {
+                if (e.target === this) {
+                    $(this).removeClass('show');
+                }
+            });
 
             // Function to update URL with filters and reload
             function updateFilters() {
@@ -1978,7 +2197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 const adminPassword = $('#adminPassword').val();
 
                 if (!adminPassword) {
-                    alert('Please enter your admin password');
+                    showErrorModal('Please enter your admin password');
                     return;
                 }
 
@@ -1997,14 +2216,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     dataType: 'json',
                     success: function(response) {
                         if (response.success) {
-                            alert('Patient account reactivated successfully! The page will refresh.');
-                            location.reload();
+                            showSuccessModal('Patient account reactivated successfully! Redirecting to active records...', function() {
+                                window.location.href = 'patient_records_management.php?reactivated=1';
+                            });
                         } else {
-                            alert('Error: ' + response.message);
+                            showErrorModal('Error: ' + response.message);
                         }
                     },
-                    error: function() {
-                        alert('An error occurred while processing the request.');
+                    error: function(xhr, status, error) {
+                        console.error('AJAX Error Details:', {
+                            status: status,
+                            error: error,
+                            responseText: xhr.responseText,
+                            statusCode: xhr.status
+                        });
+                        showErrorModal('An error occurred while processing the request. Check console for details.');
                     },
                     complete: function() {
                         $('#confirmReactivate').html('<i class="fas fa-undo"></i> Reactivate Account');

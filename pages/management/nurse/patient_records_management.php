@@ -38,8 +38,10 @@ $middleNameFilter = isset($_GET['middle_name']) ? $_GET['middle_name'] : '';
 $birthdayFilter = isset($_GET['birthday']) ? $_GET['birthday'] : '';
 $barangayFilter = isset($_GET['barangay']) ? $_GET['barangay'] : '';
 $statusFilter = isset($_GET['status']) ? $_GET['status'] : '';
+$sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'patient_id';
+$sortDirection = isset($_GET['direction']) ? $_GET['direction'] : 'ASC';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-$recordsPerPage = 20;
+$recordsPerPage = 10;
 $offset = ($page - 1) * $recordsPerPage;
 
 // Count total records for pagination
@@ -318,7 +320,23 @@ if (!empty($statusFilter)) {
     $types .= "s";
 }
 
-$sql .= " ORDER BY p.last_name ASC LIMIT ? OFFSET ?";
+// Define column mapping for sorting
+$columnMap = [
+    'patient_id' => 'p.patient_id',
+    'username' => 'p.username',
+    'full_name' => 'p.last_name',
+    'dob' => 'p.date_of_birth',
+    'sex' => 'p.sex',
+    'barangay' => 'b.barangay_name',
+    'contact' => 'p.contact_number',
+    'status' => 'p.status'
+];
+
+// Validate sort column and direction
+$orderByColumn = isset($columnMap[$sortColumn]) ? $columnMap[$sortColumn] : 'p.patient_id';
+$sortDirection = in_array(strtoupper($sortDirection), ['ASC', 'DESC']) ? strtoupper($sortDirection) : 'ASC';
+
+$sql .= " ORDER BY $orderByColumn $sortDirection LIMIT ? OFFSET ?";
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
 
@@ -1265,13 +1283,13 @@ error_log("Inactive patients: " . $inactivePatients);
                                 <thead>
                                     <tr>
                                         <th style="width: 70px;"> </th>
-                                        <th class="sortable" data-column="username">Patient ID</th>
-                                        <th class="sortable" data-column="full_name">Full Name</th>
-                                        <th class="sortable" data-column="dob">DOB</th>
-                                        <th class="sortable" data-column="sex">Sex</th>
-                                        <th class="sortable" data-column="barangay">Barangay</th>
-                                        <th class="sortable" data-column="contact">Contact</th>
-                                        <th class="sortable" data-column="status">Status</th>
+                                        <th class="sortable <?php echo ($sortColumn == 'username') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="username">Patient ID</th>
+                                        <th class="sortable <?php echo ($sortColumn == 'full_name') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="full_name">Full Name</th>
+                                        <th class="sortable <?php echo ($sortColumn == 'dob') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="dob">DOB</th>
+                                        <th class="sortable <?php echo ($sortColumn == 'sex') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="sex">Sex</th>
+                                        <th class="sortable <?php echo ($sortColumn == 'barangay') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="barangay">Barangay</th>
+                                        <th class="sortable <?php echo ($sortColumn == 'contact') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="contact">Contact</th>
+                                        <th class="sortable <?php echo ($sortColumn == 'status') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="status">Status</th>
                                         <th style="width: 120px;">Actions</th>
                                     </tr>
                                 </thead>
@@ -1391,7 +1409,7 @@ error_log("Inactive patients: " . $inactivePatients);
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="contactModalLabel">Patient ID Card</h5>
+                    <h5 class="modal-title" id="contactModalLabel">Patient Summary Card</h5>
                     <button type="button" class="btn-close" id="closeContactModal" aria-label="Close">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -1424,9 +1442,9 @@ error_log("Inactive patients: " . $inactivePatients);
                     <button type="button" class="action-btn btn-secondary" id="closeModalBtn">
                         <i class="fas fa-times"></i> Close
                     </button>
-                    <button type="button" class="action-btn btn-primary" id="printIdCard">
+                    <!--<button type="button" class="action-btn btn-primary" id="printIdCard">
                         <i class="fas fa-print"></i> Print ID Card
-                    </button>
+                    </button>-->
                 </div>
             </div>
         </div>
@@ -1524,73 +1542,49 @@ error_log("Inactive patients: " . $inactivePatients);
                 window.location.href = url;
             });
             
-            // Table column sorting
-            let sortState = {
-                column: null,
-                direction: 'asc'
-            };
-            
+            // Table column sorting - Server-side implementation
             $('#patientTable th.sortable').on('click', function() {
-                const columnIndex = $(this).index();
-                const columnType = $(this).data('column');
+                $('#loader').show();
                 
-                // Update sort direction
-                if (sortState.column === columnIndex) {
-                    // Toggle sort direction if same column clicked again
-                    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
-                } else {
-                    // Set new column and default to ascending
-                    sortState.column = columnIndex;
-                    sortState.direction = 'asc';
+                const columnType = $(this).data('column');
+                const currentSort = new URLSearchParams(window.location.search).get('sort');
+                const currentDirection = new URLSearchParams(window.location.search).get('direction');
+                
+                // Determine new sort direction
+                let newDirection = 'ASC';
+                if (currentSort === columnType && currentDirection === 'ASC') {
+                    newDirection = 'DESC';
                 }
                 
-                // Sort the table rows
-                const rows = $('#patientTable tbody tr').get();
-                rows.sort(function(a, b) {
-                    let aValue = $(a).children('td').eq(columnIndex).text().trim();
-                    let bValue = $(b).children('td').eq(columnIndex).text().trim();
-                    
-                    // Special handling for dates
-                    if (columnType === 'dob') {
-                        // Try to parse dates (M d, Y format)
-                        const aDate = new Date(aValue);
-                        const bDate = new Date(bValue);
-                        
-                        // Check if we have valid dates
-                        if (!isNaN(aDate) && !isNaN(bDate)) {
-                            if (sortState.direction === 'asc') {
-                                return aDate - bDate;
-                            } else {
-                                return bDate - aDate;
-                            }
-                        }
-                    }
-                    
-                    // Handle N/A values - N/A should always be at the bottom
-                    if (aValue === 'N/A' && bValue !== 'N/A') return 1;
-                    if (aValue !== 'N/A' && bValue === 'N/A') return -1;
-                    
-                    // Use natural sorting for everything else
-                    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-                    const result = collator.compare(aValue, bValue);
-                    
-                    // Apply sort direction
-                    return sortState.direction === 'asc' ? result : -result;
-                });
+                // Build URL with current filters and new sort
+                let searchValue = $('#searchInput').val();
+                let patientIdValue = $('#patientIdInput').val();
+                let firstNameValue = $('#firstNameInput').val();
+                let lastNameValue = $('#lastNameInput').val();
+                let middleNameValue = $('#middleNameInput').val();
+                let birthdayValue = $('#birthdayInput').val();
+                let barangayValue = $('#barangayFilter').val();
+                let statusValue = $('#statusFilter').val();
                 
-                // Append sorted rows back to table
-                $.each(rows, function(index, row) {
-                    $('#patientTable tbody').append(row);
-                });
+                let url = window.location.pathname + '?';
+                let params = [];
                 
-                // Update UI to show sort direction
-                $('#patientTable th').removeClass('sort-asc sort-desc');
-                $(this).addClass('sort-' + sortState.direction);
+                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
+                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
+                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
+                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
+                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
+                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
+                if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
+                if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
                 
-                // Update row zebra striping after sort
-                $('#patientTable tbody tr').removeClass('odd even');
-                $('#patientTable tbody tr:odd').addClass('odd');
-                $('#patientTable tbody tr:even').addClass('even');
+                // Add sort parameters
+                params.push('sort=' + encodeURIComponent(columnType));
+                params.push('direction=' + encodeURIComponent(newDirection));
+                params.push('page=1'); // Reset to first page when sorting
+                
+                url += params.join('&');
+                window.location.href = url;
             });
             
             // Contact modal handling - using event delegation for dynamically added elements

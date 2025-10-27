@@ -445,7 +445,7 @@ class StandardEmailTemplate {
                 Hello <strong>{$data['first_name']}</strong>! 👋
             </p>
             
-            <p>Congratulations! Your employee account has been successfully created in the CHO Koronadal Healthcare Management System. You are now part of our dedicated healthcare team committed to serving the community of Koronadal.</p>
+            <p>Congratulations! Your employee account has been successfully created in the City Health Office of Koronadal Healthcare Services Management System. You are now part of our dedicated healthcare team committed to serving the community of Koronadal.</p>
             
             <div class='highlight-card'>
                 <h3 style='color: #1e293b; margin-bottom: 20px;'>🔑 Your Login Credentials</h3>
@@ -542,7 +542,7 @@ class StandardEmailTemplate {
                 Hello <strong>{$data['patient_name']}</strong>! 🎉
             </p>
             
-            <p>Welcome to the CHO Koronadal Healthcare Management System! Your patient account has been successfully created. We're excited to provide you with quality healthcare services and easy access to manage your health records.</p>
+            <p>Welcome to the City Health Office of Koronadal Healthcare Services Management System! Your patient account has been successfully created. We're excited to provide you with quality healthcare services and easy access to manage your health records.</p>
             
             <div class='highlight-card'>
                 <h3 style='color: #1e293b; margin-bottom: 20px;'>👤 Your Patient Information</h3>

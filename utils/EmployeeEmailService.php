@@ -116,7 +116,7 @@ class EmployeeEmailService {
 
 Dear {$data['first_name']},
 
-Congratulations! Your employee account has been successfully created in the CHO Koronadal Healthcare Management System.
+Congratulations! Your employee account has been successfully created in the City Health Office of Koronadal Healthcare Services Management System.
 
 YOUR LOGIN CREDENTIALS:
 ======================

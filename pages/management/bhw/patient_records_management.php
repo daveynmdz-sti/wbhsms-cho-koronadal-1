@@ -55,8 +55,10 @@ $lastNameFilter = isset($_GET['last_name']) ? $_GET['last_name'] : '';
 $middleNameFilter = isset($_GET['middle_name']) ? $_GET['middle_name'] : '';
 $birthdayFilter = isset($_GET['birthday']) ? $_GET['birthday'] : '';
 $statusFilter = isset($_GET['status']) ? $_GET['status'] : '';
+$sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'patient_id';
+$sortDirection = isset($_GET['direction']) ? $_GET['direction'] : 'ASC';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-$recordsPerPage = 20;
+$recordsPerPage = 10;
 $offset = ($page - 1) * $recordsPerPage;
 
 // Count total records for pagination - RESTRICTED TO BHW'S BARANGAY
@@ -304,7 +306,23 @@ if (!empty($statusFilter)) {
     $types .= "s";
 }
 
-$sql .= " ORDER BY p.last_name ASC LIMIT ? OFFSET ?";
+// Define column mapping for sorting
+$columnMap = [
+    'patient_id' => 'p.patient_id',
+    'username' => 'p.username',
+    'full_name' => 'p.last_name',
+    'dob' => 'p.date_of_birth',
+    'sex' => 'p.sex',
+    'barangay' => 'b.barangay_name',
+    'contact' => 'p.contact_number',
+    'status' => 'p.status'
+];
+
+// Validate sort column and direction
+$orderByColumn = isset($columnMap[$sortColumn]) ? $columnMap[$sortColumn] : 'p.patient_id';
+$sortDirection = in_array(strtoupper($sortDirection), ['ASC', 'DESC']) ? strtoupper($sortDirection) : 'ASC';
+
+$sql .= " ORDER BY $orderByColumn $sortDirection LIMIT ? OFFSET ?";
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
 
@@ -324,6 +342,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -351,6 +370,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             --border-radius-lg: 1rem;
             --transition: all 0.3s ease;
         }
+
         .loader {
             border: 5px solid rgba(240, 240, 240, 0.5);
             border-radius: 50%;
@@ -361,24 +381,29 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             margin: 0 auto;
             display: none;
         }
-        
+
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
-        
+
         .table-responsive {
             overflow-x: auto;
             border-radius: var(--border-radius);
             margin-top: 10px;
         }
-        
+
         table {
             width: 100%;
             border-collapse: collapse;
             box-shadow: var(--shadow);
         }
-        
+
         table th {
             background: linear-gradient(135deg, #0077b6, #03045e);
             color: white;
@@ -391,7 +416,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             cursor: pointer;
             user-select: none;
         }
-        
+
         table th.sortable::after {
             content: '\f0dc';
             font-family: 'Font Awesome 6 Free';
@@ -400,32 +425,32 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             opacity: 0.5;
             font-size: 14px;
         }
-        
+
         table th.sort-asc::after {
             content: '\f0de';
             opacity: 1;
         }
-        
+
         table th.sort-desc::after {
             content: '\f0dd';
             opacity: 1;
         }
-        
+
         table td {
             padding: 12px 15px;
             border-bottom: 1px solid #f0f0f0;
             vertical-align: middle;
         }
-        
+
         table tr:hover {
             background-color: rgba(240, 247, 255, 0.6);
             transition: background-color 0.2s;
         }
-        
+
         table tr:last-child td {
             border-bottom: none;
         }
-        
+
         .action-btn {
             margin-right: 5px;
             padding: 8px 15px;
@@ -441,12 +466,12 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             justify-content: center;
             min-width: 40px;
         }
-        
+
         .action-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
         }
-        
+
         .equal-width {
             width: calc(50% - 5px);
             max-height: fit-content;
@@ -456,40 +481,40 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             letter-spacing: 0.3px;
             gap: 10px;
         }
-        
+
         .button-container {
             justify-content: space-between;
             gap: 10px;
         }
-        
+
         .button-container .dropdown {
             width: 50%;
         }
-        
+
         .button-container .dropdown button {
             width: 100%;
         }
-        
+
         .btn-info {
             background: linear-gradient(135deg, #0096c7, #0077b6);
         }
-        
+
         .btn-primary {
             background: linear-gradient(135deg, #48cae4, #0096c7);
         }
-        
+
         .btn-warning {
             background: linear-gradient(135deg, #ffba08, #faa307);
         }
-        
+
         .btn-secondary {
             background: linear-gradient(135deg, #adb5bd, #6c757d);
         }
-        
+
         .btn-success {
             background: linear-gradient(135deg, #52b788, #2d6a4f);
         }
-        
+
         .badge {
             display: inline-flex;
             align-items: center;
@@ -501,15 +526,15 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             color: white;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        
+
         .bg-success {
             background: linear-gradient(135deg, #52b788, #2d6a4f);
         }
-        
+
         .bg-danger {
             background: linear-gradient(135deg, #ef476f, #d00000);
         }
-        
+
         .pagination {
             display: flex;
             list-style: none;
@@ -518,11 +543,11 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             margin-top: 25px;
             gap: 8px;
         }
-        
+
         .pagination li {
             margin: 0;
         }
-        
+
         .pagination a {
             padding: 8px 12px;
             border: 1px solid var(--primary);
@@ -535,26 +560,26 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             text-align: center;
             display: inline-block;
         }
-        
+
         .pagination a:hover:not(.disabled a) {
             background-color: rgba(0, 119, 182, 0.1);
             transform: translateY(-2px);
         }
-        
+
         .pagination .active a {
             background: linear-gradient(135deg, #0096c7, #0077b6);
             color: white;
             border-color: transparent;
             box-shadow: 0 2px 5px rgba(0, 119, 182, 0.3);
         }
-        
+
         .pagination .disabled a {
             color: #ccc;
             border-color: #eee;
             cursor: not-allowed;
             pointer-events: none;
         }
-        
+
         .profile-img {
             width: 45px;
             height: 45px;
@@ -564,11 +589,11 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s;
         }
-        
+
         tr:hover .profile-img {
             transform: scale(1.05);
         }
-        
+
         .header {
             background: linear-gradient(135deg, #0077b6, #03045e);
             color: white;
@@ -578,13 +603,13 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             margin-bottom: 15px;
             box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
         }
-        
+
         .header h5 {
             margin: 0;
             font-weight: 600;
             letter-spacing: 0.5px;
         }
-        
+
         .info p {
             margin-bottom: 8px;
             display: flex;
@@ -592,16 +617,16 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             padding: 5px 0;
             border-bottom: 1px solid #f0f0f0;
         }
-        
+
         .info p:last-child {
             border-bottom: none;
         }
-        
+
         .info strong {
             color: var(--primary-dark);
             font-weight: 600;
         }
-        
+
         /* Card content styling */
         .content-header {
             display: flex;
@@ -609,14 +634,14 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             align-items: center;
             margin-bottom: 20px;
         }
-        
+
         .page-title {
             color: var(--primary-dark);
             font-size: 1.8rem;
             font-weight: 600;
             margin: 0;
         }
-        
+
         /* Modal styles */
         .modal {
             display: none;
@@ -625,32 +650,32 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.5);
+            background-color: rgba(0, 0, 0, 0.5);
             z-index: 1000;
         }
-        
+
         .modal.show {
             display: block !important;
         }
-        
+
         .modal-dialog {
             max-width: 450px;
             margin: 50px auto;
             transform: translateY(-20px);
             transition: transform 0.3s ease;
         }
-        
+
         .modal.show .modal-dialog {
             transform: translateY(0);
         }
-        
+
         .modal-content {
             background-color: white;
             border-radius: var(--border-radius);
             overflow: hidden;
             box-shadow: var(--shadow-lg);
         }
-        
+
         .modal-header {
             padding: 15px 20px;
             border-bottom: 1px solid var(--border);
@@ -660,11 +685,11 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             background-color: var(--primary-dark);
             color: white;
         }
-        
+
         .modal-body {
             padding: 20px;
         }
-        
+
         .modal-footer {
             padding: 15px 20px;
             border-top: 1px solid var(--border);
@@ -672,7 +697,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             justify-content: flex-end;
             gap: 10px;
         }
-        
+
         .btn-close {
             background: none;
             border: none;
@@ -681,22 +706,30 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             color: white;
             transition: color 0.2s ease;
         }
-        
+
         .btn-close:hover {
             color: var(--light);
         }
 
         /* Radio option pulse animation */
         @keyframes pulseEffect {
-            0% { transform: scale(1.02); }
-            50% { transform: scale(1.04); }
-            100% { transform: scale(1.02); }
+            0% {
+                transform: scale(1.02);
+            }
+
+            50% {
+                transform: scale(1.04);
+            }
+
+            100% {
+                transform: scale(1.02);
+            }
         }
-        
+
         .pulse-animation {
             animation: pulseEffect 0.3s ease;
         }
-        
+
         /* Form inputs */
         .form-control {
             width: 100%;
@@ -708,13 +741,13 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
             font-size: 14px;
         }
-        
+
         .form-control:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.2);
             outline: none;
         }
-        
+
         .form-select {
             width: 100%;
             padding: 10px 15px;
@@ -730,18 +763,18 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             background-size: 16px 12px;
             font-size: 14px;
         }
-        
+
         .form-select:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.2);
             outline: none;
         }
-        
+
         .input-group {
             display: flex;
             position: relative;
         }
-        
+
         .input-group-text {
             padding: 10px 15px;
             background-color: #f8f9fa;
@@ -752,48 +785,48 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             align-items: center;
             color: #64748b;
         }
-        
+
         .input-group .form-control {
             border-radius: 0 var(--border-radius) var(--border-radius) 0;
             margin-bottom: 0;
             flex: 1;
         }
-        
+
         /* Utility classes */
         .d-flex {
             display: flex;
         }
-        
+
         .me-2 {
             margin-right: 10px;
         }
-        
+
         .mb-2 {
             margin-bottom: 10px;
         }
-        
+
         .mt-4 {
             margin-top: 20px;
         }
-        
+
         .justify-content-center {
             justify-content: center;
         }
-        
+
         .text-center {
             text-align: center;
         }
-        
+
         .text-muted {
             color: #6c757d;
             font-style: italic;
         }
-        
+
         .action-buttons {
             display: flex;
             gap: 5px;
         }
-        
+
         /* Header with badge */
         .content-header {
             display: flex;
@@ -801,17 +834,17 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             align-items: center;
             margin-bottom: 20px;
         }
-        
+
         .total-count .badge {
             font-size: 14px;
             padding: 6px 12px;
             margin-right: 8px;
         }
-        
+
         .bg-primary {
             background: linear-gradient(135deg, #48cae4, #0096c7);
         }
-        
+
         /* Responsive grid */
         .row {
             display: flex;
@@ -819,55 +852,58 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             margin-right: -15px;
             margin-left: -15px;
         }
-        
+
         .col-12 {
             flex: 0 0 100%;
             max-width: 100%;
             padding: 0 15px;
         }
-        
+
         .col-md-4 {
             flex: 0 0 33.333333%;
             max-width: 33.333333%;
             padding: 0 15px;
         }
-        
+
         .col-md-3 {
             flex: 0 0 25%;
             max-width: 25%;
             padding: 0 15px;
         }
-        
+
         .col-md-2 {
             flex: 0 0 16.666667%;
             max-width: 16.666667%;
             padding: 0 15px;
         }
-        
+
         @media (max-width: 768px) {
-            .col-md-4, .col-md-3, .col-md-2 {
+
+            .col-md-4,
+            .col-md-3,
+            .col-md-2 {
                 flex: 0 0 100%;
                 max-width: 100%;
                 margin-bottom: 10px;
             }
-            
+
             .page-title {
                 font-size: 1.5rem;
             }
         }
-        
+
         /* Dropdown */
         .dropdown {
             position: relative;
             display: inline-block;
         }
-        
+
         .dropdown-toggle {
             display: inline-flex;
             align-items: center;
             gap: 5px;
         }
-        
+
         .dropdown-toggle::after {
             display: inline-block;
             margin-left: 0.255em;
@@ -879,11 +915,11 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             border-left: 0.3em solid transparent;
             transition: transform 0.2s ease;
         }
-        
+
         .dropdown-toggle[aria-expanded="true"]::after {
             transform: rotate(180deg);
         }
-        
+
         .dropdown-menu {
             display: none;
             position: absolute;
@@ -899,13 +935,13 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             transform: translateY(10px);
             transition: opacity 0.2s ease, transform 0.2s ease;
         }
-        
+
         .dropdown-menu.show {
             display: block;
             opacity: 1;
             transform: translateY(0);
         }
-        
+
         .dropdown-item {
             display: flex;
             align-items: center;
@@ -916,15 +952,15 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             color: #333;
             transition: background-color 0.15s ease;
         }
-        
+
         .dropdown-item:hover {
             background-color: rgba(0, 119, 182, 0.1);
         }
-        
+
         .dropdown-item i {
             color: var(--primary);
         }
-        
+
         /* Alert styles */
         .alert {
             padding: 12px 15px;
@@ -933,25 +969,25 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             border-left-width: 4px;
             border-left-style: solid;
         }
-        
+
         .alert-warning {
             background-color: #fff3cd;
             color: #856404;
             border-color: #ffeeba;
             border-left-color: #ffc107;
         }
-        
+
         .alert-danger {
             background-color: #f8d7da;
             color: #721c24;
             border-color: #f5c6cb;
             border-left-color: #dc3545;
         }
-        
+
         .alert i {
             margin-right: 5px;
         }
-        
+
         /* Form styling for modals */
         .form-label {
             font-weight: 500;
@@ -959,30 +995,30 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             margin-bottom: 5px;
             display: block;
         }
-        
+
         .form-check {
             padding: 8px 12px;
             margin-bottom: 5px;
             border-radius: 5px;
             transition: background-color 0.15s ease;
         }
-        
+
         .form-check:hover {
             background-color: rgba(0, 119, 182, 0.05);
         }
-        
+
         .form-check-input {
             margin-top: 0.3em;
         }
-        
+
         .form-check-label {
             padding-left: 5px;
         }
-        
+
         .d-none {
             display: none !important;
         }
-        
+
         /* Spinner for loading states */
         .spinner-border {
             display: inline-block;
@@ -995,25 +1031,27 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             animation: spinner-border .75s linear infinite;
             margin-right: 5px;
         }
-        
+
         @keyframes spinner-border {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
-        
+
         /* Section header styling */
         .section-header {
             padding: 0 0 15px 0;
             margin-bottom: 15px;
             border-bottom: 1px solid rgba(0, 119, 182, 0.2);
         }
-        
+
         .section-header h4 {
             margin: 0;
             color: var(--primary-dark);
             font-size: 18px;
             font-weight: 600;
         }
-        
+
         .section-header h4 i {
             color: var(--primary);
             margin-right: 8px;
@@ -1133,7 +1171,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             color: var(--primary-dark);
             font-size: 14px;
         }
-        
+
         .barangay-restriction-notice i {
             color: var(--primary);
             margin-right: 8px;
@@ -1148,13 +1186,13 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             box-shadow: var(--shadow);
             border: 1px solid var(--border);
         }
-        
+
         .card-container .section-header {
             margin-bottom: 15px;
             padding-bottom: 10px;
             border-bottom: 2px solid #f0f0f0;
         }
-        
+
         .card-container .section-header h4 {
             margin: 0;
             color: var(--primary-dark);
@@ -1163,7 +1201,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             display: flex;
             align-items: center;
         }
-        
+
         .card-container .section-header h4 i {
             margin-right: 8px;
             color: var(--primary);
@@ -1179,7 +1217,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             align-items: center;
             gap: 8px;
         }
-        
+
         .breadcrumb a {
             color: var(--primary);
             text-decoration: none;
@@ -1187,21 +1225,22 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
             align-items: center;
             gap: 5px;
         }
-        
+
         .breadcrumb a:hover {
             text-decoration: underline;
         }
-        
+
         .breadcrumb i.fas.fa-chevron-right {
             color: #6c757d;
             font-size: 12px;
         }
     </style>
 </head>
+
 <body>
     <!-- Include sidebar -->
     <?php include '../../../includes/sidebar_bhw.php'; ?>
-    
+
     <div class="homepage">
         <div class="main-content">
             <!-- Breadcrumb Navigation -->
@@ -1225,7 +1264,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                 <i class="fas fa-map-marker-alt"></i>
                 <strong>Barangay Access:</strong> You are viewing patients from <strong><?php echo htmlspecialchars($bhw_barangay_name); ?></strong> only.
             </div>
-            
+
             <!-- Search and Filter Section -->
             <div class="card-container">
                 <div class="section-header">
@@ -1292,12 +1331,12 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                     </div>
                 </div>
             </div>
-            
+
             <!-- Loader -->
             <div class="text-center" style="padding: 15px 0;">
                 <div id="loader" class="loader"></div>
             </div>
-            
+
             <!-- Patient Records Table -->
             <div class="card-container">
                 <div class="section-header">
@@ -1305,136 +1344,136 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                 </div>
                 <div class="table-responsive">
                     <table id="patientTable">
-                                <thead>
+                        <thead>
+                            <tr>
+                                <th style="width: 70px;"> </th>
+                                <th class="sortable <?php echo ($sortColumn == 'username') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="username">Patient ID</th>
+                                <th class="sortable <?php echo ($sortColumn == 'full_name') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="full_name">Full Name</th>
+                                <th class="sortable <?php echo ($sortColumn == 'dob') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="dob">DOB</th>
+                                <th class="sortable <?php echo ($sortColumn == 'sex') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="sex">Sex</th>
+                                <th class="sortable <?php echo ($sortColumn == 'barangay') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="barangay">Barangay</th>
+                                <th class="sortable <?php echo ($sortColumn == 'contact') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="contact">Contact</th>
+                                <th class="sortable <?php echo ($sortColumn == 'status') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="status">Status</th>
+                                <th style="width: 120px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($result->num_rows > 0): ?>
+                                <?php while ($patient = $result->fetch_assoc()): ?>
                                     <tr>
-                                        <th style="width: 70px;"> </th>
-                                        <th class="sortable" data-column="username">Patient ID</th>
-                                        <th class="sortable" data-column="full_name">Full Name</th>
-                                        <th class="sortable" data-column="dob">DOB</th>
-                                        <th class="sortable" data-column="sex">Sex</th>
-                                        <th class="sortable" data-column="barangay">Barangay</th>
-                                        <th class="sortable" data-column="contact">Contact</th>
-                                        <th class="sortable" data-column="status">Status</th>
-                                        <th style="width: 120px;">Actions</th>
+                                        <td>
+                                            <?php if (!empty($patient['profile_photo'])): ?>
+                                                <img src="data:image/jpeg;base64,<?php echo base64_encode($patient['profile_photo']); ?>"
+                                                    class="profile-img" alt="Patient Photo">
+                                            <?php else: ?>
+                                                <img src="<?php echo $assets_path; ?>/images/user-default.png"
+                                                    class="profile-img" alt="Patient Photo">
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><strong><?php echo htmlspecialchars($patient['username']); ?></strong></td>
+                                        <td>
+                                            <?php
+                                            $fullName = $patient['last_name'] . ', ' . $patient['first_name'];
+                                            if (!empty($patient['middle_name'])) {
+                                                $fullName .= ' ' . substr($patient['middle_name'], 0, 1) . '.';
+                                            }
+                                            echo htmlspecialchars($fullName);
+                                            ?>
+                                        </td>
+                                        <td>
+                                            <?php
+                                            if (!empty($patient['date_of_birth'])) {
+                                                $dob = new DateTime($patient['date_of_birth']);
+                                                echo $dob->format('M d, Y');
+                                            } else {
+                                                echo '<span class="text-muted">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
+                                        <td><?php echo !empty($patient['sex']) ? htmlspecialchars($patient['sex']) : '<span class="text-muted">N/A</span>'; ?></td>
+                                        <td><?php echo !empty($patient['barangay_name']) ? htmlspecialchars($patient['barangay_name']) : '<span class="text-muted">N/A</span>'; ?></td>
+                                        <td><?php echo !empty($patient['contact_number']) ? htmlspecialchars($patient['contact_number']) : '<span class="text-muted">N/A</span>'; ?></td>
+                                        <td>
+                                            <span class="badge <?php echo ($patient['status'] == 'active') ? 'bg-success' : 'bg-danger'; ?>">
+                                                <?php echo ucfirst(htmlspecialchars($patient['status'])); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="action-buttons">
+                                                <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>"
+                                                    class="action-btn btn-info" title="View Profile">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                                <button type="button" class="action-btn btn-primary view-contact"
+                                                    data-id="<?php echo $patient['patient_id']; ?>"
+                                                    data-username="<?php echo htmlspecialchars($patient['username']); ?>"
+                                                    data-name="<?php echo htmlspecialchars($fullName); ?>"
+                                                    data-dob="<?php echo !empty($patient['date_of_birth']) ? $dob->format('M d, Y') : 'N/A'; ?>"
+                                                    data-sex="<?php echo !empty($patient['sex']) ? htmlspecialchars($patient['sex']) : 'N/A'; ?>"
+                                                    data-contact="<?php echo !empty($patient['contact_number']) ? htmlspecialchars($patient['contact_number']) : 'N/A'; ?>"
+                                                    data-barangay="<?php echo !empty($patient['barangay_name']) ? htmlspecialchars($patient['barangay_name']) : 'N/A'; ?>"
+                                                    data-emergency-name="<?php echo !empty($patient['contact_name']) ? htmlspecialchars($patient['contact_name']) : 'N/A'; ?>"
+                                                    data-emergency-contact="<?php echo !empty($patient['emergency_contact']) ? htmlspecialchars($patient['emergency_contact']) : 'N/A'; ?>"
+                                                    data-photo="<?php echo !empty($patient['profile_photo']) ? 'data:image/jpeg;base64,' . base64_encode($patient['profile_photo']) : $assets_path . '/images/user-default.png'; ?>"
+                                                    title="View Contact">
+                                                    <i class="fas fa-address-card"></i>
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if ($result->num_rows > 0): ?>
-                                        <?php while ($patient = $result->fetch_assoc()): ?>
-                                            <tr>
-                                                <td>
-                                                    <?php if (!empty($patient['profile_photo'])): ?>
-                                                        <img src="data:image/jpeg;base64,<?php echo base64_encode($patient['profile_photo']); ?>" 
-                                                             class="profile-img" alt="Patient Photo">
-                                                    <?php else: ?>
-                                                        <img src="<?php echo $assets_path; ?>/images/user-default.png" 
-                                                             class="profile-img" alt="Patient Photo">
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td><strong><?php echo htmlspecialchars($patient['username']); ?></strong></td>
-                                                <td>
-                                                    <?php 
-                                                    $fullName = $patient['last_name'] . ', ' . $patient['first_name'];
-                                                    if (!empty($patient['middle_name'])) {
-                                                        $fullName .= ' ' . substr($patient['middle_name'], 0, 1) . '.';
-                                                    }
-                                                    echo htmlspecialchars($fullName); 
-                                                    ?>
-                                                </td>
-                                                <td>
-                                                    <?php 
-                                                    if (!empty($patient['date_of_birth'])) {
-                                                        $dob = new DateTime($patient['date_of_birth']);
-                                                        echo $dob->format('M d, Y');
-                                                    } else {
-                                                        echo '<span class="text-muted">N/A</span>';
-                                                    }
-                                                    ?>
-                                                </td>
-                                                <td><?php echo !empty($patient['sex']) ? htmlspecialchars($patient['sex']) : '<span class="text-muted">N/A</span>'; ?></td>
-                                                <td><?php echo !empty($patient['barangay_name']) ? htmlspecialchars($patient['barangay_name']) : '<span class="text-muted">N/A</span>'; ?></td>
-                                                <td><?php echo !empty($patient['contact_number']) ? htmlspecialchars($patient['contact_number']) : '<span class="text-muted">N/A</span>'; ?></td>
-                                                <td>
-                                                    <span class="badge <?php echo ($patient['status'] == 'active') ? 'bg-success' : 'bg-danger'; ?>">
-                                                        <?php echo ucfirst(htmlspecialchars($patient['status'])); ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <div class="action-buttons">
-                                                        <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>" 
-                                                        class="action-btn btn-info" title="View Profile">
-                                                            <i class="fas fa-eye"></i>
-                                                        </a>
-                                                        <button type="button" class="action-btn btn-primary view-contact" 
-                                                                data-id="<?php echo $patient['patient_id']; ?>"
-                                                                data-username="<?php echo htmlspecialchars($patient['username']); ?>"
-                                                                data-name="<?php echo htmlspecialchars($fullName); ?>"
-                                                                data-dob="<?php echo !empty($patient['date_of_birth']) ? $dob->format('M d, Y') : 'N/A'; ?>"
-                                                                data-sex="<?php echo !empty($patient['sex']) ? htmlspecialchars($patient['sex']) : 'N/A'; ?>"
-                                                                data-contact="<?php echo !empty($patient['contact_number']) ? htmlspecialchars($patient['contact_number']) : 'N/A'; ?>"
-                                                                data-barangay="<?php echo !empty($patient['barangay_name']) ? htmlspecialchars($patient['barangay_name']) : 'N/A'; ?>"
-                                                                data-emergency-name="<?php echo !empty($patient['contact_name']) ? htmlspecialchars($patient['contact_name']) : 'N/A'; ?>"
-                                                                data-emergency-contact="<?php echo !empty($patient['emergency_contact']) ? htmlspecialchars($patient['emergency_contact']) : 'N/A'; ?>"
-                                                                data-photo="<?php echo !empty($patient['profile_photo']) ? 'data:image/jpeg;base64,'.base64_encode($patient['profile_photo']) : $assets_path . '/images/user-default.png'; ?>"
-                                                                title="View Contact">
-                                                            <i class="fas fa-address-card"></i>
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        <?php endwhile; ?>
-                                    <?php else: ?>
-                                        <tr>
-                                            <td colspan="9" class="text-center">
-                                                <div style="padding: 30px 0;">
-                                                    <i class="fas fa-search" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
-                                                    <p>No patient records found in <?php echo htmlspecialchars($bhw_barangay_name); ?>.</p>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <!-- Pagination -->
-                        <?php if ($totalPages > 1): ?>
-                        <div class="mt-4">
-                            <ul class="pagination">
-                                <li class="<?php echo ($page <= 1) ? 'disabled' : ''; ?>">
-                                    <a href="#" data-page="<?php echo $page-1; ?>">Previous</a>
-                                </li>
-                                
-                                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                                    <?php if ($i == 1 || $i == $totalPages || ($i >= $page - 2 && $i <= $page + 2)): ?>
-                                        <li class="<?php echo ($i == $page) ? 'active' : ''; ?>">
-                                            <a href="#" data-page="<?php echo $i; ?>"><?php echo $i; ?></a>
-                                        </li>
-                                    <?php elseif ($i == $page - 3 || $i == $page + 3): ?>
-                                        <li class="disabled">
-                                            <span>...</span>
-                                        </li>
-                                    <?php endif; ?>
-                                <?php endfor; ?>
-                                
-                                <li class="<?php echo ($page >= $totalPages) ? 'disabled' : ''; ?>">
-                                    <a href="#" data-page="<?php echo $page+1; ?>">Next</a>
-                                </li>
-                            </ul>
-                        </div>
-                        <?php endif; ?>
-                    </div>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="9" class="text-center">
+                                        <div style="padding: 30px 0;">
+                                            <i class="fas fa-search" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
+                                            <p>No patient records found in <?php echo htmlspecialchars($bhw_barangay_name); ?>.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
+
+                <!-- Pagination -->
+                <?php if ($totalPages > 1): ?>
+                    <div class="mt-4">
+                        <ul class="pagination">
+                            <li class="<?php echo ($page <= 1) ? 'disabled' : ''; ?>">
+                                <a href="#" data-page="<?php echo $page - 1; ?>">Previous</a>
+                            </li>
+
+                            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                                <?php if ($i == 1 || $i == $totalPages || ($i >= $page - 2 && $i <= $page + 2)): ?>
+                                    <li class="<?php echo ($i == $page) ? 'active' : ''; ?>">
+                                        <a href="#" data-page="<?php echo $i; ?>"><?php echo $i; ?></a>
+                                    </li>
+                                <?php elseif ($i == $page - 3 || $i == $page + 3): ?>
+                                    <li class="disabled">
+                                        <span>...</span>
+                                    </li>
+                                <?php endif; ?>
+                            <?php endfor; ?>
+
+                            <li class="<?php echo ($page >= $totalPages) ? 'disabled' : ''; ?>">
+                                <a href="#" data-page="<?php echo $page + 1; ?>">Next</a>
+                            </li>
+                        </ul>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
-    
+    </div>
+    </div>
+
     <!-- Contact Modal -->
     <div class="modal fade" id="contactModal" tabindex="-1" role="dialog" aria-labelledby="contactModalLabel" aria-hidden="true">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="contactModalLabel">Patient ID Card</h5>
+                    <h5 class="modal-title" id="contactModalLabel">Patient Summary Card</h5>
                     <button type="button" class="btn-close" id="closeContactModal" aria-label="Close">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -1453,7 +1492,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                             <p><strong><i class="fas fa-map-marker-alt" style="color: var(--primary);"></i> Barangay:</strong> <span id="patientBarangay"></span></p>
                             <p><strong><i class="fas fa-phone" style="color: var(--primary);"></i> Contact Number:</strong> <span id="patientContact"></span></p>
                         </div>
-                        
+
                         <div class="header" style="margin-top: 20px;">
                             <h5>Emergency Contact</h5>
                         </div>
@@ -1467,14 +1506,14 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                     <button type="button" class="action-btn btn-secondary" id="closeModalBtn">
                         <i class="fas fa-times"></i> Close
                     </button>
-                    <button type="button" class="action-btn btn-primary" id="printIdCard">
+                    <!--<button type="button" class="action-btn btn-primary" id="printIdCard">
                         <i class="fas fa-print"></i> Print ID Card
-                    </button>
+                    </button>-->
                 </div>
             </div>
         </div>
     </div>
-    
+
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
@@ -1482,7 +1521,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
         $(document).ready(function() {
             let currentPage = 1;
             let searchTimeout;
-            
+
             function performSearch(page = 1) {
                 const searchQuery = $('#searchInput').val();
                 const patientId = $('#patientIdInput').val();
@@ -1491,7 +1530,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                 const middleName = $('#middleNameInput').val();
                 const birthday = $('#birthdayInput').val();
                 const status = $('#statusFilter').val();
-                
+
                 const params = new URLSearchParams({
                     search: searchQuery,
                     patient_id: patientId,
@@ -1502,9 +1541,9 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                     status: status,
                     page: page
                 });
-                
+
                 $('#loader').show();
-                
+
                 fetch(`patient_records_management.php?${params}`)
                     .then(response => response.text())
                     .then(html => {
@@ -1512,17 +1551,17 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                         const doc = parser.parseFromString(html, 'text/html');
                         const newTableBody = doc.querySelector('#patientTable tbody');
                         const newPagination = doc.querySelector('.pagination');
-                        
+
                         if (newTableBody) {
                             $('#patientTable tbody').html(newTableBody.innerHTML);
                         }
-                        
+
                         if (newPagination) {
                             $('.pagination').parent().html(newPagination.parentElement.innerHTML);
                         } else {
                             $('.pagination').parent().empty();
                         }
-                        
+
                         // Update badge counts
                         const badges = doc.querySelectorAll('.total-count .badge');
                         if (badges.length >= 3) {
@@ -1530,10 +1569,10 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                             $('.total-count .badge').eq(1).text(badges[1].textContent);
                             $('.total-count .badge').eq(2).text(badges[2].textContent);
                         }
-                        
+
                         currentPage = page;
                         $('#loader').hide();
-                        
+
                         // Re-bind event handlers for new elements
                         bindEventHandlers();
                     })
@@ -1542,14 +1581,14 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                         $('#loader').hide();
                     });
             }
-            
+
             function bindEventHandlers() {
                 // View contact modal
                 $('.view-contact').off('click').on('click', function() {
                     const data = $(this).data();
                     showContactModal(data);
                 });
-                
+
                 // Pagination clicks
                 $('.pagination a').off('click').on('click', function(e) {
                     e.preventDefault();
@@ -1559,7 +1598,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                     }
                 });
             }
-            
+
             function showContactModal(data) {
                 $('#patientPhoto').attr('src', data.photo || '<?php echo $assets_path; ?>/images/user-default.png');
                 $('#patientName').text(data.name || 'N/A');
@@ -1570,43 +1609,43 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                 $('#patientBarangay').text(data.barangay || 'N/A');
                 $('#emergencyName').text(data.emergencyName || 'N/A');
                 $('#emergencyContact').text(data.emergencyContact || 'N/A');
-                
+
                 $('#contactModal').addClass('show');
             }
-            
+
             function closeModal() {
                 $('#contactModal').removeClass('show');
             }
-            
+
             // Debounced search
             function debouncedSearch() {
                 clearTimeout(searchTimeout);
                 searchTimeout = setTimeout(() => performSearch(1), 300);
             }
-            
+
             // Search input events
             $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput, #birthdayInput').on('input', debouncedSearch);
             $('#statusFilter').on('change', debouncedSearch);
-            
+
             // Clear filters
             $('#clearFilters').on('click', function() {
                 $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput, #birthdayInput').val('');
                 $('#statusFilter').val('');
                 performSearch(1);
             });
-            
+
             // Export dropdown
             $('#exportDropdown').on('click', function(e) {
                 e.preventDefault();
                 $('#exportMenu').toggle();
             });
-            
+
             // Close modal events
             $('#closeContactModal, #closeModalBtn').on('click', closeModal);
             $('#contactModal').on('click', function(e) {
                 if (e.target === this) closeModal();
             });
-            
+
             $(document).on('keydown', function(e) {
                 if (e.key === 'Escape') closeModal();
             });
@@ -1622,7 +1661,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                 const emergencyName = $('#emergencyName').text();
                 const emergencyContact = $('#emergencyContact').text();
                 const photoSrc = $('#patientPhoto').attr('src');
-                
+
                 // Create print window
                 const printWindow = window.open('', '_blank');
                 printWindow.document.write(`
@@ -1666,15 +1705,59 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                     </html>
                 `);
                 printWindow.document.close();
-                
+
                 setTimeout(() => {
                     printWindow.print();
                 }, 250);
             });
-            
+
+            // Table column sorting - Server-side implementation
+            $('#patientTable th.sortable').on('click', function() {
+                $('#loader').show();
+
+                const columnType = $(this).data('column');
+                const currentSort = new URLSearchParams(window.location.search).get('sort');
+                const currentDirection = new URLSearchParams(window.location.search).get('direction');
+
+                // Determine new sort direction
+                let newDirection = 'ASC';
+                if (currentSort === columnType && currentDirection === 'ASC') {
+                    newDirection = 'DESC';
+                }
+
+                // Build URL with current filters and new sort
+                let searchValue = $('#searchInput').val();
+                let patientIdValue = $('#patientIdInput').val();
+                let firstNameValue = $('#firstNameInput').val();
+                let lastNameValue = $('#lastNameInput').val();
+                let middleNameValue = $('#middleNameInput').val();
+                let birthdayValue = $('#birthdayInput').val();
+                let statusValue = $('#statusFilter').val();
+
+                let url = window.location.pathname + '?';
+                let params = [];
+
+                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
+                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
+                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
+                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
+                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
+                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
+                if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
+
+                // Add sort parameters
+                params.push('sort=' + encodeURIComponent(columnType));
+                params.push('direction=' + encodeURIComponent(newDirection));
+                params.push('page=1'); // Reset to first page when sorting
+
+                url += params.join('&');
+                window.location.href = url;
+            });
+
             // Initialize event handlers
             bindEventHandlers();
         });
     </script>
 </body>
+
 </html>

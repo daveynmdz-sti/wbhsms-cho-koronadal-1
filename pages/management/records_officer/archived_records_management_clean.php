@@ -1,16 +1,19 @@
 <?php
 // Include employee session configuration
-// Use absolute path resolution
-$root_path = dirname(dirname(dirname(__DIR__)));
-require_once $root_path . '/config/session/employee_session.php';
-include $root_path . '/config/db.php';
+// Use absolute path resolution - go up 3 levels from records_officer directory
+$root_path = realpath(dirname(dirname(dirname(__DIR__))));
+require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'session' . DIRECTORY_SEPARATOR . 'employee_session.php';
+include $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.php';
 
 // Use relative path for assets - more reliable than absolute URLs
 $assets_path = '../../../assets';
 
 // Check if user is logged in
 if (!isset($_SESSION['employee_id'])) {
-    ob_end_clean();
+    // Only clean output buffer if one exists
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
     header("Location: /pages/management/auth/employee_login.php");
     exit();
@@ -19,33 +22,15 @@ if (!isset($_SESSION['employee_id'])) {
 // Set active page for sidebar highlighting
 $activePage = 'patient_records';
 
-// Define role-based permissions - DHO specific
-$canEdit = false; // DHO cannot edit patient records
-$canView = (strtolower($_SESSION['role']) === 'dho');
+// Define role-based permissions for records officer
+$canEdit = false; // Records Officer can only view - NO editing/reactivation allowed
+$canView = in_array($_SESSION['role'], ['records_officer']);
 
 if (!$canView) {
     $role = $_SESSION['role'];
     header("Location: ../../$role/dashboard.php");
     exit();
 }
-
-// Get DHO's district_id from their facility assignment
-$dho_district_sql = "SELECT f.district_id 
-                     FROM employees e 
-                     JOIN facilities f ON e.facility_id = f.facility_id 
-                     WHERE e.employee_id = ? AND e.role_id = 5";
-$dho_district_stmt = $conn->prepare($dho_district_sql);
-$dho_district_stmt->bind_param("i", $_SESSION['employee_id']);
-$dho_district_stmt->execute();
-$dho_district_result = $dho_district_stmt->get_result();
-
-if ($dho_district_result->num_rows === 0) {
-    // DHO not assigned to a facility or invalid setup
-    echo "<script>alert('Access denied: No facility assignment found.'); window.location.href='dashboard.php';</script>";
-    exit();
-}
-
-$dho_district = $dho_district_result->fetch_assoc()['district_id'];
 
 // Handle AJAX requests for search and filter
 $searchQuery = isset($_GET['search']) ? $_GET['search'] : '';
@@ -56,20 +41,18 @@ $middleNameFilter = isset($_GET['middle_name']) ? $_GET['middle_name'] : '';
 $birthdayFilter = isset($_GET['birthday']) ? $_GET['birthday'] : '';
 $barangayFilter = isset($_GET['barangay']) ? $_GET['barangay'] : '';
 $statusFilter = isset($_GET['status']) ? $_GET['status'] : '';
-$sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'patient_id';
-$sortDirection = isset($_GET['direction']) ? $_GET['direction'] : 'ASC';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $recordsPerPage = 10;
 $offset = ($page - 1) * $recordsPerPage;
 
-// Count total records for pagination - RESTRICTED TO DHO'S DISTRICT
+// Count total records for pagination - ONLY INACTIVE RECORDS
 $countSql = "SELECT COUNT(DISTINCT p.patient_id) as total 
              FROM patients p 
              LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
-             WHERE b.district_id = ?";
+             WHERE p.status = 'inactive'";
 
-$params = [$dho_district];
-$types = "i";
+$params = [];
+$types = "";
 
 if (!empty($searchQuery)) {
     $countSql .= " AND (p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? 
@@ -127,19 +110,21 @@ if (!empty($statusFilter)) {
 }
 
 $countStmt = $conn->prepare($countSql);
-$countStmt->bind_param($types, ...$params);
+if (!empty($params)) {
+    $countStmt->bind_param($types, ...$params);
+}
 $countStmt->execute();
 $countResult = $countStmt->get_result();
 $totalRecords = $countResult->fetch_assoc()['total'];
 $totalPages = ceil($totalRecords / $recordsPerPage);
 
-// Count active patients - RESTRICTED TO DHO'S DISTRICT
+// Count active patients
 $activeCountSql = "SELECT COUNT(DISTINCT p.patient_id) as active_count 
                    FROM patients p 
                    LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
-                   WHERE p.status = 'active' AND b.district_id = ?";
-$activeParams = [$dho_district];
-$activeTypes = "i";
+                   WHERE p.status = 'active'";
+$activeParams = [];
+$activeTypes = "";
 
 if (!empty($searchQuery)) {
     $activeCountSql .= " AND (p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? 
@@ -191,18 +176,20 @@ if (!empty($barangayFilter)) {
 }
 
 $activeCountStmt = $conn->prepare($activeCountSql);
-$activeCountStmt->bind_param($activeTypes, ...$activeParams);
+if (!empty($activeParams)) {
+    $activeCountStmt->bind_param($activeTypes, ...$activeParams);
+}
 $activeCountStmt->execute();
 $activeCountResult = $activeCountStmt->get_result();
 $activePatients = $activeCountResult->fetch_assoc()['active_count'];
 
-// Count inactive patients - RESTRICTED TO DHO'S DISTRICT
+// Count inactive patients
 $inactiveCountSql = "SELECT COUNT(DISTINCT p.patient_id) as inactive_count 
                      FROM patients p 
                      LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
-                     WHERE p.status = 'inactive' AND b.district_id = ?";
-$inactiveParams = [$dho_district];
-$inactiveTypes = "i";
+                     WHERE p.status = 'inactive'";
+$inactiveParams = [];
+$inactiveTypes = "";
 
 if (!empty($searchQuery)) {
     $inactiveCountSql .= " AND (p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? 
@@ -254,23 +241,15 @@ if (!empty($barangayFilter)) {
 }
 
 $inactiveCountStmt = $conn->prepare($inactiveCountSql);
-$inactiveCountStmt->bind_param($inactiveTypes, ...$inactiveParams);
+if (!empty($inactiveParams)) {
+    $inactiveCountStmt->bind_param($inactiveTypes, ...$inactiveParams);
+}
 $inactiveCountStmt->execute();
 $inactiveCountResult = $inactiveCountStmt->get_result();
 $inactivePatients = $inactiveCountResult->fetch_assoc()['inactive_count'];
+$totalPages = ceil($totalRecords / $recordsPerPage);
 
-// Get barangays in DHO's district for dropdown
-$barangaysSql = "SELECT barangay_id, barangay_name FROM barangay WHERE district_id = ? ORDER BY barangay_name ASC";
-$barangaysStmt = $conn->prepare($barangaysSql);
-$barangaysStmt->bind_param("i", $dho_district);
-$barangaysStmt->execute();
-$barangaysResult = $barangaysStmt->get_result();
-$barangays = [];
-while ($row = $barangaysResult->fetch_assoc()) {
-    $barangays[] = $row;
-}
-
-// Get patient records - RESTRICTED TO DHO'S DISTRICT
+// Get patient records - ONLY INACTIVE RECORDS
 $sql = "SELECT p.patient_id, p.username, p.status, 
         p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.sex, p.contact_number, 
         pi.profile_photo,
@@ -281,11 +260,11 @@ $sql = "SELECT p.patient_id, p.username, p.status,
         LEFT JOIN personal_information pi ON p.patient_id = pi.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN emergency_contact ec ON p.patient_id = ec.patient_id
-        WHERE b.district_id = ?";
+        WHERE p.status = 'inactive'";
 
-// Apply the same filters for the main query - WITH DHO DISTRICT RESTRICTION
-$params = [$dho_district];
-$types = "i";
+// Apply the same filters for the main query
+$params = [];
+$types = "";
 
 if (!empty($searchQuery)) {
     $sql .= " AND (p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? 
@@ -342,38 +321,136 @@ if (!empty($statusFilter)) {
     $types .= "s";
 }
 
-// Define column mapping for sorting
-$columnMap = [
-    'patient_id' => 'p.patient_id',
-    'username' => 'p.username',
-    'full_name' => 'p.last_name',
-    'dob' => 'p.date_of_birth',
-    'sex' => 'p.sex',
-    'barangay' => 'b.barangay_name',
-    'contact' => 'p.contact_number',
-    'status' => 'p.status'
-];
-
-// Validate sort column and direction
-$orderByColumn = isset($columnMap[$sortColumn]) ? $columnMap[$sortColumn] : 'p.patient_id';
-$sortDirection = in_array(strtoupper($sortDirection), ['ASC', 'DESC']) ? strtoupper($sortDirection) : 'ASC';
-
-$sql .= " ORDER BY $orderByColumn $sortDirection LIMIT ? OFFSET ?";
+$sql .= " ORDER BY p.last_name ASC LIMIT ? OFFSET ?";
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
 
 $stmt = $conn->prepare($sql);
-$stmt->bind_param($types, ...$params);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
 $stmt->execute();
 $result = $stmt->get_result();
 
-// Get district name for DHO display
-$district_name_sql = "SELECT district_name FROM districts WHERE district_id = ?";
-$district_name_stmt = $conn->prepare($district_name_sql);
-$district_name_stmt->bind_param("i", $dho_district);
-$district_name_stmt->execute();
-$district_name_result = $district_name_stmt->get_result();
-$dho_district_name = $district_name_result->fetch_assoc()['district_name'];
+// Get all barangays for filter dropdown
+$barangaySql = "SELECT barangay_id, barangay_name FROM barangay ORDER BY barangay_name";
+$barangayResult = $conn->query($barangaySql);
+?>
+
+<!DOCTYPE html>
+    // Prevent any output before JSON response
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Start fresh output buffer
+    ob_start();
+    
+    header('Content-Type: application/json');
+    
+    try {
+        // Check database connection
+        if (!$conn || $conn->connect_error) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+            exit;
+        }
+        
+        $patient_id = intval($_POST['patient_id']);
+        $admin_password = $_POST['admin_password'] ?? '';
+
+        // Validate inputs
+        if (empty($patient_id) || $patient_id <= 0) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Invalid patient ID']);
+            exit;
+        }
+
+        if (empty($admin_password)) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Admin password is required']);
+            exit;
+        }
+
+        // Verify admin password
+        $admin_id = $_SESSION['employee_id'];
+        $adminCheckSql = "SELECT e.password FROM employees e 
+                         LEFT JOIN roles r ON e.role_id = r.role_id 
+                         WHERE e.employee_id = ? AND r.role_name = 'admin'";
+        $adminCheckStmt = $conn->prepare($adminCheckSql);
+        if (!$adminCheckStmt) {
+            error_log("Failed to prepare admin check statement: " . $conn->error);
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Database error occurred']);
+            exit;
+        }
+        
+        $adminCheckStmt->bind_param("i", $admin_id);
+        $adminCheckStmt->execute();
+        $adminResult = $adminCheckStmt->get_result();
+
+        if ($adminResult->num_rows === 0) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Unauthorized access - Admin not found']);
+            exit;
+        }
+
+        $adminData = $adminResult->fetch_assoc();
+
+        if (!password_verify($admin_password, $adminData['password'])) {
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Incorrect password']);
+            exit;
+        }
+
+        // Reactivate the patient
+        $updateSql = "UPDATE patients SET status = 'active' WHERE patient_id = ? AND status = 'inactive'";
+        $updateStmt = $conn->prepare($updateSql);
+        if (!$updateStmt) {
+            error_log("Failed to prepare update statement: " . $conn->error);
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Database error occurred']);
+            exit;
+        }
+        
+        $updateStmt->bind_param("i", $patient_id);
+
+        if ($updateStmt->execute()) {
+            if ($updateStmt->affected_rows > 0) {
+                // Log the reactivation (optional - don't fail if this fails)
+                try {
+                    $logSql = "INSERT INTO activity_logs (employee_id, action, details, timestamp) VALUES (?, 'Patient Reactivated', ?, NOW())";
+                    $logStmt = $conn->prepare($logSql);
+                    if ($logStmt) {
+                        $logDetails = "Reactivated patient ID: $patient_id";
+                        $logStmt->bind_param("is", $admin_id, $logDetails);
+                        $logStmt->execute();
+                    }
+                } catch (Exception $logError) {
+                    error_log("Failed to log patient reactivation: " . $logError->getMessage());
+                    // Continue anyway - don't fail the reactivation because of logging
+                }
+
+                ob_clean();
+                echo json_encode(['success' => true, 'message' => 'Patient account reactivated successfully']);
+            } else {
+                ob_clean();
+                echo json_encode(['success' => false, 'message' => 'Patient not found or already active']);
+            }
+        } else {
+            error_log("Failed to execute update statement: " . $updateStmt->error);
+            ob_clean();
+            echo json_encode(['success' => false, 'message' => 'Failed to reactivate patient account']);
+        }
+    } catch (Exception $e) {
+        error_log("Exception in patient reactivation: " . $e->getMessage());
+        ob_clean();
+        echo json_encode(['success' => false, 'message' => 'An unexpected error occurred: ' . $e->getMessage()]);
+    }
+    
+    ob_end_flush();
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -382,10 +459,10 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Patient Records Management | CHO Koronadal</title>
+    <title>Archived Patient Records - Admin | CHO Koronadal</title>
     <!-- CSS Files -->
-    <link rel="stylesheet" href="../../../assets/css/sidebar.css">
-    <link rel="stylesheet" href="../../../assets/css/dashboard.css">
+    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../../../../assets/css/dashboard.css">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -920,11 +997,6 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
             .col-md-2 {
                 flex: 0 0 100%;
                 max-width: 100%;
-                margin-bottom: 10px;
-            }
-
-            .page-title {
-                font-size: 1.5rem;
             }
         }
 
@@ -941,18 +1013,16 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
         }
 
         .dropdown-toggle::after {
-            display: inline-block;
-            margin-left: 0.255em;
-            vertical-align: 0.255em;
-            content: "";
-            border-top: 0.3em solid;
-            border-right: 0.3em solid transparent;
-            border-bottom: 0;
-            border-left: 0.3em solid transparent;
+            display: none;
+        }
+
+        .dropdown-arrow {
+            margin-left: 8px;
+            font-size: 0.8em;
             transition: transform 0.2s ease;
         }
 
-        .dropdown-toggle[aria-expanded="true"]::after {
+        .dropdown-toggle[aria-expanded="true"] .dropdown-arrow {
             transform: rotate(180deg);
         }
 
@@ -962,14 +1032,15 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
             right: 0;
             top: calc(100% + 5px);
             background-color: #fff;
-            min-width: 180px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            min-width: 200px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
             z-index: 1000;
             border-radius: var(--border-radius);
             padding: 8px 0;
             opacity: 0;
             transform: translateY(10px);
             transition: opacity 0.2s ease, transform 0.2s ease;
+            border: 1px solid rgba(0, 0, 0, 0.1);
         }
 
         .dropdown-menu.show {
@@ -978,23 +1049,110 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
             transform: translateY(0);
         }
 
-        .dropdown-item {
+        .enhanced-dropdown {
+            min-width: 220px;
+        }
+
+        .enhanced-dropdown .dropdown-item {
             display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 15px;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            padding: 12px 16px;
             clear: both;
             text-decoration: none;
             color: #333;
-            transition: background-color 0.15s ease;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
         }
 
-        .dropdown-item:hover {
-            background-color: rgba(0, 119, 182, 0.1);
+        .enhanced-dropdown .dropdown-item:hover {
+            background-color: rgba(0, 119, 182, 0.08);
         }
 
-        .dropdown-item i {
+        .enhanced-dropdown .dropdown-item i {
             color: var(--primary);
+            margin-right: 8px;
+            font-size: 1.1em;
+            align-self: flex-start;
+        }
+
+        .enhanced-dropdown .dropdown-item span {
+            font-weight: 500;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+
+        .enhanced-dropdown .dropdown-item small {
+            color: #666;
+            font-size: 0.85em;
+            margin-top: 2px;
+            line-height: 1.3;
+        }
+
+        .enhanced-dropdown .dropdown-item:hover span {
+            color: var(--primary);
+        }
+
+        .enhanced-dropdown .dropdown-item:hover small {
+            color: #555;
+        }
+
+        /* Action buttons row styling */
+        .action-buttons-row {
+            gap: 0.5rem !important;
+            align-items: stretch;
+        }
+
+        .action-btn-uniform {
+            flex: 1;
+            min-height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .action-btn-uniform::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.6s ease;
+        }
+
+        .action-btn-uniform:hover::before {
+            left: 100%;
+        }
+
+        /* Responsive button text */
+        @media (max-width: 1200px) {
+            .action-btn-uniform .btn-text {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .action-buttons-row {
+                flex-direction: column;
+                gap: 0.5rem !important;
+            }
+
+            .action-btn-uniform {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .action-btn-uniform .btn-text {
+                display: inline;
+            }
         }
 
         /* Alert styles */
@@ -1076,9 +1234,14 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
 
         /* Section header styling */
         .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             padding: 0 0 15px 0;
             margin-bottom: 15px;
             border-bottom: 1px solid rgba(0, 119, 182, 0.2);
+            flex-wrap: wrap;
+            gap: 1rem;
         }
 
         .section-header h4 {
@@ -1091,6 +1254,26 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
         .section-header h4 i {
             color: var(--primary);
             margin-right: 8px;
+        }
+
+        .section-header-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 768px) {
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .section-header-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
         }
 
         /* Breadcrumb styling */
@@ -1193,35 +1376,73 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                 text-align: center;
             }
         }
+
+        /* Button styles for modals */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #52b788, #2d6a4f);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #40916c, #1b4332);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(45, 106, 79, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef476f, #d00000);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #e63946, #9d0208);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(208, 0, 0, 0.3);
+        }
     </style>
 </head>
 
 <body>
     <!-- Include sidebar -->
-    <?php include '../../../includes/sidebar_dho.php'; ?>
-
+    <?php include $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'sidebar_admin.php'; ?>
     <div class="homepage">
         <div class="main-content">
             <!-- Breadcrumb Navigation -->
             <div class="breadcrumb" style="margin-top: 50px;">
-                <a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+                <a href="../dashboard.php"><i class="fas fa-home"></i> Admin Dashboard</a>
                 <i class="fas fa-chevron-right"></i>
-                <span>Patient Records Management</span>
+                <a href="patient_records_management.php"><i class="fas fa-users"></i> Patient Records</a>
+                <i class="fas fa-chevron-right"></i>
+                <span>Archived Records</span>
             </div>
 
             <div class="page-header">
-                <h1><i class="fas fa-users"></i> Patient Records Management</h1>
+                <h1><i class="fas fa-archive"></i> Archived Patient Records</h1>
                 <div class="total-count">
-                    <span class="badge bg-success"><?php echo $totalRecords; ?> Total Patients</span>
-                    <span class="badge bg-primary"><?php echo $activePatients; ?> Active</span>
-                    <span class="badge bg-danger"><?php echo $inactivePatients; ?> Inactive</span>
+                    <span class="badge bg-danger"><?php echo $totalRecords; ?> Archived Patients</span>
                 </div>
             </div>
 
-            <!-- DHO District Restriction Notice -->
-            <div style="background: linear-gradient(135deg, #4caf50, #2d6a4f); color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: 500;">
-                <i class="fas fa-info-circle"></i> <strong>District Health Officer Access:</strong>
-                You can only view patient records from <?php echo htmlspecialchars($dho_district_name); ?> District
+            <!-- Information Alert -->
+            <div class="alert alert-info" style="background-color: #d1ecf1; color: #0c5460; border-color: #bee5eb; border-left-color: #17a2b8;">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Info:</strong> This page shows inactive/archived patient records. 
+                After reactivating a patient, they will appear in the 
+                <a href="patient_records_management.php" style="color: #0c5460; text-decoration: underline; font-weight: bold;">Active Patient Records</a> page.
             </div>
 
             <!-- Search and Filter Section -->
@@ -1230,66 +1451,63 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                     <h4><i class="fas fa-filter"></i> Search & Filter Options</h4>
                 </div>
                 <div class="row">
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-search"></i></span>
                             <input type="text" id="searchInput" class="form-control" placeholder="General search..." value="<?php echo htmlspecialchars($searchQuery); ?>">
                         </div>
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-id-card"></i></span>
                             <input type="text" id="patientIdInput" class="form-control" placeholder="Patient ID" value="<?php echo htmlspecialchars($patientIdFilter); ?>">
                         </div>
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-user"></i></span>
                             <input type="text" id="firstNameInput" class="form-control" placeholder="First Name" value="<?php echo htmlspecialchars($firstNameFilter); ?>">
                         </div>
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-user"></i></span>
                             <input type="text" id="lastNameInput" class="form-control" placeholder="Last Name" value="<?php echo htmlspecialchars($lastNameFilter); ?>">
                         </div>
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-user"></i></span>
                             <input type="text" id="middleNameInput" class="form-control" placeholder="Middle Name" value="<?php echo htmlspecialchars($middleNameFilter); ?>">
                         </div>
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-calendar"></i></span>
                             <input type="date" id="birthdayInput" class="form-control" placeholder="Birthday" value="<?php echo htmlspecialchars($birthdayFilter); ?>">
                         </div>
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-md-3 mb-2">
                         <select id="barangayFilter" class="form-select">
                             <option value="">All Barangays</option>
-                            <?php foreach ($barangays as $barangay): ?>
+                            <?php
+                            // Reset pointer to beginning of result set
+                            $barangayResult->data_seek(0);
+                            while ($barangay = $barangayResult->fetch_assoc()):
+                            ?>
                                 <option value="<?php echo $barangay['barangay_id']; ?>" <?php echo ($barangayFilter == $barangay['barangay_id'] ? 'selected' : ''); ?>>
                                     <?php echo htmlspecialchars($barangay['barangay_name']); ?>
                                 </option>
-                            <?php endforeach; ?>
+                            <?php endwhile; ?>
                         </select>
                     </div>
-                    <div class="col-md-4 d-flex button-container">
-                        <button id="clearFilters" class="action-btn btn-secondary equal-width">
+                    <div class="col-md-3 d-flex button-container action-buttons-row">
+                        <button id="searchBtn" class="action-btn btn-primary action-btn-uniform">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button id="clearFilters" class="action-btn btn-secondary action-btn-uniform">
                             <i class="fas fa-times-circle"></i> Clear Filters
                         </button>
-                        <div class="dropdown">
-                            <button class="action-btn btn-success dropdown-toggle equal-width" type="button" id="exportDropdown">
-                                <i class="fas fa-file-export"></i> Export Data
-                            </button>
-                            <ul class="dropdown-menu" id="exportMenu">
-                                <li><a class="dropdown-item" href="#" id="exportCSV"><i class="fas fa-file-csv"></i> Export to CSV</a></li>
-                                <li><a class="dropdown-item" href="#" id="exportXLSX"><i class="fas fa-file-excel"></i> Export to Excel</a></li>
-                                <li><a class="dropdown-item" href="#" id="exportPDF"><i class="fas fa-file-pdf"></i> Export to PDF</a></li>
-                            </ul>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -1303,19 +1521,47 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
             <div class="card-container">
                 <div class="section-header">
                     <h4><i class="fas fa-table"></i> Patient Records</h4>
+                    <div class="section-header-actions">
+                        <a href="patient_records_management.php" class="action-btn btn-warning action-btn-uniform" style="text-decoration: none;">
+                            <i class="fas fa-arrow-left"></i> Back to Active Records
+                        </a>
+                        <div class="dropdown">
+                            <button class="action-btn btn-success dropdown-toggle action-btn-uniform" type="button" id="exportDropdown">
+                                <i class="fas fa-file-export"></i> Export Data
+                                <i class="fas fa-chevron-down dropdown-arrow"></i>
+                            </button>
+                            <ul class="dropdown-menu enhanced-dropdown" id="exportMenu">
+                                <li><a class="dropdown-item" href="#" id="exportCSV">
+                                        <i class="fas fa-file-csv"></i>
+                                        <span>Export to CSV</span>
+                                        <small>Comma-separated values</small>
+                                    </a></li>
+                                <li><a class="dropdown-item" href="#" id="exportXLSX">
+                                        <i class="fas fa-file-excel"></i>
+                                        <span>Export to Excel</span>
+                                        <small>Microsoft Excel format</small>
+                                    </a></li>
+                                <li><a class="dropdown-item" href="#" id="exportPDF">
+                                        <i class="fas fa-file-pdf"></i>
+                                        <span>Export to PDF</span>
+                                        <small>Portable document format</small>
+                                    </a></li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table id="patientTable">
                         <thead>
                             <tr>
                                 <th style="width: 70px;"> </th>
-                                <th class="sortable <?php echo ($sortColumn == 'username') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="username">Patient ID</th>
-                                <th class="sortable <?php echo ($sortColumn == 'full_name') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="full_name">Full Name</th>
-                                <th class="sortable <?php echo ($sortColumn == 'dob') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="dob">DOB</th>
-                                <th class="sortable <?php echo ($sortColumn == 'sex') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="sex">Sex</th>
-                                <th class="sortable <?php echo ($sortColumn == 'barangay') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="barangay">Barangay</th>
-                                <th class="sortable <?php echo ($sortColumn == 'contact') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="contact">Contact</th>
-                                <th class="sortable <?php echo ($sortColumn == 'status') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="status">Status</th>
+                                <th class="sortable" data-column="username">Patient ID</th>
+                                <th class="sortable" data-column="full_name">Full Name</th>
+                                <th class="sortable" data-column="dob">DOB</th>
+                                <th class="sortable" data-column="sex">Sex</th>
+                                <th class="sortable" data-column="barangay">Barangay</th>
+                                <th class="sortable" data-column="contact">Contact</th>
+                                <th class="sortable" data-column="status">Status</th>
                                 <th style="width: 120px;">Actions</th>
                             </tr>
                         </thead>
@@ -1362,10 +1608,16 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                                         </td>
                                         <td>
                                             <div class="action-buttons">
-                                                <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>"
-                                                    class="action-btn btn-info" title="View Profile">
+                                                <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>&back_url=archived_records_management.php"
+                                                    class="action-btn btn-info" title="View Patient Profile (Admin)">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
+                                                <button type="button" class="action-btn btn-success reactivate-patient"
+                                                    data-patient-id="<?php echo $patient['patient_id']; ?>"
+                                                    data-patient-name="<?php echo htmlspecialchars($fullName); ?>"
+                                                    title="Reactivate Patient Account">
+                                                    <i class="fas fa-undo"></i>
+                                                </button>
                                                 <button type="button" class="action-btn btn-primary view-contact"
                                                     data-id="<?php echo $patient['patient_id']; ?>"
                                                     data-username="<?php echo htmlspecialchars($patient['username']); ?>"
@@ -1427,14 +1679,57 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
             </div>
         </div>
     </div>
+    </div>
+    </div>
 
+    <!-- Reactivate Confirmation Modal -->
+    <div class="modal fade" id="reactivateModal" tabindex="-1" role="dialog" aria-labelledby="reactivateModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="reactivateModalLabel">
+                        <i class="fas fa-undo"></i> Reactivate Patient Account
+                    </h5>
+                    <button type="button" class="btn-close" id="closeReactivateModal" aria-label="Close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        You are about to reactivate the patient account for: <strong id="reactivatePatientName"></strong>
+                    </div>
+                    <form id="reactivateForm">
+                        <input type="hidden" id="reactivatePatientId" value="">
+                        <div class="form-group">
+                            <label for="adminPassword" class="form-label">
+                                <i class="fas fa-lock"></i> Enter your admin password to confirm:
+                            </label>
+                            <input type="password" id="adminPassword" class="form-control"
+                                placeholder="Enter your password" required>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            This action will make the patient account active and accessible again in the main patient records.
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="action-btn btn-secondary" id="cancelReactivate">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="button" class="action-btn btn-success" id="confirmReactivate">
+                        <i class="fas fa-undo"></i> Reactivate Account
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Contact Modal -->
     <div class="modal fade" id="contactModal" tabindex="-1" role="dialog" aria-labelledby="contactModalLabel" aria-hidden="true">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="contactModalLabel">Patient Summary Card</h5>
+                    <h5 class="modal-title" id="contactModalLabel">Patient Record Summary</h5>
                     <button type="button" class="btn-close" id="closeContactModal" aria-label="Close">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -1475,6 +1770,56 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
         </div>
     </div>
 
+    <!-- Success Modal -->
+    <div class="modal fade" id="successModal" tabindex="-1" role="dialog" aria-labelledby="successModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: var(--success); color: white;">
+                    <h5 class="modal-title" id="successModalLabel">
+                        <i class="fas fa-check-circle"></i> Success
+                    </h5>
+                    <button type="button" class="btn-close" id="closeSuccessModal" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center">
+                        <i class="fas fa-check-circle" style="font-size: 3rem; color: var(--success); margin-bottom: 1rem;"></i>
+                        <p id="successMessage" style="font-size: 1.1rem; margin-bottom: 1rem;"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" id="successOkButton">
+                        <i class="fas fa-check"></i> OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: var(--danger); color: white;">
+                    <h5 class="modal-title" id="errorModalLabel">
+                        <i class="fas fa-exclamation-triangle"></i> Error
+                    </h5>
+                    <button type="button" class="btn-close" id="closeErrorModal" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: var(--danger); margin-bottom: 1rem;"></i>
+                        <p id="errorMessage" style="font-size: 1.1rem; margin-bottom: 1rem;"></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" id="errorOkButton">
+                        <i class="fas fa-times"></i> OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
@@ -1490,6 +1835,58 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                     timeout = setTimeout(() => func.apply(context, args), delay);
                 };
             }
+
+            // Modal functions for success and error messages
+            function showSuccessModal(message, callback = null) {
+                $('#successMessage').text(message);
+                $('#successModal').addClass('show');
+                
+                // Store callback for later use
+                if (callback) {
+                    $('#successModal').data('callback', callback);
+                }
+            }
+
+            function showErrorModal(message, callback = null) {
+                $('#errorMessage').text(message);
+                $('#errorModal').addClass('show');
+                
+                // Store callback for later use
+                if (callback) {
+                    $('#errorModal').data('callback', callback);
+                }
+            }
+
+            // Success modal event handlers
+            $(document).on('click', '#closeSuccessModal, #successOkButton', function() {
+                $('#successModal').removeClass('show');
+                
+                // Execute callback if provided
+                const callback = $('#successModal').data('callback');
+                if (callback && typeof callback === 'function') {
+                    callback();
+                    $('#successModal').removeData('callback');
+                }
+            });
+
+            // Error modal event handlers
+            $(document).on('click', '#closeErrorModal, #errorOkButton', function() {
+                $('#errorModal').removeClass('show');
+                
+                // Execute callback if provided
+                const callback = $('#errorModal').data('callback');
+                if (callback && typeof callback === 'function') {
+                    callback();
+                    $('#errorModal').removeData('callback');
+                }
+            });
+
+            // Close modals when clicking outside
+            $(document).on('click', '.modal', function(e) {
+                if (e.target === this) {
+                    $(this).removeClass('show');
+                }
+            });
 
             // Function to update URL with filters and reload
             function updateFilters() {
@@ -1519,14 +1916,18 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                 window.location.href = url;
             }
 
-            // Event listeners for filters
-            $('#searchInput').on('input', debounce(updateFilters, 300));
-            $('#patientIdInput').on('input', debounce(updateFilters, 300));
-            $('#firstNameInput').on('input', debounce(updateFilters, 300));
-            $('#lastNameInput').on('input', debounce(updateFilters, 300));
-            $('#middleNameInput').on('input', debounce(updateFilters, 300));
-            $('#birthdayInput').on('change', updateFilters);
-            $('#barangayFilter').on('change', updateFilters);
+            // Search button event listener
+            $('#searchBtn').on('click', updateFilters);
+
+            // Auto-trigger search on Enter key press in input fields
+            $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    updateFilters();
+                }
+            });
+
+            // Auto-trigger search on select change
+            $('#birthdayInput, #barangayFilter').on('change', updateFilters);
 
             // Clear filters button
             $('#clearFilters').on('click', function() {
@@ -1563,49 +1964,76 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                 window.location.href = url;
             });
 
-            // Table column sorting - Server-side implementation
+            // Table column sorting
+            let sortState = {
+                column: null,
+                direction: 'asc'
+            };
+
             $('#patientTable th.sortable').on('click', function() {
-                $('#loader').show();
-
+                const columnIndex = $(this).index();
                 const columnType = $(this).data('column');
-                const currentSort = new URLSearchParams(window.location.search).get('sort');
-                const currentDirection = new URLSearchParams(window.location.search).get('direction');
 
-                // Determine new sort direction
-                let newDirection = 'ASC';
-                if (currentSort === columnType && currentDirection === 'ASC') {
-                    newDirection = 'DESC';
+                // Update sort direction
+                if (sortState.column === columnIndex) {
+                    // Toggle sort direction if same column clicked again
+                    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    // Set new column and default to ascending
+                    sortState.column = columnIndex;
+                    sortState.direction = 'asc';
                 }
 
-                // Build URL with current filters and new sort
-                let searchValue = $('#searchInput').val();
-                let patientIdValue = $('#patientIdInput').val();
-                let firstNameValue = $('#firstNameInput').val();
-                let lastNameValue = $('#lastNameInput').val();
-                let middleNameValue = $('#middleNameInput').val();
-                let birthdayValue = $('#birthdayInput').val();
-                let barangayValue = $('#barangayFilter').val();
-                let statusValue = $('#statusFilter').val();
+                // Sort the table rows
+                const rows = $('#patientTable tbody tr').get();
+                rows.sort(function(a, b) {
+                    let aValue = $(a).children('td').eq(columnIndex).text().trim();
+                    let bValue = $(b).children('td').eq(columnIndex).text().trim();
 
-                let url = window.location.pathname + '?';
-                let params = [];
+                    // Special handling for dates
+                    if (columnType === 'dob') {
+                        // Try to parse dates (M d, Y format)
+                        const aDate = new Date(aValue);
+                        const bDate = new Date(bValue);
 
-                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
-                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
-                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
-                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
-                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
-                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
-                if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
-                if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
+                        // Check if we have valid dates
+                        if (!isNaN(aDate) && !isNaN(bDate)) {
+                            if (sortState.direction === 'asc') {
+                                return aDate - bDate;
+                            } else {
+                                return bDate - aDate;
+                            }
+                        }
+                    }
 
-                // Add sort parameters
-                params.push('sort=' + encodeURIComponent(columnType));
-                params.push('direction=' + encodeURIComponent(newDirection));
-                params.push('page=1'); // Reset to first page when sorting
+                    // Handle N/A values - N/A should always be at the bottom
+                    if (aValue === 'N/A' && bValue !== 'N/A') return 1;
+                    if (aValue !== 'N/A' && bValue === 'N/A') return -1;
 
-                url += params.join('&');
-                window.location.href = url;
+                    // Use natural sorting for everything else
+                    const collator = new Intl.Collator(undefined, {
+                        numeric: true,
+                        sensitivity: 'base'
+                    });
+                    const result = collator.compare(aValue, bValue);
+
+                    // Apply sort direction
+                    return sortState.direction === 'asc' ? result : -result;
+                });
+
+                // Append sorted rows back to table
+                $.each(rows, function(index, row) {
+                    $('#patientTable tbody').append(row);
+                });
+
+                // Update UI to show sort direction
+                $('#patientTable th').removeClass('sort-asc sort-desc');
+                $(this).addClass('sort-' + sortState.direction);
+
+                // Update row zebra striping after sort
+                $('#patientTable tbody tr').removeClass('odd even');
+                $('#patientTable tbody tr:odd').addClass('odd');
+                $('#patientTable tbody tr:even').addClass('even');
             });
 
             // Contact modal handling - using event delegation for dynamically added elements
@@ -1651,18 +2079,31 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
             });
 
             // Export dropdown toggle
-            $('#exportDropdown').on('click', function() {
-                $('#exportMenu').toggleClass('show');
+            $('#exportDropdown').on('click', function(e) {
+                e.stopPropagation();
+                const menu = $('#exportMenu');
+                const isOpen = menu.hasClass('show');
+                
+                // Close all other dropdowns first
+                $('.dropdown-menu').removeClass('show');
+                $('.dropdown-toggle').attr('aria-expanded', 'false');
+                
+                if (!isOpen) {
+                    menu.addClass('show');
+                    $(this).attr('aria-expanded', 'true');
+                } else {
+                    menu.removeClass('show');
+                    $(this).attr('aria-expanded', 'false');
+                }
             });
-
+            
             // Close dropdown when clicking outside
             $(document).on('click', function(e) {
                 if (!$(e.target).closest('.dropdown').length) {
                     $('.dropdown-menu').removeClass('show');
+                    $('.dropdown-toggle').attr('aria-expanded', 'false');
                 }
-            });
-
-            // Print ID Card functionality
+            });            // Print ID Card functionality
             $('#printIdCard').on('click', function() {
                 // Create a hidden iframe to print
                 const iframe = document.createElement('iframe');
@@ -1731,6 +2172,75 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                 }, 250);
             });
 
+            // Reactivate patient functionality
+            $(document).on('click', '.reactivate-patient', function() {
+                const patientId = $(this).data('patient-id');
+                const patientName = $(this).data('patient-name');
+
+                $('#reactivatePatientId').val(patientId);
+                $('#reactivatePatientName').text(patientName);
+                $('#adminPassword').val('');
+
+                // Show modal
+                $('#reactivateModal').addClass('show');
+            });
+
+            // Close reactivate modal handlers
+            $(document).on('click', '#closeReactivateModal, #cancelReactivate', function() {
+                $('#reactivateModal').removeClass('show');
+                $('#adminPassword').val('');
+            });
+
+            // Confirm reactivation
+            $('#confirmReactivate').on('click', function() {
+                const patientId = $('#reactivatePatientId').val();
+                const adminPassword = $('#adminPassword').val();
+
+                if (!adminPassword) {
+                    showErrorModal('Please enter your admin password');
+                    return;
+                }
+
+                // Show loading state
+                $(this).html('<i class="fas fa-spinner fa-spin"></i> Reactivating...');
+                $(this).prop('disabled', true);
+
+                $.ajax({
+                    url: window.location.href,
+                    method: 'POST',
+                    data: {
+                        action: 'reactivate_patient',
+                        patient_id: patientId,
+                        admin_password: adminPassword
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.success) {
+                            showSuccessModal('Patient account reactivated successfully! Redirecting to active records...', function() {
+                                window.location.href = 'patient_records_management.php?reactivated=1';
+                            });
+                        } else {
+                            showErrorModal('Error: ' + response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('AJAX Error Details:', {
+                            status: status,
+                            error: error,
+                            responseText: xhr.responseText,
+                            statusCode: xhr.status
+                        });
+                        showErrorModal('An error occurred while processing the request. Check console for details.');
+                    },
+                    complete: function() {
+                        $('#confirmReactivate').html('<i class="fas fa-undo"></i> Reactivate Account');
+                        $('#confirmReactivate').prop('disabled', false);
+                    }
+                });
+            });
+
+            // Edit Patient Modal functionality removed as per requirements
+
             // Export button handlers - Placeholder functions
             $('#exportCSV').on('click', function(e) {
                 e.preventDefault();
@@ -1751,119 +2261,6 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
             });
         });
     </script>
-</body>
-
-</html>
-
-<!-- jQuery -->
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
-<script>
-    $(document).ready(function() {
-        // Show loading spinner
-        function showLoader() {
-            $('#tableLoader').show();
-            $('#patientsTable').hide();
-        }
-
-        // Hide loading spinner
-        function hideLoader() {
-            $('#tableLoader').hide();
-            $('#patientsTable').show();
-        }
-
-        // Emergency contact modal functionality
-        window.showEmergencyContact = function(name, phone) {
-            document.getElementById('contactName').textContent = name;
-            document.getElementById('contactPhone').textContent = phone;
-            document.getElementById('contactModal').style.display = 'block';
-            document.getElementById('contactModal').classList.add('show');
-        };
-
-        window.closeModal = function(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-            document.getElementById(modalId).classList.remove('show');
-        };
-
-        // Export functionality
-        window.exportData = function(format) {
-            showLoader();
-            setTimeout(() => {
-                hideLoader();
-                alert('Export functionality to be implemented for ' + format.toUpperCase() + ' format');
-            }, 1000);
-        };
-
-        // Clear filters function
-        window.clearFilters = function() {
-            showLoader();
-            window.location.href = window.location.pathname;
-        };
-
-        // Dropdown functionality
-        window.toggleDropdown = function() {
-            const dropdown = document.getElementById('dropdownMenu');
-            dropdown.classList.toggle('show');
-        };
-
-        window.toggleExportDropdown = function() {
-            const dropdown = document.getElementById('exportDropdownMenu');
-            dropdown.classList.toggle('show');
-        };
-
-        // Close dropdowns when clicking outside
-        document.addEventListener('click', function(event) {
-            const dropdownMenus = document.querySelectorAll('.dropdown-menu');
-            dropdownMenus.forEach(function(menu) {
-                if (!event.target.closest('.dropdown')) {
-                    menu.classList.remove('show');
-                }
-            });
-        });
-
-        // Table sorting functionality
-        $('.sortable').click(function() {
-            showLoader();
-            const sortBy = $(this).data('sort');
-            setTimeout(() => {
-                hideLoader();
-                // Add sorting logic here
-                console.log('Sorting by:', sortBy);
-            }, 500);
-        });
-
-        // Form submission with loader
-        $('#searchForm').on('submit', function() {
-            showLoader();
-        });
-
-        // Initial loader hide
-        hideLoader();
-
-        // Close modal on outside click
-        $(document).click(function(e) {
-            if ($(e.target).hasClass('modal')) {
-                closeModal(e.target.id);
-            }
-        });
-
-        // Pulse animation for radio options
-        $('.form-check').click(function() {
-            $(this).addClass('pulse-animation');
-            setTimeout(() => {
-                $(this).removeClass('pulse-animation');
-            }, 300);
-        });
-
-        // Bind event handlers
-        function bindEventHandlers() {
-            // Re-bind any dynamic event handlers here if needed
-            console.log('Event handlers bound');
-        }
-
-        bindEventHandlers();
-    });
-</script>
 </body>
 
 </html>

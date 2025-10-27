@@ -41,8 +41,25 @@ $middleNameFilter = isset($_GET['middle_name']) ? $_GET['middle_name'] : '';
 $birthdayFilter = isset($_GET['birthday']) ? $_GET['birthday'] : '';
 $barangayFilter = isset($_GET['barangay']) ? $_GET['barangay'] : '';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-$recordsPerPage = 20;
+$recordsPerPage = 10;
 $offset = ($page - 1) * $recordsPerPage;
+
+// Handle sorting parameters
+$sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'last_name';
+$sortDirection = isset($_GET['direction']) && $_GET['direction'] === 'desc' ? 'DESC' : 'ASC';
+
+// Validate sort column to prevent SQL injection
+$allowedSortColumns = [
+    'last_name' => 'p.last_name',
+    'first_name' => 'p.first_name', 
+    'username' => 'p.username',
+    'date_of_birth' => 'p.date_of_birth',
+    'sex' => 'p.sex',
+    'barangay_name' => 'b.barangay_name',
+    'contact_number' => 'p.contact_number'
+];
+
+$orderByColumn = isset($allowedSortColumns[$sortColumn]) ? $allowedSortColumns[$sortColumn] : 'p.last_name';
 
 // Count total records for pagination - ONLY ACTIVE RECORDS
 $countSql = "SELECT COUNT(DISTINCT p.patient_id) as total 
@@ -308,7 +325,7 @@ if (!empty($barangayFilter)) {
     $types .= "i";
 }
 
-$sql .= " ORDER BY p.last_name ASC LIMIT ? OFFSET ?";
+$sql .= " ORDER BY $orderByColumn $sortDirection LIMIT ? OFFSET ?";
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
 
@@ -1391,13 +1408,13 @@ $barangayResult = $conn->query($barangaySql);
                         <thead>
                             <tr>
                                 <th style="width: 70px;"> </th>
-                                <th class="sortable" data-column="username">Patient ID</th>
-                                <th class="sortable" data-column="full_name">Full Name</th>
-                                <th class="sortable" data-column="dob">DOB</th>
-                                <th class="sortable" data-column="sex">Sex</th>
-                                <th class="sortable" data-column="barangay">Barangay</th>
-                                <th class="sortable" data-column="contact">Contact</th>
-                                <th class="sortable" data-column="status">Status</th>
+                                <th class="sortable <?php echo ($sortColumn === 'username') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="username">Patient ID</th>
+                                <th class="sortable <?php echo ($sortColumn === 'last_name') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="last_name">Full Name</th>
+                                <th class="sortable <?php echo ($sortColumn === 'date_of_birth') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="date_of_birth">DOB</th>
+                                <th class="sortable <?php echo ($sortColumn === 'sex') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="sex">Sex</th>
+                                <th class="sortable <?php echo ($sortColumn === 'barangay_name') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="barangay_name">Barangay</th>
+                                <th class="sortable <?php echo ($sortColumn === 'contact_number') ? 'sort-' . strtolower($sortDirection) : ''; ?>" data-column="contact_number">Contact</th>
+                                <th>Status</th>
                                 <th style="width: 120px;">Actions</th>
                             </tr>
                         </thead>
@@ -1444,7 +1461,7 @@ $barangayResult = $conn->query($barangaySql);
                                         </td>
                                         <td>
                                             <div class="action-buttons">
-                                                <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>"
+                                                <a href="view_patient_profile.php?patient_id=<?php echo $patient['patient_id']; ?>&back_url=patient_records_management.php"
                                                     class="action-btn btn-info" title="View Patient Profile (Admin)">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
@@ -1462,6 +1479,14 @@ $barangayResult = $conn->query($barangaySql);
                                                     title="View Contact">
                                                     <i class="fas fa-address-card"></i>
                                                 </button>
+                                                <?php if ($canEdit): ?>
+                                                <button type="button" class="action-btn btn-warning deactivate-patient"
+                                                    data-patient-id="<?php echo $patient['patient_id']; ?>"
+                                                    data-patient-name="<?php echo htmlspecialchars($fullName); ?>"
+                                                    title="Deactivate Patient Account">
+                                                    <i class="fas fa-user-times"></i>
+                                                </button>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                     </tr>
@@ -1517,7 +1542,7 @@ $barangayResult = $conn->query($barangaySql);
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="contactModalLabel">Patient ID Card</h5>
+                    <h5 class="modal-title" id="contactModalLabel">Patient Record Summary</h5>
                     <button type="button" class="btn-close" id="closeContactModal" aria-label="Close">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -1550,8 +1575,64 @@ $barangayResult = $conn->query($barangaySql);
                     <button type="button" class="action-btn btn-secondary" id="closeModalBtn">
                         <i class="fas fa-times"></i> Close
                     </button>
-                    <button type="button" class="action-btn btn-primary" id="printIdCard">
+
+                    <!--<button type="button" class="action-btn btn-primary" id="printIdCard">
                         <i class="fas fa-print"></i> Print ID Card
+                    </button>-->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deactivate Confirmation Modal -->
+    <div class="modal fade" id="deactivateModal" tabindex="-1" role="dialog" aria-labelledby="deactivateModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deactivateModalLabel">
+                        <i class="fas fa-exclamation-triangle"></i> Deactivate Patient Account
+                    </h5>
+                    <button type="button" class="btn-close" id="closeDeactivateModal" aria-label="Close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Warning:</strong> You are about to deactivate the patient account for: <strong id="deactivatePatientName"></strong>
+                    </div>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Important:</strong> This action will:
+                        <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                            <li>Move the patient to archived records</li>
+                            <li>Prevent new appointments or consultations</li>
+                            <li>Hide the patient from active patient lists</li>
+                            <li>Require admin reactivation to restore access</li>
+                        </ul>
+                    </div>
+                    <form id="deactivateForm">
+                        <input type="hidden" id="deactivatePatientId" value="">
+                        <div class="form-group">
+                            <label for="adminPasswordDeactivate" class="form-label">
+                                <i class="fas fa-lock"></i> Enter your admin password to confirm:
+                            </label>
+                            <input type="password" id="adminPasswordDeactivate" class="form-control"
+                                placeholder="Enter your password" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="deactivationReason" class="form-label">
+                                <i class="fas fa-comment"></i> Reason for deactivation (optional):
+                            </label>
+                            <textarea id="deactivationReason" class="form-control" rows="3"
+                                placeholder="Enter reason for deactivation (e.g., duplicate account, patient request, medical reasons, etc.)"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="action-btn btn-secondary" id="cancelDeactivate">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="button" class="action-btn btn-warning" id="confirmDeactivate">
+                        <i class="fas fa-user-times"></i> Deactivate Account
                     </button>
                 </div>
             </div>
@@ -1563,6 +1644,26 @@ $barangayResult = $conn->query($barangaySql);
 
     <script>
         $(document).ready(function() {
+            // Check if redirected from patient reactivation
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('reactivated') === '1') {
+                // Show success message
+                $('<div class="alert alert-success" style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">' +
+                  '<i class="fas fa-check-circle"></i> ' +
+                  '<strong>Success!</strong> Patient has been reactivated and should now appear in the active records below.' +
+                  '<button type="button" class="btn-close" onclick="this.parentElement.remove();" style="background: none; border: none; font-size: 18px; float: right; cursor: pointer; color: #155724;">&times;</button>' +
+                  '</div>').appendTo('body');
+                
+                // Auto-remove after 8 seconds
+                setTimeout(function() {
+                    $('.alert-success').fadeOut();
+                }, 8000);
+                
+                // Clean up URL without refreshing page
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+            }
+
             // Debounce function for search input
             function debounce(func, delay) {
                 let timeout;
@@ -1597,6 +1698,16 @@ $barangayResult = $conn->query($barangaySql);
                 if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
                 if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
                 if (pageValue) params.push('page=' + encodeURIComponent(pageValue));
+                
+                // Preserve current sorting
+                const currentSort = '<?php echo $sortColumn; ?>';
+                const currentDirection = '<?php echo strtolower($sortDirection); ?>';
+                if (currentSort && currentSort !== 'last_name') {
+                    params.push('sort=' + encodeURIComponent(currentSort));
+                }
+                if (currentDirection && currentDirection !== 'asc') {
+                    params.push('direction=' + encodeURIComponent(currentDirection));
+                }
 
                 url += params.join('&');
                 window.location.href = url;
@@ -1647,81 +1758,62 @@ $barangayResult = $conn->query($barangaySql);
                 if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
                 if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
                 params.push('page=' + encodeURIComponent(page));
+                
+                // Preserve current sorting
+                const currentSort = '<?php echo $sortColumn; ?>';
+                const currentDirection = '<?php echo strtolower($sortDirection); ?>';
+                if (currentSort && currentSort !== 'last_name') {
+                    params.push('sort=' + encodeURIComponent(currentSort));
+                }
+                if (currentDirection && currentDirection !== 'asc') {
+                    params.push('direction=' + encodeURIComponent(currentDirection));
+                }
 
                 url += params.join('&');
                 window.location.href = url;
             });
 
-            // Table column sorting
-            let sortState = {
-                column: null,
-                direction: 'asc'
-            };
-
+            // Server-side table column sorting
             $('#patientTable th.sortable').on('click', function() {
-                const columnIndex = $(this).index();
-                const columnType = $(this).data('column');
-
-                // Update sort direction
-                if (sortState.column === columnIndex) {
-                    // Toggle sort direction if same column clicked again
-                    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
-                } else {
-                    // Set new column and default to ascending
-                    sortState.column = columnIndex;
-                    sortState.direction = 'asc';
+                $('#loader').show();
+                
+                const column = $(this).data('column');
+                const currentSort = '<?php echo $sortColumn; ?>';
+                const currentDirection = '<?php echo strtolower($sortDirection); ?>';
+                
+                // Determine new sort direction
+                let newDirection = 'asc';
+                if (column === currentSort && currentDirection === 'asc') {
+                    newDirection = 'desc';
                 }
+                
+                // Build URL with current filters and new sorting
+                let searchValue = $('#searchInput').val();
+                let patientIdValue = $('#patientIdInput').val();
+                let firstNameValue = $('#firstNameInput').val();
+                let lastNameValue = $('#lastNameInput').val();
+                let middleNameValue = $('#middleNameInput').val();
+                let birthdayValue = $('#birthdayInput').val();
+                let barangayValue = $('#barangayFilter').val();
 
-                // Sort the table rows
-                const rows = $('#patientTable tbody tr').get();
-                rows.sort(function(a, b) {
-                    let aValue = $(a).children('td').eq(columnIndex).text().trim();
-                    let bValue = $(b).children('td').eq(columnIndex).text().trim();
+                let url = window.location.pathname + '?';
+                let params = [];
 
-                    // Special handling for dates
-                    if (columnType === 'dob') {
-                        // Try to parse dates (M d, Y format)
-                        const aDate = new Date(aValue);
-                        const bDate = new Date(bValue);
+                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
+                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
+                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
+                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
+                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
+                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
+                if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
+                
+                // Add sorting parameters
+                params.push('sort=' + encodeURIComponent(column));
+                params.push('direction=' + encodeURIComponent(newDirection));
+                params.push('page=1'); // Reset to first page when sorting
 
-                        // Check if we have valid dates
-                        if (!isNaN(aDate) && !isNaN(bDate)) {
-                            if (sortState.direction === 'asc') {
-                                return aDate - bDate;
-                            } else {
-                                return bDate - aDate;
-                            }
-                        }
-                    }
-
-                    // Handle N/A values - N/A should always be at the bottom
-                    if (aValue === 'N/A' && bValue !== 'N/A') return 1;
-                    if (aValue !== 'N/A' && bValue === 'N/A') return -1;
-
-                    // Use natural sorting for everything else
-                    const collator = new Intl.Collator(undefined, {
-                        numeric: true,
-                        sensitivity: 'base'
-                    });
-                    const result = collator.compare(aValue, bValue);
-
-                    // Apply sort direction
-                    return sortState.direction === 'asc' ? result : -result;
-                });
-
-                // Append sorted rows back to table
-                $.each(rows, function(index, row) {
-                    $('#patientTable tbody').append(row);
-                });
-
-                // Update UI to show sort direction
-                $('#patientTable th').removeClass('sort-asc sort-desc');
-                $(this).addClass('sort-' + sortState.direction);
-
-                // Update row zebra striping after sort
-                $('#patientTable tbody tr').removeClass('odd even');
-                $('#patientTable tbody tr:odd').addClass('odd');
-                $('#patientTable tbody tr:even').addClass('even');
+                url += params.join('&');
+                window.location.href = url;
             });
 
             // Contact modal handling - using event delegation for dynamically added elements
@@ -1750,10 +1842,11 @@ $barangayResult = $conn->query($barangaySql);
                 $('#emergencyContact').text(emergencyContact);
                 $('#patientPhoto').attr('src', photoSrc);
 
-                // Show modal with custom handling
+                // Show modal with proper ARIA attributes
                 $('#contactModal').addClass('show');
-                // Ensure z-index is set correctly for the modal
+                $('#contactModal').css('display', 'block');
                 $('#contactModal').css('z-index', '1050');
+                $('#contactModal').attr('aria-hidden', 'false');
             });
 
             // Close modal handlers - using event delegation
@@ -1761,6 +1854,8 @@ $barangayResult = $conn->query($barangaySql);
                 console.log("Close contact modal clicked"); // Debug log
                 // Hide modal with custom handling
                 $('#contactModal').removeClass('show');
+                $('#contactModal').css('display', 'none');
+                $('#contactModal').attr('aria-hidden', 'true');
 
                 // Ensure any modal backdrop is removed
                 $('.modal-backdrop').remove();
@@ -1867,6 +1962,148 @@ $barangayResult = $conn->query($barangaySql);
             });
 
             // Edit Patient Modal functionality removed as per requirements
+
+            // Patient Deactivation functionality - using event delegation
+            $(document).on('click', '.deactivate-patient', function() {
+                const patientId = $(this).data('patient-id');
+                const patientName = $(this).data('patient-name');
+                
+                console.log("Deactivate clicked for:", patientName, "ID:", patientId); // Debug log
+                
+                // Set modal data
+                $('#deactivatePatientId').val(patientId);
+                $('#deactivatePatientName').text(patientName);
+                
+                // Clear form
+                $('#adminPasswordDeactivate').val('');
+                $('#deactivationReason').val('');
+                
+                // Show modal using custom modal system
+                $('#deactivateModal').addClass('show');
+                $('#deactivateModal').css('display', 'block');
+                $('#deactivateModal').css('z-index', '1050');
+                $('#deactivateModal').attr('aria-hidden', 'false'); // Fix accessibility
+            });
+
+            // Close deactivate modal handlers - using event delegation
+            $(document).on('click', '#closeDeactivateModal, #cancelDeactivate', function() {
+                console.log("Close deactivate modal clicked"); // Debug log
+                $('#deactivateModal').removeClass('show');
+                $('#deactivateModal').css('display', 'none');
+                $('#deactivateModal').attr('aria-hidden', 'true'); // Fix accessibility
+            });
+
+            // Handle deactivation confirmation - using event delegation
+            $(document).on('click', '#confirmDeactivate', function() {
+                const patientId = $('#deactivatePatientId').val();
+                const adminPassword = $('#adminPasswordDeactivate').val().trim();
+                const reason = $('#deactivationReason').val().trim();
+                
+                // Validate required fields
+                if (!adminPassword) {
+                    showAlert('error', 'Admin password is required to confirm deactivation.');
+                    $('#adminPasswordDeactivate').focus();
+                    return;
+                }
+                
+                // Disable button and show loading
+                const $button = $(this);
+                const originalText = $button.html();
+                $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Deactivating...');
+                
+                // Prepare data for API
+                const deactivationData = {
+                    patient_id: parseInt(patientId),
+                    admin_password: adminPassword,
+                    reason: reason
+                };
+                
+                // Send AJAX request to deactivation API
+                $.ajax({
+                    url: '../../../../api/patient_deactivation.php',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(deactivationData),
+                    success: function(response) {
+                        if (response.success) {
+                            // Hide modal
+                            $('#deactivateModal').removeClass('show');
+                            $('#deactivateModal').css('display', 'none');
+                            $('#deactivateModal').attr('aria-hidden', 'true'); // Fix accessibility
+                            
+                            // Show success message with refresh notification
+                            showAlert('success', 
+                                'Patient account successfully deactivated. ' + response.patient_name + 
+                                ' has been moved to archived records. Page will refresh in 5 seconds...');
+                            
+                            // Remove the patient row from table
+                            $('tr[data-patient-id="' + patientId + '"]').fadeOut(500, function() {
+                                $(this).remove();
+                                
+                                // Update patient count if displayed
+                                const currentCount = parseInt($('.patient-count').text()) || 0;
+                                if (currentCount > 0) {
+                                    $('.patient-count').text(currentCount - 1);
+                                }
+                            });
+                            
+                            // Refresh page after 5 seconds
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 5000);
+                            
+                        } else {
+                            showAlert('error', response.message || 'Failed to deactivate patient account.');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMessage = 'An error occurred during deactivation.';
+                        
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            errorMessage = response.error || errorMessage;
+                        } catch (e) {
+                            if (xhr.status === 401) {
+                                errorMessage = 'Invalid admin password. Please try again.';
+                            } else if (xhr.status === 403) {
+                                errorMessage = 'Access denied. Admin privileges required.';
+                            } else if (xhr.status === 404) {
+                                errorMessage = 'Patient not found or already inactive.';
+                            }
+                        }
+                        
+                        showAlert('error', errorMessage);
+                    },
+                    complete: function() {
+                        // Re-enable button
+                        $button.prop('disabled', false).html(originalText);
+                    }
+                });
+            });
+
+            // Helper function to show alerts
+            function showAlert(type, message) {
+                const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+                const iconClass = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle';
+                const successLabel = type === 'success' ? 'Success!' : 'Error!';
+                
+                const alertHtml = '<div class="alert ' + alertClass + '" style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px; max-width: 500px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">' +
+                    '<i class="fas ' + iconClass + '"></i> ' +
+                    '<strong>' + successLabel + '</strong> ' + message +
+                    '<button type="button" class="btn-close" onclick="this.parentElement.remove();" style="background: none; border: none; font-size: 18px; float: right; cursor: pointer;">&times;</button>' +
+                    '</div>';
+                
+                // Remove any existing alerts
+                $('.alert').remove();
+                
+                // Add new alert
+                $('body').append(alertHtml);
+                
+                // Auto-remove after 8 seconds
+                setTimeout(() => {
+                    $('.alert').fadeOut();
+                }, 8000);
+            }
 
             // Export button handlers - Placeholder functions
             $('#exportCSV').on('click', function(e) {

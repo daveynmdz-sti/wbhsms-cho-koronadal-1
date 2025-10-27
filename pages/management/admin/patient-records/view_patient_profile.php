@@ -67,6 +67,33 @@ if (!is_numeric($patient_id) || $patient_id <= 0) {
 
 $patient_id = (int) $patient_id;
 
+// Determine the correct back URL based on referrer or URL parameter
+$back_url = 'patient_records_management.php'; // Default back URL
+
+// Check if back_url is provided as URL parameter
+if (isset($_GET['back_url'])) {
+    $back_url_param = $_GET['back_url'];
+    // Validate that it's one of our allowed back URLs for security
+    if (in_array($back_url_param, ['patient_records_management.php', 'archived_records_management.php'])) {
+        $back_url = $back_url_param;
+    }
+} else {
+    // Check HTTP referrer to determine where user came from
+    $referrer = $_SERVER['HTTP_REFERER'] ?? '';
+    if (!empty($referrer)) {
+        // Extract the filename from the referrer URL
+        $referrer_path = parse_url($referrer, PHP_URL_PATH);
+        $referrer_filename = basename($referrer_path);
+        
+        // If user came from archived records, set back URL accordingly
+        if ($referrer_filename === 'archived_records_management.php') {
+            $back_url = 'archived_records_management.php';
+        }
+        // If user came from patient records management, keep default
+        // No need to explicitly check since default is already patient_records_management.php
+    }
+}
+
 // Verify admin is logged in - use session system
 require_employee_login();
 
@@ -1131,7 +1158,7 @@ if ($completion_percentage >= 90) {
             </h1>
             <div class="utility-btn-group" style="display:flex;gap:0.7em;flex-wrap:wrap;">
                 <!-- Admin view buttons -->
-                <a href="patient_records_management.php" class="utility-btn" title="Back to Patient Records"
+                <a href="<?= htmlspecialchars($back_url) ?>" class="utility-btn" title="Back to Patient Records"
                     style="background:#f39c12;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(243,156,18,0.08);cursor:pointer;transition:background 0.18s;text-decoration:none;">
                     <i class="fas fa-arrow-left"></i> <span class="hide-on-mobile">Back to Records</span>
                 </a>
