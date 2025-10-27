@@ -15,7 +15,8 @@ ini_set('display_startup_errors', '0');
 error_reporting(E_ALL);
 
 // ---- require files (fixed paths) ----
-require_once dirname(__DIR__, 3) . '/config/db.php';         // FIXED: up 3 dirs to /config
+require_once '../../../config/db.php';
+require_once '../../../utils/StandardEmailTemplate.php';         // FIXED: up 3 dirs to /config
 require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
 
 // ---- only allow POST ----
@@ -86,7 +87,30 @@ try {
     $mail->addAddress($toEmail, $toName);
     $mail->isHTML(true);
     $mail->Subject = 'Your New OTP for Password Reset';
-    $mail->Body    = "<p>Your new One-Time Password (OTP) is: <strong>{$otp}</strong></p>";
+    
+    // Prepare data for standardized template
+    $contact_info = [
+        'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
+        'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
+    ];
+    
+    $template_data = array_merge([
+        'otp' => $otp,
+        'first_name' => $toName ?: 'Patient',
+        'purpose' => 'password reset',
+        'expiry_minutes' => 5
+    ], $contact_info);
+    
+    // Generate content using standardized template
+    $content = StandardEmailTemplate::generateOTPContent($template_data);
+    
+    // Generate complete email using standardized template
+    $mail->Body = StandardEmailTemplate::generateTemplate([
+        'title' => 'Your New OTP Code',
+        'subtitle' => 'City Health Office of Koronadal',
+        'content' => $content,
+        'type' => 'otp'
+    ]);
 
     error_log('[resend_otp] SENDING…');
     $mail->send();

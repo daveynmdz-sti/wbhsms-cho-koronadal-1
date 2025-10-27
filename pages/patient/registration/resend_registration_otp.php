@@ -11,6 +11,7 @@ error_reporting(E_ALL);
 // Use absolute path resolution
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/env.php'; // Loads env.php and .env/.env.local
+require_once $root_path . '/utils/StandardEmailTemplate.php';
 
 // Load PHPMailer classes
 if (!class_exists('\PHPMailer\PHPMailer\PHPMailer')) {
@@ -121,23 +122,31 @@ try {
 
     $mail->isHTML(true);
     $mail->Subject = 'Your New OTP for CHO Koronadal Registration';
-    $mail->Body = '
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #007bff;">CHO Koronadal - New OTP</h2>
-            <p>Hello ' . htmlspecialchars($first_name, ENT_QUOTES, 'UTF-8') . ',</p>
-            <p>You requested a new One-Time Password (OTP) for your registration. Your new OTP is:</p>
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
-                <h1 style="color: #007bff; letter-spacing: 3px; margin: 0;">' . htmlspecialchars($newOtp, ENT_QUOTES, 'UTF-8') . '</h1>
-            </div>
-            <p><strong>This code will expire in 5 minutes.</strong></p>
-            <p>If you did not request this OTP, please ignore this email.</p>
-            <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-            <p style="color: #666; font-size: 12px;">
-                This is an automated message from City Health Office of Koronadal. 
-                Please do not reply to this email.
-            </p>
-        </div>
-    ';
+    
+    // Prepare data for standardized template
+    $contact_info = [
+        'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
+        'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
+    ];
+    
+    $template_data = array_merge([
+        'otp' => $newOtp,
+        'first_name' => $first_name,
+        'purpose' => 'patient registration',
+        'expiry_minutes' => 5
+    ], $contact_info);
+    
+    // Generate content using standardized template
+    $content = StandardEmailTemplate::generateOTPContent($template_data);
+    
+    // Generate complete email using standardized template
+    $mail->Body = StandardEmailTemplate::generateTemplate([
+        'title' => 'Your New OTP Code',
+        'subtitle' => 'City Health Office of Koronadal',
+        'content' => $content,
+        'type' => 'otp'
+    ]);
+    
     $mail->AltBody = "Your new OTP is: {$newOtp} (expires in 5 minutes). If you did not request this, please ignore this message.";
 
     $mail->send();

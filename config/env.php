@@ -13,6 +13,7 @@ function loadEnvFile($envPath) {
         if (!strpos($line, '=')) continue;
         list($name, $value) = array_map('trim', explode('=', $line, 2));
         putenv("$name=$value");
+        $_ENV[$name] = $value;
     }
 }
 

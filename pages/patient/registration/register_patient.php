@@ -36,6 +36,7 @@ session_regenerate_id(true);
 // Use absolute path resolution
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/db.php'; // must define $pdo (PDO)
+require_once $root_path . '/utils/StandardEmailTemplate.php';
 
 // ---- Load PHPMailer (prefer Composer, fallback to manual includes) ----
 if (!class_exists('\PHPMailer\PHPMailer\PHPMailer')) {
@@ -403,7 +404,31 @@ try {
             $mail->addAddress($email, $first_name . ' ' . $last_name);
             $mail->isHTML(true);
             $mail->Subject = 'Your OTP for CHO Koronadal Registration';
-            $mail->Body    = '<p>Your One-Time Password (OTP) for registration is:</p><h2 style="letter-spacing:2px;">' . htmlspecialchars($otp, ENT_QUOTES, 'UTF-8') . '</h2><p>This code will expire in 5 minutes.</p>';
+            
+            // Prepare data for standardized template
+            $contact_info = [
+                'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
+                'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
+            ];
+            
+            $template_data = array_merge([
+                'otp' => $otp,
+                'first_name' => $first_name,
+                'purpose' => 'patient registration',
+                'expiry_minutes' => 5
+            ], $contact_info);
+            
+            // Generate content using standardized template
+            $content = StandardEmailTemplate::generateOTPContent($template_data);
+            
+            // Generate complete email using standardized template
+            $mail->Body = StandardEmailTemplate::generateTemplate([
+                'title' => 'Your OTP Code',
+                'subtitle' => 'City Health Office of Koronadal',
+                'content' => $content,
+                'type' => 'otp'
+            ]);
+            
             $mail->AltBody = "Your OTP is: {$otp} (expires in 5 minutes)";
 
             $mail->send();

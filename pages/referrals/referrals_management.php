@@ -4,6 +4,13 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 
+// Add cache busting for data freshness
+if (isset($_POST['action'])) {
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Expires: 0');
+    header('Pragma: no-cache');
+}
+
 // Include employee session configuration - Use absolute path resolution
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
@@ -32,8 +39,8 @@ if (!isset($conn) || $conn->connect_error) {
     die("Database connection failed. Please contact administrator.");
 }
 
-$employee_id = $_SESSION['employee_id'];
-$employee_role = $_SESSION['role'];
+$employee_id = $_SESSION['employee_id'] ?? '';
+$employee_role = $_SESSION['role'] ?? '';
 
 // Define role-based permissions for referrals management  
 $canCreateReferrals = true; // All authorized roles can create referrals
@@ -52,7 +59,7 @@ foreach ($jurisdiction_params as $param) {
 }
 
 // Log jurisdiction access for audit
-error_log("Referrals access: Employee ID $employee_id (Role: $employee_role) with restriction: " . 
+error_log("Referrals access: Employee ID $employee_id (Role: $employee_role) with restriction: " .
     ($jurisdiction_restriction ?: 'none'));
 
 // Debug output for jurisdiction restrictions (only if debug parameter is set)
@@ -63,35 +70,35 @@ if (isset($_GET['debug']) && $_GET['debug'] == '1') {
     echo "Employee Role: $employee_role<br>";
     echo "Jurisdiction Restriction: " . ($jurisdiction_restriction ?: 'none') . "<br>";
     echo "Jurisdiction Params: " . implode(', ', $jurisdiction_params) . "<br>";
-    
+
     // Quick diagnosis
     echo "<br><strong>Issue Diagnosis:</strong><br>";
-    
+
     // Check if getEmployeeBHWBarangay returns something
     $test_barangay = getEmployeeBHWBarangay($conn, $employee_id);
     echo "BHW Barangay ID from function: " . ($test_barangay ?: 'NULL') . "<br>";
-    
+
     // Check employee record with EMP format
     $emp_formatted = 'EMP' . str_pad($employee_id, 5, '0', STR_PAD_LEFT);
     echo "Formatted Employee ID: $emp_formatted<br>";
-    
+
     $test_stmt = $conn->prepare("SELECT e.employee_id, r.role_name, e.facility_id FROM employees e LEFT JOIN roles r ON e.role_id = r.role_id WHERE e.employee_id = ?");
     $test_stmt->bind_param('s', $emp_formatted);
     $test_stmt->execute();
     $test_result = $test_stmt->get_result()->fetch_assoc();
-    
+
     if ($test_result) {
         echo "✓ Employee found: " . json_encode($test_result) . "<br>";
-        
+
         if ($test_result['facility_id']) {
             $facility_stmt = $conn->prepare("SELECT facility_id, name, barangay_id FROM facilities WHERE facility_id = ?");
             $facility_stmt->bind_param('i', $test_result['facility_id']);
             $facility_stmt->execute();
             $facility_result = $facility_stmt->get_result()->fetch_assoc();
-            
+
             if ($facility_result) {
                 echo "✓ Facility found: " . json_encode($facility_result) . "<br>";
-                
+
                 if ($facility_result['barangay_id']) {
                     echo "✓ Barangay ID found: " . $facility_result['barangay_id'] . "<br>";
                     echo "<strong>EXPECTED RESTRICTION:</strong> AND (r.referred_by = ? OR p.barangay_id = ?)<br>";
@@ -108,7 +115,7 @@ if (isset($_GET['debug']) && $_GET['debug'] == '1') {
     } else {
         echo "✗ Employee not found with ID: $emp_formatted<br>";
     }
-    
+
     echo "</div>";
 }
 
@@ -120,6 +127,11 @@ $message = '';
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Debug entry point - Log exactly what POST data is received
+    error_log("DEBUG ENTRY >>> Action: " . ($_POST['action'] ?? 'none') .
+        " | Referral ID: " . ($_POST['referral_id'] ?? 'none') .
+        " | Employee ID: " . ($_SESSION['employee_id'] ?? 'none'));
+
     $action = $_POST['action'] ?? '';
     $referral_id = $_POST['referral_id'] ?? '';
 
@@ -131,12 +143,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 switch ($action) {
                     case 'complete':
-                        $stmt = $conn->prepare("UPDATE referrals SET status = 'completed' WHERE referral_id = ?");
+                        $stmt = $conn->prepare("UPDATE referrals SET status = 'issued' WHERE referral_id = ?");
                         $stmt->bind_param("i", $referral_id);
                         $stmt->execute();
                         $message = "Referral marked as completed successfully.";
                         $stmt->close();
-                        
+
                         // Log the action
                         logReferralAccess($conn, $employee_id, $referral_id, 'complete', 'Referral marked as completed');
                         break;
@@ -146,31 +158,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (empty($void_reason)) {
                             $error = "Void reason is required.";
                         } else {
-                            $stmt = $conn->prepare("UPDATE referrals SET status = 'voided' WHERE referral_id = ?");
+                            $stmt = $conn->prepare("UPDATE referrals SET status = 'cancelled' WHERE referral_id = ?");
                             $stmt->bind_param("i", $referral_id);
                             $stmt->execute();
                             $message = "Referral voided successfully.";
                             $stmt->close();
-                            
+
                             // Log the action
                             logReferralAccess($conn, $employee_id, $referral_id, 'void', 'Referral voided: ' . $void_reason);
                         }
                         break;
 
                     case 'reactivate':
-                        $stmt = $conn->prepare("UPDATE referrals SET status = 'active' WHERE referral_id = ?");
+                        error_log("DEBUG: Starting reactivate case for referral ID: $referral_id");
+
+                        // Simple direct update without transaction complications
+                        $stmt = $conn->prepare("UPDATE referrals SET status = 'active', updated_at = NOW() WHERE referral_id = ?");
                         $stmt->bind_param("i", $referral_id);
-                        $stmt->execute();
-                        $message = "Referral reactivated successfully.";
-                        $stmt->close();
-                        
-                        // Log the action
-                        logReferralAccess($conn, $employee_id, $referral_id, 'reactivate', 'Referral reactivated');
+
+                        if ($stmt->execute()) {
+                            $affected_rows = $stmt->affected_rows;
+                            error_log("DEBUG: Direct UPDATE executed. Affected rows: $affected_rows");
+
+                            if ($affected_rows > 0) {
+                                $stmt->close();
+
+                                // Verify the update worked
+                                $verify = $conn->prepare("SELECT status FROM referrals WHERE referral_id = ?");
+                                $verify->bind_param("i", $referral_id);
+                                $verify->execute();
+                                $result = $verify->get_result();
+                                $new_status = $result->fetch_assoc()['status'] ?? 'unknown';
+                                $verify->close();
+
+                                error_log("DEBUG: Verification check - new status: $new_status");
+
+                                // FINAL CHECK: Query the database one more time to see what's really there
+                                $final_check = $conn->prepare("SELECT status, updated_at FROM referrals WHERE referral_id = ?");
+                                $final_check->bind_param("i", $referral_id);
+                                $final_check->execute();
+                                $final_result = $final_check->get_result();
+                                $final_data = $final_result->fetch_assoc();
+                                $final_check->close();
+
+                                error_log("DEBUG: FINAL DATABASE CHECK - Status: " . ($final_data['status'] ?? 'NULL') . ", Updated: " . ($final_data['updated_at'] ?? 'NULL'));
+
+                                // Try to log access (but don't let it break the main operation)
+                                try {
+                                    logReferralAccess($conn, $employee_id, $referral_id, 'reactivate', "Referral reactivated to active status");
+                                } catch (Exception $log_error) {
+                                    error_log("DEBUG: Logging failed: " . $log_error->getMessage());
+                                }
+
+                                $message = "Referral reactivated successfully. New status: $new_status";
+                                header("Location: referrals_management.php?reactivated=1&id=" . $referral_id);
+                                exit;
+                            } else {
+                                $stmt->close();
+                                $error = "No rows updated. Referral may already be active.";
+                                error_log("DEBUG: Zero affected rows");
+                            }
+                        } else {
+                            $error = "Database error: " . $stmt->error;
+                            error_log("DEBUG: UPDATE failed: " . $stmt->error);
+                            $stmt->close();
+                        }
                         break;
                 }
             }
         } catch (Exception $e) {
             $error = "Failed to update referral: " . $e->getMessage();
+        }
+    } else {
+        // Handle invalid or missing referral_id
+        if (!empty($action)) {
+            $error = "Invalid referral ID provided. Action '$action' could not be performed.";
+            error_log("DEBUG: Invalid referral_id received - Action: $action, Referral ID: '$referral_id'");
         }
     }
 }
@@ -265,11 +328,11 @@ try {
     ";
 
     $count_stmt = $conn->prepare($count_sql);
-    
+
     // Combine all parameters for count query
     $count_params = array_merge($params, $jurisdiction_params);
     $count_param_types = $param_types . $jurisdiction_param_types;
-    
+
     if (!empty($count_params)) {
         $count_stmt->bind_param($count_param_types, ...$count_params);
     }
@@ -327,9 +390,9 @@ try {
 $stats = [
     'total' => 0,
     'active' => 0,
-    'completed' => 0,
-    'pending' => 0,
-    'voided' => 0
+    'issued' => 0,  // completed referrals
+    'accepted' => 0,
+    'cancelled' => 0  // includes both void and cancelled
 ];
 
 try {
@@ -338,7 +401,7 @@ try {
     if (!empty($jurisdiction_restriction)) {
         $stats_where_clause = 'WHERE ' . ltrim($jurisdiction_restriction, ' AND');
     }
-    
+
     $stats_sql = "
         SELECT r.status, COUNT(*) as count 
         FROM referrals r
@@ -347,7 +410,7 @@ try {
         $stats_where_clause
         GROUP BY r.status
     ";
-    
+
     $stmt = $conn->prepare($stats_sql);
     if (!empty($jurisdiction_params)) {
         $stmt->bind_param($jurisdiction_param_types, ...$jurisdiction_params);
@@ -455,11 +518,11 @@ try {
             border-left: 4px solid #4facfe;
         }
 
-        .stat-card.pending {
-            border-left: 4px solid #f093fb;
+        .stat-card.accepted {
+            border-left: 4px solid #28a745;
         }
 
-        .stat-card.voided {
+        .stat-card.canceled {
             border-left: 4px solid #fa709a;
         }
 
@@ -780,9 +843,9 @@ try {
             z-index: 1000;
         }
 
-        #cancelReferralModal,
-        #reinstateReferralModal {
+        #cancelReferralModal {
             z-index: 11000;
+            align-items: anchor-center;
         }
 
         #passwordVerificationModal {
@@ -1579,6 +1642,7 @@ try {
         /* Large modal content */
         .modal-content-large {
             max-width: 500px;
+            max-height: fit-content;
         }
 
         .modal-content-small {
@@ -1859,19 +1923,13 @@ try {
         <div class="page-header">
             <h1><i class="fas fa-share"></i> Referrals Management</h1>
             <?php if ($canCreateReferrals): ?>
-            <a href="create_referrals.php" class="btn btn-primary">
-                <i class="fas fa-plus"></i> Create Referral
-            </a>
+                <a href="create_referrals.php" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Create Referral
+                </a>
             <?php endif; ?>
         </div>
 
         <!-- Informational Notice about Edit Policy -->
-        <div class="alert alert-info" style="margin-bottom: 1.5rem; border-left: 4px solid #2196f3;background-color: honeydew;">
-            <i class="fas fa-info-circle"></i> <strong>Referral Modification Policy:</strong> 
-            To modify a referral, please <strong>cancel the existing referral</strong> and <strong>create a new one</strong> with the updated information. 
-            This ensures accuracy and maintains a clear audit trail.
-        </div>
-
         <?php if (!empty($message)): ?>
             <div class="alert alert-success">
                 <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?>
@@ -1886,8 +1944,16 @@ try {
 
         <?php if ($notice === 'edit_deprecated'): ?>
             <div class="alert alert-warning" style="border-left: 4px solid #ff9800;">
-                <i class="fas fa-exclamation-triangle"></i> <strong>Edit Feature Unavailable:</strong> 
+                <i class="fas fa-exclamation-triangle"></i> <strong>Edit Feature Unavailable:</strong>
                 Referral editing has been disabled. To modify a referral, please <strong>cancel the existing referral</strong> and <strong>create a new one</strong> with the correct information.
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($_GET['reactivated']) && isset($_GET['id'])): ?>
+            <div class="alert alert-success" style="border-left: 4px solid #4caf50;">
+                <i class="fas fa-check-circle"></i> <strong>Success:</strong>
+                Referral #<?php echo htmlspecialchars($_GET['id']); ?> has been successfully reactivated and is now active.
+                <button type="button" class="btn-close" onclick="this.parentElement.remove();" style="float: right; background: none; border: none; font-size: 18px; cursor: pointer;">&times;</button>
             </div>
         <?php endif; ?>
 
@@ -1902,12 +1968,16 @@ try {
                 <div class="stat-label">Active</div>
             </div>
             <div class="stat-card completed">
-                <div class="stat-number"><?php echo number_format($stats['completed'] ?? 0); ?></div>
-                <div class="stat-label">Completed</div>
+                <div class="stat-number"><?php echo number_format($stats['issued'] ?? 0); ?></div>
+                <div class="stat-label">Issued</div>
+            </div>
+            <div class="stat-card accepted">
+                <div class="stat-number"><?php echo number_format($stats['accepted'] ?? 0); ?></div>
+                <div class="stat-label">Accepted</div>
             </div>
             <div class="stat-card canceled">
-                <div class="stat-number"><?php echo number_format($stats['canceled'] ?? 0); ?></div>
-                <div class="stat-label">Canceled</div>
+                <div class="stat-number"><?php echo number_format($stats['cancelled'] ?? 0); ?></div>
+                <div class="stat-label">Cancelled</div>
             </div>
         </div>
 
@@ -1983,7 +2053,7 @@ try {
                         <h3>No Referrals Found</h3>
                         <p>No referrals match your current search criteria.</p>
                         <?php if ($canCreateReferrals): ?>
-                        <a href="create_referrals.php" class="btn btn-primary">Create First Referral</a>
+                            <a href="create_referrals.php" class="btn btn-primary">Create First Referral</a>
                         <?php endif; ?>
                     </div>
                 <?php else: ?>
@@ -2307,16 +2377,18 @@ try {
                     </div>
                 </div>
             </div>
+            <div>
+                <div class="alert alert-info" style="margin: 25px; border-left: 4px solid #2196f3;background-color: honeydew;">
+                    <i class="fas fa-info-circle"></i> <strong>Referral Modification Policy:</strong>
+                    To modify a referral, please <strong>cancel the existing referral</strong> and <strong>create a new one</strong> with the updated information.
+                    This ensures accuracy and maintains a clear audit trail.
+                </div>
+            </div>
 
             <div class="referral-modal-actions">
                 <!-- Cancel Button - Show for Active status -->
                 <button type="button" class="modal-btn modal-btn-danger edit-btn-hidden" onclick="cancelReferral(currentReferralId)" id="cancelReferralBtn">
                     <i class="fas fa-times-circle"></i> Cancel Referral
-                </button>
-
-                <!-- Reinstate Button - Show for Cancelled/Expired status -->
-                <button type="button" class="modal-btn modal-btn-success edit-btn-hidden" onclick="reinstateReferral(currentReferralId)" id="reinstateReferralBtn">
-                    <i class="fas fa-redo"></i> Reinstate
                 </button>
 
                 <!-- Print Button - Always available -->
@@ -2342,7 +2414,7 @@ try {
             <form id="cancelReferralForm">
                 <div class="alert cancel-warning">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <strong>Warning:</strong> This action will cancel the referral and notify all involved parties. This action can be undone later using the "Reinstate" option.
+                    <strong>Warning:</strong> This action will cancel the referral and notify all involved parties. To modify the referral details, create a new referral instead.
                 </div>
 
                 <div class="form-group mb-1">
@@ -2395,57 +2467,12 @@ try {
         </div>
     </div>
 
-    <!-- Reinstate Referral Confirmation Modal -->
-    <div id="reinstateReferralModal" class="modal">
-        <div class="modal-content modal-content-large text-left">
-            <div class="modal-header">
-                <h3><i class="fas fa-undo-alt" style="color: #28a745;"></i> Reinstate Referral</h3>
-                <button type="button" class="close" onclick="closeModal('reinstateReferralModal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="confirmation-section">
-                    <h4 class="confirmation-title">
-                        <i class="fas fa-info-circle"></i> Confirmation Required
-                    </h4>
-                    <p class="confirmation-text">Are you sure you want to reinstate this referral?</p>
-                </div>
-
-                <div class="action-list-section">
-                    <h5 class="action-list-title">
-                        <i class="fas fa-list-ul"></i> This action will:
-                    </h5>
-                    <ul class="action-list">
-                        <li>Reactivate the referral status to <strong>"Active"</strong></li>
-                        <li>Make it available for processing again</li>
-                        <li>Log the reinstatement action for audit purposes</li>
-                        <li>Send notification to relevant healthcare providers</li>
-                    </ul>
-                </div>
-
-                <div class="warning-section">
-                    <p class="warning-text">
-                        <i class="fas fa-exclamation-triangle warning-icon"></i>
-                        <strong>Note:</strong> Once reinstated, this referral will become active and ready for patient processing.
-                    </p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('reinstateReferralModal')">
-                    <i class="fas fa-times"></i> Cancel
-                </button>
-                <button type="button" class="btn btn-success" onclick="confirmReinstatement()" id="confirmReinstateBtn">
-                    <i class="fas fa-undo-alt"></i> Yes, Reinstate Referral
-                </button>
-            </div>
-        </div>
-    </div>
-
     <script>
         // ===== REFERRAL MANAGEMENT JAVASCRIPT =====
 
         let currentReferralId = null;
         let currentAction = null;
-        
+
         // Employee permission variables for JavaScript
         const currentEmployeeId = <?= $employee_id ?>;
         const currentEmployeeRole = '<?= strtolower($employee_role) ?>';
@@ -2651,15 +2678,13 @@ try {
         // Update Modal Button Visibility with Creator-Based Permissions
         function updateModalButtons(status, referredBy = null) {
             const cancelBtn = document.getElementById('cancelReferralBtn');
-            const reinstateBtn = document.getElementById('reinstateReferralBtn');
 
-            // Hide all buttons first
+            // Hide cancel button first
             if (cancelBtn) cancelBtn.style.display = 'none';
-            if (reinstateBtn) reinstateBtn.style.display = 'none';
 
             // Check if current employee can modify this referral
             const canModify = isAdmin || (referredBy && referredBy == currentEmployeeId);
-            
+
             if (!canModify) {
                 // Show info message about permissions
                 const buttonContainer = document.querySelector('.referral-modal-actions');
@@ -2671,13 +2696,13 @@ try {
                         permissionInfo.style.cssText = 'margin: 1rem 0; padding: 0.75rem; background: #e3f2fd; border-left: 4px solid #2196f3; border-radius: 4px; font-size: 0.9rem; color: #1976d2;';
                         buttonContainer.appendChild(permissionInfo);
                     }
-                    
+
                     if (isAdmin) {
-                        permissionInfo.innerHTML = '<i class="fas fa-crown"></i> <strong>Admin Access:</strong> You can cancel/reinstate any referral.';
+                        permissionInfo.innerHTML = '<i class="fas fa-crown"></i> <strong>Admin Access:</strong> You can cancel any referral.';
                     } else if (referredBy == currentEmployeeId) {
-                        permissionInfo.innerHTML = '<i class="fas fa-user-check"></i> <strong>Creator Access:</strong> You can cancel/reinstate this referral because you created it.';
+                        permissionInfo.innerHTML = '<i class="fas fa-user-check"></i> <strong>Creator Access:</strong> You can cancel this referral because you created it.';
                     } else {
-                        permissionInfo.innerHTML = '<i class="fas fa-info-circle"></i> <strong>View Only:</strong> You can only cancel/reinstate referrals you created. <br><small><strong>Note:</strong> To modify this referral, cancel it and create a new one with the updated information.</small>';
+                        permissionInfo.innerHTML = '<i class="fas fa-info-circle"></i> <strong>View Only:</strong> You can only cancel referrals you created. <br><small><strong>Note:</strong> To modify this referral, cancel it and create a new one with the updated information.</small>';
                     }
                 }
                 return; // Don't show action buttons
@@ -2686,9 +2711,9 @@ try {
             // Show buttons based on status (only if user has modify permissions)
             if (status === 'active') {
                 if (cancelBtn) cancelBtn.style.display = 'inline-flex';
-            } else if (status === 'cancelled' || status === 'voided') {
-                if (reinstateBtn) reinstateBtn.style.display = 'inline-flex';
             }
+            // Note: Cancelled/voided referrals can no longer be reinstated. 
+            // Create a new referral if needed.
         }
 
         // Download Referral Function - Simple PDF Preview Popup
@@ -2751,24 +2776,6 @@ try {
         function cancelReferral(referralId) {
             currentReferralId = referralId;
             openModal('cancelReferralModal');
-        }
-
-        function reinstateReferral(referralId) {
-            currentReferralId = referralId;
-            openModal('reinstateReferralModal');
-        }
-
-        function confirmReinstatement() {
-            if (currentReferralId) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="action" value="reactivate">
-                    <input type="hidden" name="referral_id" value="${currentReferralId}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
-            }
         }
 
         // Utility Functions

@@ -12,6 +12,7 @@ error_reporting(E_ALL);
 
 include_once __DIR__ . '/../../../config/db.php';
 require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
+require_once dirname(__DIR__, 3) . '/utils/StandardEmailTemplate.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -96,7 +97,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mail->addAddress($user['email'], $_SESSION['reset_name']);
             $mail->isHTML(true);
             $mail->Subject = 'Your OTP for Password Reset';
-            $mail->Body    = "<p>Your One-Time Password (OTP) is: <strong>{$otp}</strong></p>";
+            
+            // Prepare data for standardized template
+            $contact_info = [
+                'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
+                'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
+            ];
+            
+            $template_data = array_merge([
+                'otp' => $otp,
+                'first_name' => $_SESSION['reset_name'] ?? 'Patient',
+                'purpose' => 'password reset',
+                'expiry_minutes' => 5
+            ], $contact_info);
+            
+            // Generate content using standardized template
+            $content = StandardEmailTemplate::generateOTPContent($template_data);
+            
+            // Generate complete email using standardized template
+            $mail->Body = StandardEmailTemplate::generateTemplate([
+                'title' => 'Password Reset OTP',
+                'subtitle' => 'City Health Office of Koronadal',
+                'content' => $content,
+                'type' => 'otp'
+            ]);
 
             $mail->send();
             error_log('[forgot_password] Mail sent to ' . $user['email']);
