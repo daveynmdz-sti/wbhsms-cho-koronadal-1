@@ -1,8 +1,94 @@
 <?php
 session_start();
 
+// Use absolute path resolution
+$root_path = dirname(dirname(dirname(__DIR__)));
+require_once $root_path . '/config/env.php'; // Load environment variables
+require_once $root_path . '/utils/StandardEmailTemplate.php';
+
+// Load PHPMailer classes
+if (!class_exists('\PHPMailer\PHPMailer\PHPMailer')) {
+    $vendorAutoload = $root_path . '/vendor/autoload.php';
+    if (file_exists($vendorAutoload)) {
+        require_once $vendorAutoload;
+    } else {
+        require_once $root_path . '/vendor/phpmailer/phpmailer/src/PHPMailer.php';
+        require_once $root_path . '/vendor/phpmailer/phpmailer/src/SMTP.php';
+        require_once $root_path . '/vendor/phpmailer/phpmailer/src/Exception.php';
+    }
+}
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
 // Get username from session (set during OTP verification)
 $username = isset($_SESSION['registration_username']) ? htmlspecialchars($_SESSION['registration_username']) : null;
+$email_sent = false;
+
+// Send welcome email with Patient ID if username exists
+if ($username && isset($_SESSION['registration']) && !empty($_SESSION['registration']['email'])) {
+    $patient_email = $_SESSION['registration']['email'];
+    $patient_name = trim(($_SESSION['registration']['first_name'] ?? '') . ' ' . ($_SESSION['registration']['last_name'] ?? ''));
+    
+    // Check if email bypass is enabled for development
+    $bypassEmail = empty($_ENV['SMTP_PASS']) || $_ENV['SMTP_PASS'] === 'disabled';
+    
+    if (!$bypassEmail) {
+        try {
+            $mail = new PHPMailer(true);
+            $mail->CharSet = 'UTF-8';
+            $mail->Encoding = 'base64';
+            
+            // SMTP Configuration
+            $mail->isSMTP();
+            $mail->Host = $_ENV['SMTP_HOST'] ?? 'smtp.gmail.com';
+            $mail->SMTPAuth = true;
+            $mail->Username = $_ENV['SMTP_USER'] ?? '';
+            $mail->Password = $_ENV['SMTP_PASS'] ?? '';
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port = $_ENV['SMTP_PORT'] ?? 587;
+            
+            $fromEmail = $_ENV['SMTP_FROM'] ?? 'cityhealthofficeofkoronadal@gmail.com';
+            $fromName = $_ENV['SMTP_FROM_NAME'] ?? 'City Health Office of Koronadal';
+
+            $mail->setFrom($fromEmail, $fromName);
+            $mail->addAddress($patient_email, $patient_name);
+
+            $mail->isHTML(true);
+            $mail->Subject = 'Welcome to CHO Koronadal - Your Patient ID';
+            
+            // Generate patient welcome email content
+            $welcome_content = StandardEmailTemplate::generatePatientWelcomeContent([
+                'patient_name' => $patient_name,
+                'patient_id' => $username,
+                'login_url' => 'http://cityhealthofficeofkoronadal.31.97.106.60.sslip.io/pages/patient/auth/patient_login.php',
+                'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
+                'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
+            ]);
+            
+            $mail->Body = StandardEmailTemplate::generateTemplate([
+                'title' => 'Welcome to CHO Koronadal Healthcare',
+                'content' => $welcome_content,
+                'type' => 'welcome'
+            ]);
+            
+            $mail->AltBody = "Welcome to CHO Koronadal! Your Patient ID is: {$username}. Please log in and complete your profile.";
+
+            $mail->send();
+            $email_sent = true;
+            
+        } catch (Exception $e) {
+            // Log error but don't prevent success page display
+            error_log('Patient welcome email error: ' . $e->getMessage());
+        }
+    } else {
+        // Development mode - assume email sent
+        $email_sent = true;
+        if (getenv('APP_DEBUG') === '1') {
+            error_log("DEVELOPMENT MODE: Patient welcome email for {$patient_email} with Patient ID: {$username}");
+        }
+    }
+}
 
 // Clear the session data since registration is complete
 if (isset($_SESSION['registration_username'])) {
@@ -140,6 +226,32 @@ if (isset($_SESSION['registration_data'])) {
             margin-top: 12px;
             font-weight: 600;
         }
+
+        .email-notice {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            background: #d1fae5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+        }
+
+        .email-notice.warning {
+            background: #fef3c7;
+            border-color: #fcd34d;
+            color: #92400e;
+        }
+
+        .email-notice i {
+            font-size: 1.2em;
+            margin-right: 8px;
+        }
+
+        .email-notice span {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
     </style>
 </head>
 
@@ -155,10 +267,25 @@ if (isset($_SESSION['registration_data'])) {
             <?php if ($username): ?>
                 <div class="icon"><i class="fa-solid fa-circle-check"></i></div>
                 <h2 class="success">Registration Successful!</h2>
-                <p>Your account has been created successfully. Please use the following username to log in:</p>
+                <p>Your account has been created successfully. Your Patient ID is:</p>
                 <div class="credential-box">
                     <i class="fa-solid fa-user"></i> <?= $username ?>
                 </div>
+                
+                <?php if ($email_sent): ?>
+                    <div class="email-notice">
+                        <i class="fa-solid fa-envelope"></i>
+                        <strong>Patient ID sent to your email!</strong><br>
+                        <span>Check your inbox for login instructions and profile completion guide.</span>
+                    </div>
+                <?php else: ?>
+                    <div class="email-notice warning">
+                        <i class="fa-solid fa-exclamation-triangle"></i>
+                        <strong>Email delivery issue</strong><br>
+                        <span>Please save your Patient ID above for login.</span>
+                    </div>
+                <?php endif; ?>
+                
                 <div class="countdown">
                     Redirecting to login page in <span id="timer">10</span> seconds...
                 </div>

@@ -530,5 +530,65 @@ class StandardEmailTemplate {
             </div>
         ";
     }
+
+    /**
+     * Generate welcome email content for patients
+     * @param array $data Patient welcome data
+     * @return string Email content HTML
+     */
+    public static function generatePatientWelcomeContent($data) {
+        return "
+            <p style='font-size: 18px; margin-bottom: 20px;'>
+                Hello <strong>{$data['patient_name']}</strong>! 🎉
+            </p>
+            
+            <p>Welcome to the CHO Koronadal Healthcare Management System! Your patient account has been successfully created. We're excited to provide you with quality healthcare services and easy access to manage your health records.</p>
+            
+            <div class='highlight-card'>
+                <h3 style='color: #1e293b; margin-bottom: 20px;'>👤 Your Patient Information</h3>
+                
+                <div style='background: white; border-radius: 8px; padding: 15px; margin: 10px 0; border: 1px solid #e2e8f0;'>
+                    <div style='font-weight: 600; color: #374151; font-size: 14px; margin-bottom: 8px;'>🆔 Patient ID</div>
+                    <div style='font-size: 18px; font-weight: 700; color: #1f2937; font-family: monospace; background: #f8fafc; padding: 10px; border-radius: 6px;'>{$data['patient_id']}</div>
+                    <div style='font-size: 12px; color: #6b7280; margin-top: 5px;'>
+                        <strong>Important:</strong> This is your Patient ID - please save it for future logins!
+                    </div>
+                </div>
+            </div>
+            
+            <div class='warning-card'>
+                <h3 style='margin: 0 0 10px 0;'>📋 Complete Your Profile</h3>
+                <p style='margin: 0;'><strong>Next Step:</strong> Please log in to your patient portal and complete your medical profile. This includes updating your medical history, emergency contacts, and any allergies or medications you're currently taking. A complete profile helps us provide better healthcare services.</p>
+            </div>
+            
+            <div class='info-card'>
+                <h3 style='color: #374151; margin-bottom: 15px;'>🏥 What You Can Do</h3>
+                <ul style='margin: 10px 0; padding-left: 20px; color: #4b5563;'>
+                    <li><strong>Book Appointments:</strong> Schedule consultations with our healthcare providers</li>
+                    <li><strong>View Medical Records:</strong> Access your consultation history and lab results</li>
+                    <li><strong>Manage Referrals:</strong> Track referrals to specialist services</li>
+                    <li><strong>Update Profile:</strong> Keep your contact and medical information current</li>
+                    <li><strong>Download Reports:</strong> Get copies of your medical documents</li>
+                </ul>
+            </div>
+            
+            <div style='text-align: center; margin: 25px 0;'>
+                <a href='{$data['login_url']}' style='display: inline-block; background: #0077b6; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;'>Login to Patient Portal</a>
+            </div>
+            
+            <div class='contact-info'>
+                <h3 style='color: #374151; margin-bottom: 15px;'>📞 Need Help?</h3>
+                <div class='contact-item'>
+                    <strong>Phone:</strong> {$data['contact_phone']}
+                </div>
+                <div class='contact-item'>
+                    <strong>Email:</strong> {$data['contact_email']}
+                </div>
+                <p style='margin: 10px 0 0 0; font-size: 14px; color: #6c757d;'>
+                    Our support team is here to help you with any questions about using the patient portal.
+                </p>
+            </div>
+        ";
+    }
 }
 ?>
