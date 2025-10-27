@@ -69,15 +69,17 @@ try {
             p.suffix,
             p.date_of_birth,
             p.sex,
-            p.civil_status,
-            p.contact_num,
+            pi.civil_status,
+            p.contact_number,
             b.barangay_name as barangay,
-            p.address,
+            pi.street as address,
             p.email
         FROM 
             patients p
         LEFT JOIN 
             barangay b ON p.barangay_id = b.barangay_id
+        LEFT JOIN 
+            personal_information pi ON p.patient_id = pi.patient_id
         WHERE 
             p.patient_id = ?
     ");
@@ -106,29 +108,28 @@ try {
     error_log('Patient dashboard error: ' . $e->getMessage());
 }
 
-// Load latest appointment
+// Load latest appointment (regardless of status)
 try {
     $stmt = $pdo->prepare("
         SELECT 
             a.appointment_id,
-            a.appointment_date,
-            a.appointment_time,
-            a.reason,
+            a.scheduled_date,
+            a.scheduled_time,
             a.status,
-            e.first_name AS doctor_first_name,
-            e.last_name AS doctor_last_name
+            a.referral_id,
+            r.referral_reason,
+            s.name as service_name
         FROM 
             appointments a
         LEFT JOIN 
-            employees e ON a.doctor_id = e.employee_id
+            referrals r ON a.referral_id = r.referral_id
+        LEFT JOIN 
+            services s ON a.service_id = s.service_id
         WHERE 
-            a.patient_id = ? AND 
-            a.status IN ('pending', 'confirmed', 'in-progress') AND
-            (a.appointment_date > CURRENT_DATE OR 
-             (a.appointment_date = CURRENT_DATE AND a.appointment_time >= CURRENT_TIME))
+            a.patient_id = ?
         ORDER BY 
-            a.appointment_date ASC, 
-            a.appointment_time ASC
+            a.scheduled_date DESC, 
+            a.scheduled_time DESC
         LIMIT 1
     ");
 
@@ -137,16 +138,19 @@ try {
 
     if ($appointment) {
         // Format date
-        $appointmentDate = new DateTime($appointment['appointment_date']);
+        $appointmentDate = new DateTime($appointment['scheduled_date']);
         $formattedDate = $appointmentDate->format('F j, Y');
 
         // Format time
-        $appointmentTime = new DateTime($appointment['appointment_time']);
+        $appointmentTime = new DateTime($appointment['scheduled_time']);
         $formattedTime = $appointmentTime->format('g:i A');
 
-        $doctorName = '';
-        if (!empty($appointment['doctor_first_name']) && !empty($appointment['doctor_last_name'])) {
-            $doctorName = "Dr. {$appointment['doctor_first_name']} {$appointment['doctor_last_name']}";
+        // Get reason from referral or service
+        $reason = 'General consultation';
+        if (!empty($appointment['referral_reason'])) {
+            $reason = $appointment['referral_reason'];
+        } elseif (!empty($appointment['service_name'])) {
+            $reason = $appointment['service_name'];
         }
 
         $defaults['latest_appointment'] = [
@@ -154,34 +158,34 @@ try {
             'status' => $appointment['status'],
             'date' => $formattedDate,
             'time' => $formattedTime,
-            'doctor' => $doctorName,
-            'reason' => $appointment['reason'],
-            'description' => $appointment['reason']
+            'doctor' => '', // No doctor info available in this structure
+            'reason' => $reason,
+            'description' => $reason
         ];
     }
 } catch (PDOException $e) {
     error_log('Patient dashboard - appointment error: ' . $e->getMessage());
 }
 
-// Load latest prescription
+// Load latest prescription (regardless of status)
 try {
     $stmt = $pdo->prepare("
         SELECT 
             p.prescription_id,
-            p.date_prescribed,
+            p.prescription_date,
             p.status,
-            p.notes,
+            p.remarks,
+            CONCAT(e.first_name, ' ', e.last_name) AS doctor_name,
             e.first_name AS doctor_first_name,
             e.last_name AS doctor_last_name
         FROM 
             prescriptions p
         LEFT JOIN 
-            employees e ON p.doctor_id = e.employee_id
+            employees e ON p.prescribed_by_employee_id = e.employee_id
         WHERE 
-            p.patient_id = ? AND 
-            p.status IN ('active', 'pending', 'ready')
+            p.patient_id = ?
         ORDER BY 
-            p.date_prescribed DESC
+            p.prescription_date DESC
         LIMIT 1
     ");
 
@@ -190,7 +194,7 @@ try {
 
     if ($prescription) {
         // Format date
-        $prescriptionDate = new DateTime($prescription['date_prescribed']);
+        $prescriptionDate = new DateTime($prescription['prescription_date']);
         $formattedDate = $prescriptionDate->format('F j, Y');
 
         $doctorName = '';
@@ -203,12 +207,186 @@ try {
             'status' => $prescription['status'],
             'date' => $formattedDate,
             'doctor' => $doctorName,
-            'notes' => $prescription['notes'],
-            'description' => "Prescription: " . ($prescription['notes'] ?: 'No details available')
+            'notes' => $prescription['remarks'] ?: 'No additional notes',
+            'description' => "Prescription: " . ($prescription['remarks'] ?: 'No additional notes')
         ];
     }
 } catch (PDOException $e) {
     error_log('Patient dashboard - prescription error: ' . $e->getMessage());
+}
+
+// Load patient notifications from various tables
+$notifications = [];
+
+try {
+    // Get recent appointments from past week
+    $stmt = $pdo->prepare("
+        SELECT 
+            'appointment' as type,
+            appointment_id as id,
+            scheduled_date as date_field,
+            scheduled_time as time_field,
+            status,
+            CONCAT('Appointment scheduled for ', DATE_FORMAT(scheduled_date, '%M %d, %Y'), ' at ', TIME_FORMAT(scheduled_time, '%h:%i %p')) as description,
+            created_at,
+            'appointment/appointments.php' as link_url
+        FROM appointments 
+        WHERE patient_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$patient_id]);
+    $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = array_merge($notifications, $appointments);
+
+    // Get recent referrals from past week
+    $stmt = $pdo->prepare("
+        SELECT 
+            'referral' as type,
+            referral_id as id,
+            referral_date as date_field,
+            NULL as time_field,
+            status,
+            CONCAT('Referral #', referral_num, ' - ', COALESCE(referral_reason, 'Medical referral')) as description,
+            updated_at as created_at,
+            'referral/referrals.php' as link_url
+        FROM referrals 
+        WHERE patient_id = ? AND updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY updated_at DESC
+    ");
+    $stmt->execute([$patient_id]);
+    $referrals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = array_merge($notifications, $referrals);
+
+    // Get recent consultations from past week
+    $stmt = $pdo->prepare("
+        SELECT 
+            'consultation' as type,
+            consultation_id as id,
+            consultation_date as date_field,
+            NULL as time_field,
+            consultation_status as status,
+            CONCAT('Consultation - ', COALESCE(chief_complaint, 'Medical consultation')) as description,
+            created_at,
+            'consultation/consultations.php' as link_url
+        FROM consultations 
+        WHERE patient_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$patient_id]);
+    $consultations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = array_merge($notifications, $consultations);
+
+    // Get recent prescriptions from past week
+    $stmt = $pdo->prepare("
+        SELECT 
+            'prescription' as type,
+            prescription_id as id,
+            prescription_date as date_field,
+            NULL as time_field,
+            status,
+            CONCAT('Prescription #', prescription_id, ' - ', COALESCE(remarks, 'Medication prescribed')) as description,
+            created_at,
+            'prescription/prescriptions.php' as link_url
+        FROM prescriptions 
+        WHERE patient_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$patient_id]);
+    $prescriptions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = array_merge($notifications, $prescriptions);
+
+    // Get recent lab orders from past week
+    $stmt = $pdo->prepare("
+        SELECT 
+            'lab_order' as type,
+            lab_order_id as id,
+            order_date as date_field,
+            NULL as time_field,
+            status,
+            CONCAT('Lab Order #', lab_order_id, ' - ', COALESCE(remarks, 'Laboratory test ordered')) as description,
+            created_at,
+            'laboratory/lab_orders.php' as link_url
+        FROM lab_orders 
+        WHERE patient_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$patient_id]);
+    $lab_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = array_merge($notifications, $lab_orders);
+
+    // Get recent billing from past week
+    $stmt = $pdo->prepare("
+        SELECT 
+            'billing' as type,
+            billing_id as id,
+            billing_date as date_field,
+            NULL as time_field,
+            payment_status as status,
+            CONCAT('Bill #', billing_id, ' - Amount: ₱', FORMAT(net_amount, 2)) as description,
+            created_at,
+            'billing/billing.php' as link_url
+        FROM billing 
+        WHERE patient_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$patient_id]);
+    $billing = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = array_merge($notifications, $billing);
+
+    // Get recent queue entries from past week
+    $stmt = $pdo->prepare("
+        SELECT 
+            'queue' as type,
+            queue_entry_id as id,
+            time_in as date_field,
+            NULL as time_field,
+            status,
+            CONCAT('Queue #', COALESCE(queue_number, queue_entry_id), ' - ', queue_type) as description,
+            created_at,
+            'queue/queue_status.php' as link_url
+        FROM queue_entries 
+        WHERE patient_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$patient_id]);
+    $queue_entries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = array_merge($notifications, $queue_entries);
+
+    // Sort all notifications by created_at timestamp, most recent first
+    usort($notifications, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+
+    // Show all notifications from the past week (no limit)
+    // $notifications already contains filtered results from past 7 days
+
+    // Helper function to get notification icon
+    function getNotificationIcon($type) {
+        $icon_map = [
+            'appointment' => 'fa-calendar-check',
+            'referral' => 'fa-share-square', 
+            'consultation' => 'fa-stethoscope',
+            'prescription' => 'fa-prescription-bottle-alt',
+            'lab_order' => 'fa-flask',
+            'billing' => 'fa-file-invoice-dollar',
+            'queue' => 'fa-users'
+        ];
+        return $icon_map[$type] ?? 'fa-bell';
+    }
+
+    // Helper function to format relative time
+    function getRelativeTime($datetime) {
+        $time = time() - strtotime($datetime);
+        if ($time < 60) return 'Just now';
+        if ($time < 3600) return floor($time/60) . ' min ago';
+        if ($time < 86400) return floor($time/3600) . ' hr ago';
+        if ($time < 2592000) return floor($time/86400) . ' days ago';
+        return date('M j, Y', strtotime($datetime));
+    }
+
+} catch (PDOException $e) {
+    error_log('Patient dashboard - notifications error: ' . $e->getMessage());
+    $notifications = [];
 }
 
 // Set active page for sidebar highlighting
@@ -347,6 +525,41 @@ if (!isset($defaults)) {
         .status-completed {
             background-color: #e5e7eb;
             color: #374151;
+        }
+
+        .status-in-progress {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-ready {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-dispensed {
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+
+        .status-cancelled {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-checked-in {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+
+        .status-issued {
+            background-color: #f3e8ff;
+            color: #6b46c1;
+        }
+
+        .status-expired {
+            background-color: #fef2f2;
+            color: #dc2626;
         }
 
         .card-content {
@@ -558,19 +771,205 @@ if (!isset($defaults)) {
             position: relative;
         }
 
-        .tooltip:hover::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 125%;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #333;
-            color: white;
-            padding: 0.5rem;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            white-space: nowrap;
+        /* Notification table styles */
+        .notification-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            margin-top: 10px;
+            position: relative;
+        }
+
+        .notification-table {
+            width: 100%;
+            border-collapse: collapse;
+            position: relative;
+        }
+
+        .notification-table th {
+            position: sticky;
+            top: 0;
             z-index: 10;
+            padding: 12px 8px;
+            text-align: left;
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #374151;
+            font-size: 0.9rem;
+            border-bottom: 2px solid #e5e7eb;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .notification-table td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 0.85rem;
+            background-color: white;
+        }
+
+        .notification-table tbody tr:hover {
+            background-color: #f9fafb;
+        }
+
+        .notification-type {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .type-appointment {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+
+        .type-referral {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        .type-consultation {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+
+        .type-prescription {
+            background-color: #e0e7ff;
+            color: #3730a3;
+        }
+
+        .type-lab_order {
+            background-color: #fce7f3;
+            color: #be185d;
+        }
+
+        .type-billing {
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+
+        .type-queue {
+            background-color: #fed7d7;
+            color: #c53030;
+        }
+
+        .notification-status {
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .status-confirmed,
+        .status-completed,
+        .status-active,
+        .status-paid {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-pending,
+        .status-in_progress,
+        .status-partial {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-cancelled,
+        .status-no_show {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-unpaid {
+            background-color: #fef2f2;
+            color: #dc2626;
+        }
+
+        .notification-link {
+            color: #0077b6;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .notification-link:hover {
+            text-decoration: underline;
+        }
+
+        .notification-date {
+            color: #6b7280;
+            font-size: 0.8rem;
+        }
+
+        .text-muted {
+            color: #9ca3af !important;
+            font-size: 0.75rem;
+        }
+
+        .notification-description {
+            color: #374151;
+            line-height: 1.4;
+        }
+
+        .no-notifications {
+            text-align: center;
+            color: #6b7280;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .notification-table {
+                font-size: 0.8rem;
+            }
+            
+            .notification-table th,
+            .notification-table td {
+                padding: 8px 4px;
+            }
+            
+            .notification-description {
+                max-width: 200px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .notification-container {
+                max-height: 300px;
+            }
+        }
+
+        /* Custom scrollbar styling */
+        .notification-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .notification-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .notification-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        .notification-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Firefox scrollbar styling */
+        .notification-container {
+            scrollbar-width: thin;
+            scrollbar-color: #c1c1c1 #f1f1f1;
         }
     </style>
 </head>
@@ -586,7 +985,7 @@ if (!isset($defaults)) {
             </div>
 
             <div class="dashboard-actions">
-                <a href="appointment/appointments.php" class="btn btn-primary">
+                <a href="appointment/book_appointments.php" class="btn btn-primary">
                     <i class="fas fa-calendar-plus"></i> Book Appointment
                 </a>
                 <a href="profile/id_card.php" class="btn btn-secondary">
@@ -596,10 +995,100 @@ if (!isset($defaults)) {
         </section>
 
         <section class="info-card">
-            <h2><i class="fas fa-bell"></i> Notifications</h2>
+            <h2><i class="fas fa-bell"></i> Recent Notifications (Past Week)</h2>
             <div class="notification-list">
-                <p>You have no new notifications at this time.</p>
-                <!-- Notifications will be dynamically loaded here -->
+                <?php if (!empty($notifications)): ?>
+                    <div class="notification-container">
+                        <table class="notification-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($notifications as $notification): ?>
+                                <tr>
+                                    <td>
+                                        <span class="notification-type type-<?php echo htmlspecialchars($notification['type']); ?>">
+                                            <i class="fas <?php echo getNotificationIcon($notification['type']); ?>"></i>
+                                            <?php echo ucfirst(str_replace('_', ' ', htmlspecialchars($notification['type']))); ?>
+                                        </span>
+                                    </td>
+                                    <td class="notification-date">
+                                        <?php 
+                                        if (!empty($notification['date_field'])) {
+                                            $date = new DateTime($notification['date_field']);
+                                            echo $date->format('M j, Y');
+                                            if (!empty($notification['time_field'])) {
+                                                $time = new DateTime($notification['time_field']);
+                                                echo '<br><small>' . $time->format('g:i A') . '</small>';
+                                            }
+                                        } else {
+                                            $created = new DateTime($notification['created_at']);
+                                            echo $created->format('M j, Y');
+                                        }
+                                        ?>
+                                        <br><small class="text-muted"><?php echo getRelativeTime($notification['created_at']); ?></small>
+                                    </td>
+                                    <td class="notification-description">
+                                        <?php echo htmlspecialchars($notification['description']); ?>
+                                    </td>
+                                    <td>
+                                        <span class="notification-status status-<?php echo htmlspecialchars($notification['status']); ?>">
+                                            <?php echo ucfirst(str_replace('_', ' ', htmlspecialchars($notification['status']))); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php if ($notification['type'] === 'appointment'): ?>
+                                            <a href="appointment/appointments.php?view=<?php echo htmlspecialchars($notification['id']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php elseif ($notification['type'] === 'referral'): ?>
+                                            <a href="referrals/referrals.php?view=<?php echo htmlspecialchars($notification['id']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php elseif ($notification['type'] === 'consultation'): ?>
+                                            <a href="consultations/consultations.php?view=<?php echo htmlspecialchars($notification['id']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php elseif ($notification['type'] === 'lab_order'): ?>
+                                            <a href="laboratory/laboratory.php?view=<?php echo htmlspecialchars($notification['id']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php elseif ($notification['type'] === 'billing'): ?>
+                                            <a href="billing/billing.php?view=<?php echo htmlspecialchars($notification['id']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php elseif ($notification['type'] === 'queue'): ?>
+                                            <a href="queueing/queue_status.php?view=<?php echo htmlspecialchars($notification['id']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php elseif ($notification['type'] === 'prescription'): ?>
+                                            <a href="prescription/prescriptions.php?view=<?php echo htmlspecialchars($notification['id']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php else: ?>
+                                            <a href="<?php echo htmlspecialchars($notification['link_url']); ?>" class="notification-link">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    </div>
+                <?php else: ?>
+                    <div class="no-notifications">
+                        <i class="fas fa-bell-slash" style="font-size: 24px; color: #d1d5db; margin-bottom: 10px;"></i>
+                        <p>You have no notifications from the past week.</p>
+                        <small>New appointments, referrals, and other activities will appear here.</small>
+                    </div>
+                <?php endif; ?>
             </div>
         </section>
 
@@ -608,11 +1097,11 @@ if (!isset($defaults)) {
             <div class="card animated-card">
                 <div class="card-header">
                     <h2 class="card-title">
-                        <i class="fas fa-calendar-check"></i> Upcoming Appointment
+                        <i class="fas fa-calendar-check"></i> Latest Appointment
                     </h2>
                     <?php if ($defaults['latest_appointment']['status'] !== 'none'): ?>
                         <span class="card-status status-<?php echo htmlspecialchars($defaults['latest_appointment']['status']); ?>">
-                            <?php echo htmlspecialchars(ucfirst($defaults['latest_appointment']['status'])); ?>
+                            <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $defaults['latest_appointment']['status']))); ?>
                         </span>
                     <?php endif; ?>
                 </div>
@@ -634,9 +1123,19 @@ if (!isset($defaults)) {
                             </div>
                         <?php endif; ?>
                         <div class="card-detail">
+                            <span class="detail-label">Status:</span>
+                            <span class="detail-value"><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $defaults['latest_appointment']['status']))); ?></span>
+                        </div>
+                        <div class="card-detail">
                             <span class="detail-label">Reason:</span>
                             <span class="detail-value"><?php echo htmlspecialchars($defaults['latest_appointment']['reason']); ?></span>
                         </div>
+                        <?php if (!empty($defaults['latest_appointment']['id'])): ?>
+                            <div class="card-detail">
+                                <span class="detail-label">ID:</span>
+                                <span class="detail-value">#<?php echo htmlspecialchars($defaults['latest_appointment']['id']); ?></span>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="card-actions">
@@ -646,11 +1145,11 @@ if (!isset($defaults)) {
                     </div>
                 <?php else: ?>
                     <div class="card-content">
-                        <p>You have no upcoming appointments.</p>
+                        <p>You have no appointments on record.</p>
                     </div>
 
                     <div class="card-actions">
-                        <a href="appointment/appointments.php" class="btn btn-primary">
+                        <a href="appointment/book_appointments.php" class="btn btn-primary">
                             <i class="fas fa-calendar-plus"></i> Book Now
                         </a>
                     </div>
@@ -661,11 +1160,11 @@ if (!isset($defaults)) {
             <div class="card animated-card">
                 <div class="card-header">
                     <h2 class="card-title">
-                        <i class="fas fa-prescription-bottle-alt"></i> Active Prescription
+                        <i class="fas fa-prescription-bottle-alt"></i> Latest Prescription
                     </h2>
                     <?php if ($defaults['latest_prescription']['status'] !== 'none'): ?>
                         <span class="card-status status-<?php echo htmlspecialchars($defaults['latest_prescription']['status']); ?>">
-                            <?php echo htmlspecialchars(ucfirst($defaults['latest_prescription']['status'])); ?>
+                            <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $defaults['latest_prescription']['status']))); ?>
                         </span>
                     <?php endif; ?>
                 </div>
@@ -682,6 +1181,16 @@ if (!isset($defaults)) {
                                 <span class="detail-value"><?php echo htmlspecialchars($defaults['latest_prescription']['doctor']); ?></span>
                             </div>
                         <?php endif; ?>
+                        <div class="card-detail">
+                            <span class="detail-label">Status:</span>
+                            <span class="detail-value"><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $defaults['latest_prescription']['status']))); ?></span>
+                        </div>
+                        <?php if (!empty($defaults['latest_prescription']['id'])): ?>
+                            <div class="card-detail">
+                                <span class="detail-label">ID:</span>
+                                <span class="detail-value">#<?php echo htmlspecialchars($defaults['latest_prescription']['id']); ?></span>
+                            </div>
+                        <?php endif; ?>
                         <?php if (!empty($defaults['latest_prescription']['notes'])): ?>
                             <div class="card-detail">
                                 <span class="detail-label">Notes:</span>
@@ -691,17 +1200,17 @@ if (!isset($defaults)) {
                     </div>
 
                     <div class="card-actions">
-                        <a href="appointment/appointments.php" class="btn btn-primary">
+                        <a href="prescription/prescriptions.php" class="btn btn-primary">
                             <i class="fas fa-eye"></i> View Details
                         </a>
                     </div>
                 <?php else: ?>
                     <div class="card-content">
-                        <p>You have no active prescriptions.</p>
+                        <p>You have no prescriptions on record.</p>
                     </div>
 
                     <div class="card-actions">
-                        <a href="appointment/appointments.php" class="btn btn-secondary">
+                        <a href="prescription/prescriptions.php" class="btn btn-secondary">
                             <i class="fas fa-history"></i> View History
                         </a>
                     </div>

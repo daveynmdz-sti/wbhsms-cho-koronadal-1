@@ -2216,7 +2216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     dataType: 'json',
                     success: function(response) {
                         if (response.success) {
-                            showSuccessModal('Patient account reactivated successfully! Redirecting to active records...', function() {
+                            showSuccessModal('Patient account reactivated successfully!', function() {
                                 window.location.href = 'patient_records_management.php?reactivated=1';
                             });
                         } else {
