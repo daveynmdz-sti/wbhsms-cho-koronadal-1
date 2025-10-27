@@ -985,7 +985,7 @@ if (!isset($defaults)) {
             </div>
 
             <div class="dashboard-actions">
-                <a href="appointment/book_appointments.php" class="btn btn-primary">
+                <a href="appointment/book_appointment.php" class="btn btn-primary">
                     <i class="fas fa-calendar-plus"></i> Book Appointment
                 </a>
                 <a href="profile/id_card.php" class="btn btn-secondary">
@@ -1149,7 +1149,7 @@ if (!isset($defaults)) {
                     </div>
 
                     <div class="card-actions">
-                        <a href="appointment/book_appointments.php" class="btn btn-primary">
+                        <a href="appointment/book_appointment.php" class="btn btn-primary">
                             <i class="fas fa-calendar-plus"></i> Book Now
                         </a>
                     </div>
