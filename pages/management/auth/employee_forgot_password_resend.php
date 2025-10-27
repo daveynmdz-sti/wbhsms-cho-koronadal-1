@@ -15,6 +15,7 @@ if (!$debug) {
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 require_once __DIR__ . '/../../../config/db.php';
 require_once __DIR__ . '/../../../config/env.php'; // Add explicit env loading
+require_once __DIR__ . '/../../../utils/StandardEmailTemplate.php'; // Add standardized template
 require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -90,16 +91,24 @@ try {
 
         $mail->isHTML(true);
         $mail->Subject = 'Password Reset OTP - CHO Employee Portal (Resent)';
-        $mail->Body = "
-            <h2>Password Reset Request (Resent)</h2>
-            <p>Dear " . htmlspecialchars($_SESSION['reset_name']) . ",</p>
-            <p>You requested a new OTP for password reset. Use the following code to proceed:</p>
-            <h3 style='color: #007bff; font-size: 24px; letter-spacing: 3px;'>{$new_otp}</h3>
-            <p><strong>This OTP is valid for 15 minutes only.</strong></p>
-            <p>If you did not request this, please ignore this email and contact IT support.</p>
-            <hr>
-            <p><small>CHO Koronadal Employee Portal</small></p>
-        ";
+        
+        // Generate standardized email content
+        $template_data = [
+            'first_name' => $_SESSION['reset_name'],
+            'otp' => $new_otp,
+            'expiry_minutes' => 15,
+            'purpose' => 'Employee Password Reset (Resent)',
+            'additional_message' => 'You requested a new OTP for password reset. Use the following code to proceed with resetting your employee account password.',
+            'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
+            'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
+        ];
+        
+        $content = StandardEmailTemplate::generateOTPContent($template_data);
+        $mail->Body = StandardEmailTemplate::generateTemplate([
+            'title' => 'Password Reset Verification (Resent)',
+            'content' => $content,
+            'type' => 'password_reset'
+        ]);
 
         $result = $mail->send();
         

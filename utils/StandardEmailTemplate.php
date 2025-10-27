@@ -66,9 +66,17 @@ class StandardEmailTemplate {
      * @return string Logo URL
      */
     private static function getLogoUrl() {
-        // Use production URL for email links
+        // Use reliable ImageKit CDN URL as primary with local fallback
+        $primary_logo = 'https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128';
+        
+        // Backup: Use production URL for local assets
         $base_url = $_ENV['SYSTEM_URL'] ?? 'http://cityhealthofficeofkoronadal.31.97.106.60.sslip.io';
-        return $base_url . '/assets/images/Nav_LogoClosed.png';
+        $fallback_logo = $base_url . '/assets/images/Nav_LogoClosed.png';
+        
+        return [
+            'primary' => $primary_logo,
+            'fallback' => $fallback_logo
+        ];
     }
 
     /**
@@ -89,8 +97,9 @@ class StandardEmailTemplate {
      * @return string HTML email template
      */
     private static function buildHTMLTemplate($config) {
+        $logo_urls = $config['logo_url'];
         $logo_html = $config['show_logo'] ? 
-            "<img src='{$config['logo_url']}' alt='CHO Koronadal Logo' style='max-width: 80px; height: auto; background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 50%; margin-bottom: 20px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3);'>" 
+            "<img src='{$logo_urls['primary']}' onerror=\"this.onerror=null; this.src='{$logo_urls['fallback']}'\" alt='CHO Koronadal Logo' style='max-width: 80px; height: auto; background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 50%; margin-bottom: 20px; backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3);'>" 
             : '';
 
         $header_icon = $config['show_header_icon'] ? $config['header_icon'] . ' ' : '';

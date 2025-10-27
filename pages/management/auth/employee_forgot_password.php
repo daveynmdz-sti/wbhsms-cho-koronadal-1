@@ -13,6 +13,7 @@ if (!$debug) {
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 require_once __DIR__ . '/../../../config/db.php';
 require_once __DIR__ . '/../../../config/env.php'; // Add explicit env loading
+require_once __DIR__ . '/../../../utils/StandardEmailTemplate.php'; // Add standardized template
 require_once __DIR__ . '/../../../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -129,16 +130,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $mail->isHTML(true);
                 $mail->Subject = 'Password Reset OTP - CHO Employee Portal';
-                $mail->Body = "
-                    <h2>Password Reset Request</h2>
-                    <p>Dear {$employee['first_name']},</p>
-                    <p>You have requested to reset your password. Use the following OTP to proceed:</p>
-                    <h3 style='color: #007bff; font-size: 24px; letter-spacing: 3px;'>{$otp}</h3>
-                    <p><strong>This OTP is valid for 15 minutes only.</strong></p>
-                    <p>If you did not request this, please ignore this email and contact IT support.</p>
-                    <hr>
-                    <p><small>CHO Koronadal Employee Portal</small></p>
-                ";
+                
+                // Generate standardized email content
+                $template_data = [
+                    'first_name' => $employee['first_name'],
+                    'otp' => $otp,
+                    'expiry_minutes' => 15,
+                    'purpose' => 'Employee Password Reset',
+                    'additional_message' => 'You have requested to reset your password. Use the following code to proceed with resetting your employee account password.',
+                    'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
+                    'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
+                ];
+                
+                $content = StandardEmailTemplate::generateOTPContent($template_data);
+                $mail->Body = StandardEmailTemplate::generateTemplate([
+                    'title' => 'Password Reset Verification',
+                    'content' => $content,
+                    'type' => 'password_reset'
+                ]);
 
                 $mail->send();
                 
