@@ -52,7 +52,7 @@ debug_*.php
 *_debug.php
 *_simulator.php
 quick_*.php
-test_*.php
+# test_*.php
 remote_diagnostic.php
 connection_test.php
 database_importer.php
