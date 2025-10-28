@@ -193,7 +193,6 @@ $nav_base = $base_path . 'pages/';
     </a>
 
     <div class="user-actions">
-        <a href="<?= $nav_base ?>user/edit_profile.php"><i class="fas fa-user-edit"></i> Edit Profile</a>
         <a href="<?= $nav_base ?>user/user_settings.php"><i class="fas fa-cog"></i> Settings</a>
         <a href="#" onclick="showLogoutModal(event)"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>

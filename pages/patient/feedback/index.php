@@ -99,8 +99,20 @@ $pending_feedback = $total_visits - $visits_with_feedback;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Patient Feedback - WBHSMS CHO Koronadal</title>
-    <link rel="stylesheet" href="<?php echo $root_path; ?>/assets/css/clinical-encounter.css">
-    <link rel="stylesheet" href="<?php echo $root_path; ?>/assets/css/dashboard.css">
+    <?php
+    // Dynamic CSS path resolution for production compatibility
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'];
+    $script_name = $_SERVER['SCRIPT_NAME'];
+    if (preg_match('#^(/[^/]+)/#', $script_name, $matches)) {
+        $base_path = $matches[1] . '/';
+    } else {
+        $base_path = '/';
+    }
+    $css_base = $protocol . '://' . $host . $base_path;
+    ?>
+    <link rel="stylesheet" href="<?= $css_base ?>assets/css/clinical-encounter.css">
+    <link rel="stylesheet" href="<?= $css_base ?>assets/css/dashboard.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         /* Feedback-specific styles */

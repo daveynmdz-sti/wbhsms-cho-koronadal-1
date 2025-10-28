@@ -288,8 +288,20 @@ try {
     <title>CHO Koronadal — Records Officer Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <!-- Use absolute paths for all styles -->
-    <link rel="stylesheet" href="<?php echo $root_path; ?>/assets/css/dashboard.css">
-    <link rel="stylesheet" href="<?php echo $root_path; ?>/assets/css/sidebar.css">
+    <?php
+    // Dynamic CSS path resolution for production compatibility
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'];
+    $script_name = $_SERVER['SCRIPT_NAME'];
+    if (preg_match('#^(/[^/]+)/#', $script_name, $matches)) {
+        $base_path = $matches[1] . '/';
+    } else {
+        $base_path = '/';
+    }
+    $css_base = $protocol . '://' . $host . $base_path;
+    ?>
+    <link rel="stylesheet" href="<?= $css_base ?>assets/css/dashboard.css">
+    <link rel="stylesheet" href="<?= $css_base ?>assets/css/sidebar.css">
     <style>
         :root {
             --primary: #6f42c1;
