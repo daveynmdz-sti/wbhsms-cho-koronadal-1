@@ -1,5 +1,7 @@
 # Environment files with sensitive data
 .env
+.env.private
+.env.backup
 config/.env
 config/.env.local
 .env.local

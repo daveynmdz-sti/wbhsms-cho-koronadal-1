@@ -52,6 +52,10 @@ if ($is_production) {
     $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
     $user = getenv('DB_USERNAME') ?: 'root';
     $pass = getenv('DB_PASSWORD') ?: '';
+    
+    // SMS Service Configuration (Production)
+    $_ENV['SEMAPHORE_API_KEY'] = getenv('SEMAPHORE_API_KEY') ?: '';
+    $_ENV['SEMAPHORE_SENDER_NAME'] = getenv('SEMAPHORE_SENDER_NAME') ?: 'CHO Koronadal';
 } elseif ($is_local) {
     // Local XAMPP defaults
     $host = getenv('DB_HOST') ?: 'localhost';
@@ -59,6 +63,10 @@ if ($is_production) {
     $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
     $user = getenv('DB_USERNAME') ?: 'root';
     $pass = getenv('DB_PASSWORD') ?: '';
+    
+    // SMS Service Configuration (Local/Development)
+    $_ENV['SEMAPHORE_API_KEY'] = getenv('SEMAPHORE_API_KEY') ?: '';
+    $_ENV['SEMAPHORE_SENDER_NAME'] = getenv('SEMAPHORE_SENDER_NAME') ?: 'CHO Koronadal - Local';
 } else {
     // Other environments
     $host = getenv('DB_HOST') ?: 'localhost';
@@ -66,6 +74,10 @@ if ($is_production) {
     $db   = getenv('DB_DATABASE') ?: 'wbhsms_database';
     $user = getenv('DB_USERNAME') ?: 'root';
     $pass = getenv('DB_PASSWORD') ?: '';
+    
+    // SMS Service Configuration (Default)
+    $_ENV['SEMAPHORE_API_KEY'] = getenv('SEMAPHORE_API_KEY') ?: '';
+    $_ENV['SEMAPHORE_SENDER_NAME'] = getenv('SEMAPHORE_SENDER_NAME') ?: 'CHO Koronadal';
 }
 
 // Handle host:port format in DB_HOST (for compatibility)
