@@ -2,9 +2,31 @@
 // Get test type from URL parameter, default to 'local'
 $test = isset($_GET['test']) && in_array($_GET['test'], ['local', 'remote']) ? $_GET['test'] : 'local';
 
-// Include the root config files with correct paths
+// Include the root config files with correct paths for both local and production
 $root_path = __DIR__;
-require_once $root_path . '/config/env.php';
+
+// Normalize path separators for cross-platform compatibility
+$config_path = $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'env.php';
+require_once $config_path;
+
+// Helper function to generate proper URLs for both local and production
+function getBaseUrl() {
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'];
+    $path = dirname($_SERVER['SCRIPT_NAME']);
+    return $protocol . '://' . $host . $path;
+}
+
+$base_url = getBaseUrl();
+
+// Environment detection for better compatibility
+$is_windows = (DIRECTORY_SEPARATOR === '\\');
+$is_local = (
+    $_SERVER['SERVER_NAME'] === 'localhost' || 
+    $_SERVER['SERVER_NAME'] === '127.0.0.1' || 
+    strpos($_SERVER['HTTP_HOST'], 'localhost') !== false ||
+    $is_windows // Assume Windows means local XAMPP
+);
 
 $connection_status = '';
 $connection_type = '';
@@ -18,20 +40,30 @@ if ($test === 'local') {
     putenv('DB_DATABASE=wbhsms_database');
     putenv('DB_USERNAME=root');
     putenv('DB_PASSWORD=');
+    
+    // Add environment info for debugging
+    $connection_details['Environment'] = $is_windows ? 'Windows XAMPP' : 'Local Development';
+    $connection_details['OS'] = $is_windows ? 'Windows' : 'Unix/Linux';
 } else {
     $connection_type = 'REMOTE (PRODUCTION)';
-    // Load production settings from .env
-    if (file_exists($root_path . '/.env')) {
-        $lines = file($root_path . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    // Load production settings from .env with cross-platform path
+    $env_file = $root_path . DIRECTORY_SEPARATOR . '.env';
+    if (file_exists($env_file)) {
+        $lines = file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         foreach ($lines as $line) {
             if (strpos(trim($line), '#') === 0) continue;
             if (!strpos($line, '=')) continue;
             list($name, $value) = array_map('trim', explode('=', $line, 2));
             putenv("$name=$value");
         }
+        
+        // Add environment info
+        $connection_details['Environment'] = 'Production Server';
+        $connection_details['OS'] = $is_windows ? 'Windows' : 'Unix/Linux';
+        $connection_details['Config Source'] = '.env file';
     } else {
         $connection_status = 'error';
-        $error_message = '.env file not found for production testing';
+        $error_message = '.env file not found for production testing at: ' . $env_file;
     }
 }
 
@@ -49,15 +81,40 @@ if (empty($connection_status)) {
         'Database' => $db,
         'Username' => $user,
         'Password' => $pass ? str_repeat('*', strlen($pass)) : '(empty)',
-        'Charset' => $charset
+        'Charset' => $charset,
+        'DSN' => "mysql:host=$host;port=$port;dbname=$db;charset=$charset"
     );
+
+    // Add environment-specific details if they were set earlier
+    if (isset($connection_details['Environment'])) {
+        $temp_details = $connection_details;
+        $connection_details = array();
+        $connection_details['Environment'] = $temp_details['Environment'];
+        $connection_details['OS'] = $temp_details['OS'];
+        if (isset($temp_details['Config Source'])) {
+            $connection_details['Config Source'] = $temp_details['Config Source'];
+        }
+        $connection_details = array_merge($connection_details, $temp_details);
+    }
 
     $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=$charset";
 
     try {
-        $pdo = new PDO($dsn, $user, $pass);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        // For local environments, try 127.0.0.1 instead of localhost to avoid socket issues
+        $connection_host = ($host === 'localhost' && $is_local) ? '127.0.0.1' : $host;
+        $dsn = "mysql:host=$connection_host;port=$port;dbname=$db;charset=$charset";
+        
+        $pdo = new PDO($dsn, $user, $pass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_TIMEOUT => 10
+        ]);
+        
         $connection_status = 'success';
+        
+        // Update connection details with actual host used
+        $connection_details['Actual Host'] = $connection_host;
         
         // Get additional database info
         $version = $pdo->query('SELECT VERSION()')->fetchColumn();
@@ -69,7 +126,15 @@ if (empty($connection_status)) {
         
     } catch (PDOException $e) {
         $connection_status = 'error';
-        $error_message = $e->getMessage();
+        $error_message = 'Database connection failed: ' . $e->getMessage();
+        
+        // Add debugging information for local development
+        if ($is_local || $test === 'local') {
+            $error_message .= "\n\nDebugging Info:";
+            $error_message .= "\n- DSN: " . $dsn;
+            $error_message .= "\n- User: " . $user;
+            $error_message .= "\n- Error Code: " . $e->getCode();
+        }
     }
 }
 ?>
@@ -185,6 +250,7 @@ if (empty($connection_status)) {
         .status-message {
             font-size: 1rem;
             line-height: 1.5;
+            white-space: pre-line; /* Allow line breaks in error messages */
         }
 
         .status-success .status-message {
@@ -392,13 +458,13 @@ if (empty($connection_status)) {
         </div>
 
         <div class="actions">
-            <a href="../index.php" class="btn btn-primary">
+            <a href="<?php echo $base_url; ?>/index.php" class="btn btn-primary">
                 <i class="fas fa-home"></i> Back to Home
             </a>
             <a href="?<?php echo http_build_query(['test' => $test]); ?>" class="btn btn-refresh">
                 <i class="fas fa-sync-alt"></i> Refresh Test
             </a>
-            <a href="../pages/patient/auth/patient_login.php" class="btn btn-secondary">
+            <a href="<?php echo $base_url; ?>/pages/patient/auth/patient_login.php" class="btn btn-secondary">
                 <i class="fas fa-user"></i> Patient Portal
             </a>
         </div>
