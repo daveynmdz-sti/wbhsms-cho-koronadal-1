@@ -110,7 +110,7 @@ if (isset($pdo) && $pdo !== null) {
                     <a href="pages/management/auth/employee_login.php" class="btn btn-outline btn-large">
                         <i class="fas fa-user-md"></i> Employee Login
                     </a>
-                    <a href="tests/testdb.php" class="btn btn-secondary btn-large">
+                    <a href="testdb.php" class="btn btn-secondary btn-large">
                         <i class="fas fa-database"></i> Test Connection
                     </a>
                 </div>
