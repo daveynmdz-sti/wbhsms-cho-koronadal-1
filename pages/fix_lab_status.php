@@ -1,3 +1,4 @@
+
 <?php
 // Include employee session configuration
 $root_path = dirname(__DIR__);
