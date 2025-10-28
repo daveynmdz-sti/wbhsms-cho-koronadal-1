@@ -963,6 +963,12 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                                 </td>
                                                 <td>
                                                     <div class="action-buttons">
+                                                        <a href="../../../user/employee_profile.php?id=<?= $employee['employee_id'] ?>"
+                                                            class="btn-action btn-outline-info"
+                                                            title="View Profile">
+                                                            <i class="fas fa-user"></i>
+                                                        </a>
+
                                                         <a href="edit_employee.php?id=<?= $employee['employee_id'] ?>"
                                                             class="btn-action btn-outline-primary"
                                                             title="Edit Employee">

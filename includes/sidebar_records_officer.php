@@ -153,7 +153,7 @@ $nav_base = $base_path . 'pages/';
 
     </div>
 
-    <a href="<?= $nav_base ?>user/admin_profile.php"
+    <a href="<?= $nav_base ?>user/employee_profile.php"
         class="<?= $activePage === 'profile' ? 'active' : '' ?>" aria-label="View profile">
         <div class="user-profile">
             <div class="user-info">

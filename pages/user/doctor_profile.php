@@ -1,5 +1,5 @@
 <?php
-// doctor_profile.php - Doctor Profile Page
+// doctor_profile.php - Redirect to Unified Employee Profile
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
@@ -13,10 +13,10 @@ if (!is_employee_logged_in()) {
     redirect_to_employee_login();
 }
 
-// Check role access - allow doctors and admins
-require_employee_role(['doctor', 'admin']);
-
-require_once $root_path . '/config/db.php';
+// Redirect to unified employee profile
+$employee_id = $_GET['id'] ?? $_SESSION['employee_id'];
+header('Location: employee_profile.php?id=' . $employee_id);
+exit();
 
 // Fetch employee information
 $employee_data = [];

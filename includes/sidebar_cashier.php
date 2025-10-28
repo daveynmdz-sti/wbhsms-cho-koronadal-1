@@ -142,7 +142,7 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
         </a>
     </div>
 
-    <a href="<?= $nav_base ?>management/user/employee_profile.php"
+    <a href="<?= $nav_base ?>user/employee_profile.php"
         class="<?= $activePage === 'profile' ? 'active' : '' ?>" aria-label="View profile">
         <div class="user-profile">
             <div class="user-info">
