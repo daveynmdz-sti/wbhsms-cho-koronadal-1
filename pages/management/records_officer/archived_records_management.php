@@ -8,15 +8,14 @@ include $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.
 // Use relative path for assets - more reliable than absolute URLs
 $assets_path = '../../../assets';
 
-// Check if user is logged in
-if (!isset($_SESSION['employee_id'])) {
+// Check if user is logged in - use session management function
+if (!is_employee_logged_in()) {
     // Only clean output buffer if one exists
     if (ob_get_level()) {
         ob_end_clean();
     }
-    error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
-    header("Location: /pages/management/auth/employee_login.php");
-    exit();
+    error_log('Records Officer Archived Records: No session found, redirecting to login');
+    redirect_to_employee_login();
 }
 
 // Set active page for sidebar highlighting

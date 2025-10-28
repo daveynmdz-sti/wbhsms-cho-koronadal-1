@@ -13,6 +13,14 @@
 // Include employee session configuration first
 require_once '../../config/session/employee_session.php';
 
+// Check if user is logged in and has appropriate role
+if (!is_employee_logged_in()) {
+    redirect_to_employee_login();
+}
+
+// Check if user has permission for check-in operations (Admin, Records Officer)
+require_employee_role(['admin', 'records_officer']);
+
 // Include necessary files
 require_once '../../config/db.php';
 require_once '../../utils/queue_management_service.php';

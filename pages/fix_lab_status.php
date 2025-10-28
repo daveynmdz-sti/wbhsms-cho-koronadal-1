@@ -4,11 +4,13 @@ $root_path = dirname(__DIR__);
 require_once $root_path . '/config/session/employee_session.php';
 include $root_path . '/config/db.php';
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['employee_id']) || $_SESSION['role_id'] != 1) {
-    header("Location: ../auth/employee_login.php");
-    exit();
+// Check if user is logged in and is admin - use session management functions
+if (!is_employee_logged_in()) {
+    redirect_to_employee_login();
 }
+
+// Check admin role authorization
+require_employee_role(['admin']);
 
 require_once $root_path . '/utils/LabOrderStatusManager.php';
 

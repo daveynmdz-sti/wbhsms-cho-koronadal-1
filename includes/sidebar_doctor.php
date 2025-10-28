@@ -225,7 +225,7 @@ $nav_base = $base_path . 'pages/';
             <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
         <?php if ($hasStationAssignment): ?>
-            <a href="<?= $nav_base ?>queueing/consultation_station.php"
+            <a href="#"
                 class="<?= $activePage === 'queueing' || $activePage === 'queue_management' ? 'active' : '' ?>" 
                 role="menuitem">
                 <i class="fas fa-list-ol"></i> Queue Management

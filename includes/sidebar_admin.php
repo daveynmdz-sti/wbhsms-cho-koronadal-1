@@ -148,7 +148,7 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'reports' ? 'active' : '' ?> disabled" role="menuitem">
             <i class="fas fa-chart-bar"></i> Reports
         </a>
-        <a href="<?= $nav_base ?>queueing/dashboard.php"
+        <a href="#"
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Queue Management
         </a>

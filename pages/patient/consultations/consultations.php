@@ -38,11 +38,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// If user is not logged in, redirect to login
-if (!isset($_SESSION['patient_id'])) {
+// If user is not logged in, redirect to login using session management function
+if (!is_patient_logged_in()) {
     ob_clean(); // Clear output buffer before redirect
-    header('Location: ../auth/patient_login.php');
-    exit();
+    redirect_to_patient_login();
 }
 
 // Database connection

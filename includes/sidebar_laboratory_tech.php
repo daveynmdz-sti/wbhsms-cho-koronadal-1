@@ -125,7 +125,7 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'create_lab_order' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-plus-circle"></i> Create Lab Order
         </a>
-        <a href="<?= $nav_base ?>queueing/lab_station.php"
+        <a href="#"
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Queue Management
         </a>

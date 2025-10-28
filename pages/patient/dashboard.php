@@ -28,11 +28,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// If user is not logged in, bounce to login
+// If user is not logged in, bounce to login using session management function
 if (!is_patient_logged_in()) {
     ob_clean(); // Clear output buffer before redirect
-    header('Location: auth/patient_login.php'); // correct path to auth folder
-    exit();
+    redirect_to_patient_login();
 }
 
 // DB

@@ -8,16 +8,18 @@ $root_path = dirname(dirname(dirname(dirname(__DIR__))));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
-// Check if user is logged in and has admin permissions
-if (!isset($_SESSION['employee_id']) || $_SESSION['role'] !== 'admin') {
+// Check if user is logged in and has admin permissions - use session management functions
+if (!is_employee_logged_in()) {
     // Only clean output buffer if one exists
     if (ob_get_level()) {
         ob_end_clean();
     }
-    error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
-    header('Location: /pages/management/auth/employee_login.php');
-    exit();
+    error_log('Admin Employee List: No session found, redirecting to login');
+    redirect_to_employee_login();
 }
+
+// Check admin role authorization
+require_employee_role(['admin']);
 
 // Set active page for sidebar highlighting
 $activePage = 'user_management';

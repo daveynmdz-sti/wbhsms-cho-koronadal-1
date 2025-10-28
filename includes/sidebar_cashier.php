@@ -136,7 +136,7 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
             class="<?= $activePage === 'billing_reports' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-chart-line"></i> Billing Reports
         </a>
-        <a href="<?= $nav_base ?>queueing/billing_station.php"
+        <a href="#"
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Queue Management
         </a>

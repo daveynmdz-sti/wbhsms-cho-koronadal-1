@@ -28,11 +28,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// If user is not logged in, bounce to patient login
-if (!isset($_SESSION['patient_id'])) {
+// If user is not logged in, bounce to patient login using session management function
+if (!is_patient_logged_in()) {
     ob_clean(); // Clear output buffer before redirect
-    header('Location: ../auth/patient_login.php');
-    exit();
+    redirect_to_patient_login();
 }
 
 require_once $root_path . '/config/db.php';

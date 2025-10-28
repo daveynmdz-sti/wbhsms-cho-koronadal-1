@@ -92,3 +92,117 @@ function clear_patient_session() {
     // Destroy the session
     session_destroy();
 }
+
+/**
+ * Redirect to login if not authenticated
+ * @param string $login_url
+ */
+function require_patient_login($login_url = null) {
+    if (!is_patient_logged_in()) {
+        redirect_to_patient_login($login_url);
+    }
+}
+
+/**
+ * Redirect to patient login page with proper path resolution
+ * @param string $login_url Optional custom login URL
+ * @param string $reason Optional reason for redirect (timeout, unauthorized, etc.)
+ */
+function redirect_to_patient_login($login_url = null, $reason = 'auth') {
+    // Don't redirect if headers already sent or if this IS the login page
+    if (headers_sent() || strpos($_SERVER['REQUEST_URI'] ?? '', 'patient_login.php') !== false) {
+        return;
+    }
+    
+    if ($login_url === null) {
+        // Calculate proper path to login page
+        $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+        $pathParts = explode('/', trim($scriptPath, '/'));
+        
+        // Remove the filename
+        array_pop($pathParts);
+        
+        // Find the project index or determine depth to project root
+        $projectIndex = -1;
+        for ($i = 0; $i < count($pathParts); $i++) {
+            if ($pathParts[$i] === 'wbhsms-cho-koronadal-1') {
+                $projectIndex = $i;
+                break;
+            }
+        }
+        
+        if ($projectIndex >= 0) {
+            // XAMPP localhost: calculate relative path to project root
+            $depth = count($pathParts) - $projectIndex - 1;
+        } else {
+            // Production: assume we're already at project root level
+            $depth = count($pathParts);
+        }
+        
+        $root_path = ($depth <= 0) ? './' : str_repeat('../', $depth);
+        $login_url = $root_path . 'pages/patient/auth/patient_login.php';
+        
+        // Add reason parameter if specified
+        if ($reason) {
+            $separator = strpos($login_url, '?') === false ? '?' : '&';
+            $login_url .= $separator . 'reason=' . urlencode($reason);
+        }
+    }
+    
+    // Clear any output buffer before redirect
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    error_log('[Patient Session] Redirecting to login (' . $reason . ') from: ' . ($_SERVER['REQUEST_URI'] ?? 'unknown') . ' to: ' . $login_url);
+    header('Location: ' . $login_url);
+    exit();
+}
+
+/**
+ * Update last activity timestamp
+ */
+function update_patient_activity() {
+    if (is_patient_logged_in()) {
+        set_patient_session('last_activity', time());
+    }
+}
+
+/**
+ * Check session timeout
+ * @param int $timeout_minutes
+ * @return bool
+ */
+function check_patient_timeout($timeout_minutes = 30) {
+    if (!is_patient_logged_in()) {
+        return true; // Session expired
+    }
+    
+    $last_activity = get_patient_session('last_activity');
+    if ($last_activity && (time() - $last_activity) > ($timeout_minutes * 60)) {
+        clear_patient_session();
+        return true; // Session expired
+    }
+    
+    update_patient_activity();
+    return false; // Session active
+}
+
+// Auto-update activity on each request
+if (is_patient_logged_in()) {
+    update_patient_activity();
+    
+    // Check for timeout (default 30 minutes)
+    if (check_patient_timeout()) {
+        clear_patient_session();
+        
+        // Auto-redirect to login if session expired (not for AJAX or login page)
+        $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+                   strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+        $is_login_page = strpos($_SERVER['REQUEST_URI'] ?? '', 'patient_login.php') !== false;
+        
+        if (!$is_ajax && !$is_login_page && !headers_sent()) {
+            redirect_to_patient_login(null, 'timeout');
+        }
+    }
+}

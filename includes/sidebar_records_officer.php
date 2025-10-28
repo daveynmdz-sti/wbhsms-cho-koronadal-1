@@ -146,7 +146,7 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-invoice-dollar"></i> Billing Management
         </a>
-        <a href="<?= $nav_base ?>queueing/checkin.php"
+        <a href="#"
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Check-In Patient
         </a>

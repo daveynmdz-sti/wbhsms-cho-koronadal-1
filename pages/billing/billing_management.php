@@ -37,10 +37,9 @@ $assets_path = $protocol . '://' . $host . $base_path . '/assets';
 // Construct API base URL for production
 $api_base_path = $base_path;
 
-// Check if user is logged in
-if (!isset($_SESSION['employee_id'])) {
-    header("Location: ../auth/employee_login.php");
-    exit();
+// Check if user is logged in - use proper session management function
+if (!is_employee_logged_in()) {
+    redirect_to_employee_login();
 }
 
 // Set active page for sidebar highlighting

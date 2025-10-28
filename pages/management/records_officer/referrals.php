@@ -8,12 +8,11 @@ header('Expires: 0');
 $root_path = dirname(dirname(dirname(dirname(__DIR__))));
 require_once $root_path . '/config/session/employee_session.php';
 
-// If user is not logged in, bounce to login
-if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
+// If user is not logged in, bounce to login - use session management function
+if (!is_employee_logged_in()) {
     ob_end_clean();
-    error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
-    header('Location: /pages/management/auth/employee_login.php');
-    exit();
+    error_log('Records Officer Referrals: No session found, redirecting to login');
+    redirect_to_employee_login();
 }
 
 // Check if role is authorized for referrals

@@ -8,20 +8,13 @@ header('Expires: 0');
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 
-// Authentication check
-if (!isset($_SESSION['employee_id']) || empty($_SESSION['employee_id'])) {
-    header('Location: ../management/auth/employee_login.php');
-    exit();
+// Authentication check - use session management function
+if (!is_employee_logged_in()) {
+    redirect_to_employee_login();
 }
 
 // Check role access - allow doctors and admins
-$employee_id = $_SESSION['employee_id'];
-$employee_role = $_SESSION['role'] ?? '';
-
-if (!in_array($employee_role, ['doctor', 'admin'])) {
-    header('Location: ../management/auth/employee_login.php');
-    exit();
-}
+require_employee_role(['doctor', 'admin']);
 
 require_once $root_path . '/config/db.php';
 

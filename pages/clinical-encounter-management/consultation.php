@@ -13,10 +13,9 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR .
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'production_security.php';
 require_once $root_path . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'db.php';
 
-// Check if employee is logged in
+// Check if employee is logged in - use proper session management function
 if (!is_employee_logged_in()) {
-    header("Location: /wbhsms-cho-koronadal/pages/management/login.php");
-    exit();
+    redirect_to_employee_login();
 }
 
 // Get employee details with role lookup
@@ -32,8 +31,7 @@ if ($employee_stmt) {
 }
 
 if (!$employee_details) {
-    header("Location: /wbhsms-cho-koronadal/pages/management/login.php");
-    exit();
+    redirect_to_employee_login();
 }
 
 $employee_role = strtolower($employee_details['role']);

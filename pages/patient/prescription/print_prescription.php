@@ -4,9 +4,8 @@ $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/patient_session.php';
 
 // Check if user is logged in
-if (!isset($_SESSION['patient_id'])) {
-    header('Location: ../auth/patient_login.php');
-    exit();
+if (!is_patient_logged_in()) {
+    redirect_to_patient_login();
 }
 
 // Database connection

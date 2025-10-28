@@ -18,18 +18,14 @@ if (!isset($conn) || $conn->connect_error) {
     die("Database connection failed. Please contact administrator.");
 }
 
-// If user is not logged in, bounce to login
-if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
-    header('Location: ../management/auth/employee_login.php');
-    exit();
+// If user is not logged in, bounce to login - use session management function
+if (!is_employee_logged_in()) {
+    redirect_to_employee_login();
 }
 
 // Check if role is authorized
 $authorized_roles = ['doctor', 'bhw', 'dho', 'records_officer', 'admin'];
-if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
-    header('Location: ../management/' . strtolower($_SESSION['role']) . '/dashboard.php');
-    exit();
-}
+require_employee_role($authorized_roles);
 
 $employee_id = $_SESSION['employee_id'];
 // Include reusable topbar component

@@ -13,23 +13,15 @@ header('Expires: 0');
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/session/employee_session.php';
 
-// Authentication check
-if (!isset($_SESSION['employee_id']) || empty($_SESSION['employee_id'])) {
+// Authentication check - use session management function
+if (!is_employee_logged_in()) {
     error_log('Feedback Dashboard: No session found, redirecting to login');
-    header('Location: ../auth/employee_login.php');
-    exit();
+    redirect_to_employee_login();
 }
 
 // Role-based access control
-$allowed_roles = ['Admin', 'Manager', 'Doctor', 'Nurse', 'DHO'];
-$user_role = $_SESSION['role'] ?? '';
-
-if (!in_array($user_role, $allowed_roles)) {
-    error_log('Access denied: User ' . $_SESSION['employee_id'] . ' with role ' . $user_role . ' attempted to access feedback dashboard');
-    $_SESSION['flash'] = array('type' => 'error', 'msg' => 'Access denied. You do not have permission to view feedback analytics.');
-    header('Location: ../auth/employee_login.php?access_denied=1');
-    exit();
-}
+$allowed_roles = ['admin', 'manager', 'doctor', 'nurse', 'dho'];
+require_employee_role($allowed_roles);
 
 // Database and backend services
 require_once $root_path . '/config/db.php';

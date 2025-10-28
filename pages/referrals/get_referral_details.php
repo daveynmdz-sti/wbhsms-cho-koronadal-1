@@ -13,15 +13,15 @@ require_once $root_path . '/utils/referral_permissions.php';
 
 header('Content-Type: application/json');
 
-// If user is not logged in, bounce to login
-if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
+// If user is not logged in, return unauthorized
+if (!is_employee_logged_in()) {
     echo json_encode(['error' => 'Unauthorized access']);
     exit();
 }
 
 // Check if role is authorized
 $authorized_roles = ['doctor', 'nurse', 'bhw', 'dho', 'records_officer', 'admin'];
-if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
+if (!check_employee_role($authorized_roles)) {
     echo json_encode(['error' => 'Insufficient permissions']);
     exit();
 }

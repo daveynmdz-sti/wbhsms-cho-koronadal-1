@@ -7,10 +7,9 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
-// Check if user is logged in
-if (!isset($_SESSION['employee_id'])) {
-    header("Location: ../management/auth/employee_login.php");
-    exit();
+// Check if user is logged in - use session management function
+if (!is_employee_logged_in()) {
+    redirect_to_employee_login();
 }
 
 // Define role-based permissions for prescription creation

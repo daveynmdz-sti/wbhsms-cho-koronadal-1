@@ -8,8 +8,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Check if patient is logged in
-if (!isset($_SESSION['patient_id'])) {
+// Check if patient is logged in - use session management function
+if (!is_patient_logged_in()) {
     http_response_code(401);
     exit('Unauthorized: Please log in to download lab results.');
 }
