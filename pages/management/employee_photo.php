@@ -3,11 +3,10 @@
 // Employee Profile Photo Controller - Management pages version
 // Author: GitHub Copilot
 
-// Prevent any output before headers
-if (ob_get_level()) {
+// Clean all output buffers to prevent header issues
+while (ob_get_level()) {
     ob_end_clean();
 }
-ob_start();
 
 // Include session and database configuration
 $root_path = dirname(dirname(__DIR__));
@@ -21,8 +20,7 @@ $employee_id = isset($_GET['id']) ? (int)$_GET['id'] : (isset($_GET['employee_id
 $default_image_url = 'https://ik.imagekit.io/wbhsmslogo/user.png?updatedAt=1750423429172';
 
 if (!$employee_id) {
-    // Clean buffer and redirect to default image if no employee ID provided
-    ob_end_clean();
+    // Redirect to default image if no employee ID provided
     header('Location: ' . $default_image_url);
     exit;
 }
@@ -30,7 +28,6 @@ if (!$employee_id) {
 try {
     // Check if user is logged in (basic security check)
     if (!is_employee_logged_in()) {
-        ob_end_clean();
         header('Location: ' . $default_image_url);
         exit;
     }
@@ -46,9 +43,6 @@ try {
         
         if (!empty($row['profile_photo'])) {
             $photo_data = $row['profile_photo'];
-            
-            // Clean output buffer before sending headers
-            ob_end_clean();
             
             // Detect image type and set appropriate header
             $finfo = new finfo(FILEINFO_MIME_TYPE);
@@ -67,14 +61,12 @@ try {
     }
     
     // If no photo found, redirect to default image
-    ob_end_clean();
     header('Location: ' . $default_image_url);
     exit;
     
 } catch (Exception $e) {
     // On error, redirect to default image
     error_log("Employee Photo Controller Error: " . $e->getMessage());
-    ob_end_clean();
     header('Location: ' . $default_image_url);
     exit;
 }
