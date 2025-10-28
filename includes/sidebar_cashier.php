@@ -69,7 +69,7 @@ require_once __DIR__ . '/../config/paths.php';
 
 // Get base URL and extract just the path portion for navigation
 $base_url = getBaseUrl();
-$vendorPath = $base_url . '/vendor/photo_controller.php';
+$vendorPath = $base_url . '/vendor/employee_photo_controller.php';
 
 // Extract just the path part from the base URL for relative navigation
 $parsed_url = parse_url($base_url);
@@ -169,7 +169,8 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
     </a>
 
     <div class="user-actions">
-        <a href="<?= $nav_base ?>management/user/employee_settings.php"><i class="fas fa-cog"></i> Settings</a>
+        <a href="<?= $nav_base ?>user/edit_profile.php"><i class="fas fa-user-edit"></i> Edit Profile</a>
+        <a href="<?= $nav_base ?>user/user_settings.php"><i class="fas fa-cog"></i> Settings</a>
         <a href="#" onclick="showLogoutModal(event)"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
 </nav>

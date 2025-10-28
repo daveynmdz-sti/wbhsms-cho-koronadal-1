@@ -76,15 +76,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     // Log activity
                     $log_stmt = $conn->prepare("
-                        INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description, ip_address, user_agent) 
-                        VALUES (?, ?, 'password_reset', ?, ?, ?)
+                        INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
+                        VALUES (?, ?, 'password_reset', ?)
                     ");
                     
                     $description = "Password reset via bulk operation - New password: $new_password";
-                    $ip_address = $_SERVER['REMOTE_ADDR'] ?? null;
-                    $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
                     
-                    $log_stmt->bind_param("iissss", $_SESSION['employee_id'], $employee_id, $description, $ip_address, $user_agent);
+                    $log_stmt->bind_param("iis", $_SESSION['employee_id'], $employee_id, $description);
                     $log_stmt->execute();
                     
                     $reset_count++;
@@ -139,15 +137,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             // Log activity
             $log_stmt = $conn->prepare("
-                INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description, ip_address, user_agent) 
-                VALUES (?, ?, 'password_reset', ?, ?, ?)
+                INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
+                VALUES (?, ?, 'password_reset', ?)
             ");
             
             $description = "Password reset with secure token - Employee must verify identity";
-            $ip_address = $_SERVER['REMOTE_ADDR'] ?? null;
-            $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
             
-            $log_stmt->bind_param("iissss", $_SESSION['employee_id'], $employee_id, $description, $ip_address, $user_agent);
+            $log_stmt->bind_param("iis", $_SESSION['employee_id'], $employee_id, $description);
             $log_stmt->execute();
             
             $conn->commit();
@@ -173,14 +169,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             // Log activity
             $log_stmt = $conn->prepare("
-                INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description, ip_address, user_agent) 
-                VALUES (?, ?, 'unlock', 'Account unlocked by admin', ?, ?)
+                INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
+                VALUES (?, ?, 'unlock', 'Account unlocked by admin')
             ");
             
-            $ip_address = $_SERVER['REMOTE_ADDR'] ?? null;
-            $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-            
-            $log_stmt->bind_param("iiss", $_SESSION['employee_id'], $employee_id, $ip_address, $user_agent);
+            $log_stmt->bind_param("ii", $_SESSION['employee_id'], $employee_id);
             $log_stmt->execute();
             
             $success_message = "Account unlocked successfully!";

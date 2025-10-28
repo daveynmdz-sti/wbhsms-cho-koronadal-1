@@ -197,7 +197,7 @@ $activePage = 'profile';
     <main class="content-wrapper">
         <div class="profile-container">
             <div class="profile-header">
-                <img src="../../vendor/photo_controller.php?employee_id=<?= $employee_id ?>" 
+                <img src="../../vendor/employee_photo_controller.php?employee_id=<?= $employee_id ?>" 
                      alt="Profile Photo" 
                      class="profile-photo"
                      onerror="this.src='../../assets/images/user-default.png'">
@@ -262,7 +262,7 @@ $activePage = 'profile';
             </div>
 
             <div class="actions">
-                <a href="admin_settings.php" class="btn btn-primary">
+                <a href="user_settings.php" class="btn btn-primary">
                     <i class="fas fa-cog"></i> Account Settings
                 </a>
                 <a href="javascript:history.back()" class="btn btn-secondary">

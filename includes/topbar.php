@@ -93,6 +93,9 @@ function renderTopbar($options = []) {
     // Format user name
     $user_name = formatUserName($first_name, $last_name, $middle_name);
     
+    // Determine photo controller based on user type
+    $photo_controller = ($config['user_type'] === 'patient') ? 'photo_controller.php' : 'employee_photo_controller.php';
+    
     // Build logo link
     $logo_link = $config['logo_clickable'] ? $config['back_url'] : '#';
     $logo_style = $config['logo_clickable'] ? '' : 'pointer-events: none; cursor: default;';
@@ -119,7 +122,7 @@ function renderTopbar($options = []) {
                 </strong><br>
                 <small style="color: #ffffff;">{$role}</small>
             </div>
-            <img src="{$config['vendor_path']}photo_controller.php?{$photo_param}={$user_id}" alt="User Profile"
+            <img src="{$config['vendor_path']}{$photo_controller}?{$photo_param}={$user_id}" alt="User Profile"
                 class="topbar-userphoto"
                 onerror="this.onerror=null;this.src='https://ik.imagekit.io/wbhsmslogo/user.png?updatedAt=1750423429172';" />
         </div>

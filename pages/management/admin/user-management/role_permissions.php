@@ -323,13 +323,11 @@ function logUserActivity($admin_id, $employee_id, $action_type, $description, $o
     global $conn;
     
     try {
-        $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-        
         $stmt = $conn->prepare("
-            INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description, old_values, new_values, ip_address, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+            INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
+            VALUES (?, ?, ?, ?)
         ");
-        $stmt->bind_param('iisssss', $admin_id, $employee_id, $action_type, $description, $old_values, $new_values, $ip_address);
+        $stmt->bind_param('iiss', $admin_id, $employee_id, $action_type, $description);
         $stmt->execute();
         
     } catch (Exception $e) {

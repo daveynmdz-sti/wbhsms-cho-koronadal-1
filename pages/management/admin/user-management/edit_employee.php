@@ -304,6 +304,40 @@ try {
             margin-bottom: 25px;
         }
 
+        .employee-photo {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid #ffffff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            position: relative;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .employee-photo .profile-photo-display {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .employee-photo .profile-photo-fallback {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: #6c757d;
+            background: #f8f9fa;
+        }
+
         .validation-error {
             background: #fee;
             border: 1px solid #fcc;
@@ -316,6 +350,15 @@ try {
             .form-row {
                 flex-direction: column;
                 gap: 15px;
+            }
+
+            .employee-photo {
+                width: 60px;
+                height: 60px;
+            }
+
+            .employee-photo .profile-photo-fallback {
+                font-size: 1.5rem;
             }
         }
     </style>
@@ -382,8 +425,19 @@ try {
 
                 <!-- Employee Info Header -->
                 <div class="employee-info">
-                    <div class="row">
-                        <div class="col-md-8">
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <div class="employee-photo">
+                                <img src="../../../../vendor/employee_photo_controller.php?employee_id=<?= urlencode($employee_id) ?>" 
+                                     alt="<?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?> Profile Photo" 
+                                     class="profile-photo-display"
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                <div class="profile-photo-fallback" style="display: none;">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
                             <h3><i class="fas fa-user-edit"></i> Edit Employee</h3>
                             <p class="mb-0">
                                 <strong><?= htmlspecialchars($employee['employee_number']) ?></strong> -
@@ -394,7 +448,7 @@ try {
                                 Facility: <?= htmlspecialchars($employee['facility_name']) ?>
                             </small>
                         </div>
-                        <div class="col-md-4 text-md-end">
+                        <div class="col-auto">
                             <span class="badge bg-<?= $employee['status'] === 'active' ? 'success' : 'warning' ?> p-2">
                                 <?= ucfirst($employee['status']) ?>
                             </span>

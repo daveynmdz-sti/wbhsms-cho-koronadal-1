@@ -85,14 +85,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         // Log the activity
         if (isset($log_description)) {
             $log_stmt = $conn->prepare("
-                INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description, ip_address, user_agent) 
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
+                VALUES (?, ?, ?, ?)
             ");
 
-            $ip_address = $_SERVER['REMOTE_ADDR'] ?? null;
-            $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-
-            $log_stmt->bind_param("iissss", $_SESSION['employee_id'], $employee_id, $action, $log_description, $ip_address, $user_agent);
+            $log_stmt->bind_param("iiss", $_SESSION['employee_id'], $employee_id, $action, $log_description);
+            $log_stmt->execute();
             $log_stmt->execute();
         }
 
@@ -474,6 +472,42 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             background: #f8f9fa;
         }
 
+        /* Employee Photo Thumbnail Styles */
+        .employee-photo-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 50px;
+            height: 50px;
+        }
+
+        .employee-photo-thumbnail {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e9ecef;
+            transition: all 0.2s ease;
+        }
+
+        .employee-photo-thumbnail:hover {
+            border-color: var(--primary-color);
+            transform: scale(1.05);
+        }
+
+        .employee-photo-fallback {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #6c757d;
+        }
+
         .actions-group {
             display: flex;
             gap: 0.25rem;
@@ -755,6 +789,18 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 padding: 0.4rem 0.2rem;
                 font-size: 0.75rem;
             }
+
+            .employee-photo-cell {
+                width: 35px;
+                height: 35px;
+            }
+
+            .employee-photo-thumbnail,
+            .employee-photo-fallback {
+                width: 30px;
+                height: 30px;
+                font-size: 12px;
+            }
         }
     </style>
 </head>
@@ -904,6 +950,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                             <table class="table">
                                 <thead>
                                     <tr>
+                                        <th>Photo</th>
                                         <th>Employee #</th>
                                         <th>Name</th>
                                         <th>Role</th>
@@ -917,7 +964,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                 <tbody>
                                     <?php if (empty($employees)): ?>
                                         <tr>
-                                            <td colspan="8">
+                                            <td colspan="9">
                                                 <div class="empty-state">
                                                     <i class="fas fa-users"></i>
                                                     <br>No employees found matching your criteria.
@@ -927,6 +974,17 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                     <?php else: ?>
                                         <?php foreach ($employees as $employee): ?>
                                             <tr>
+                                                <td>
+                                                    <div class="employee-photo-cell">
+                                                        <img src="../../../../vendor/employee_photo_controller.php?employee_id=<?= urlencode($employee['employee_id']) ?>" 
+                                                             alt="<?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?>" 
+                                                             class="employee-photo-thumbnail"
+                                                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                                        <div class="employee-photo-fallback" style="display: none;">
+                                                            <i class="fas fa-user"></i>
+                                                        </div>
+                                                    </div>
+                                                </td>
                                                 <td>
                                                     <strong><?= htmlspecialchars($employee['employee_number']) ?></strong>
                                                 </td>

@@ -86,7 +86,7 @@ if (preg_match('#^(/[^/]+)/pages/#', $script_name, $matches)) {
 // Create absolute URL for vendor path to fix photo loading (works on any page depth)
 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'];
-$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/photo_controller.php';
+$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/employee_photo_controller.php';
 $cssPath = $base_path . 'assets/css/sidebar.css';
 $nav_base = $base_path . 'pages/';
 ?>
@@ -156,7 +156,8 @@ $nav_base = $base_path . 'pages/';
     </a>
 
     <div class="user-actions">
-        <a href="<?= $nav_base ?>user/admin_settings.php"><i class="fas fa-cog"></i> Settings</a>
+        <a href="<?= $nav_base ?>user/edit_profile.php"><i class="fas fa-user-edit"></i> Edit Profile</a>
+        <a href="<?= $nav_base ?>user/user_settings.php"><i class="fas fa-cog"></i> Settings</a>
         <a href="#" onclick="showLogoutModal(event)"><i class="fas fa-sign-out-alt"></i> Logout</a>
     </div>
 </nav>

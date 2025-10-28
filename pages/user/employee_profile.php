@@ -267,6 +267,28 @@ $sidebar_file = match($current_user_role) {
             color: white;
             border: 4px solid rgba(255, 255, 255, 0.2);
             flex-shrink: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .profile-avatar .profile-photo-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .profile-avatar .profile-photo-fallback {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: white;
         }
 
         .profile-info {
@@ -506,8 +528,21 @@ $sidebar_file = match($current_user_role) {
         /* Action Buttons */
         .action-buttons {
             display: flex;
+            justify-content: space-between;
+            align-items: center;
             gap: 12px;
             margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .action-left {
+            display: flex;
+            gap: 12px;
+        }
+
+        .action-right {
+            display: flex;
+            gap: 12px;
             flex-wrap: wrap;
         }
 
@@ -615,6 +650,18 @@ $sidebar_file = match($current_user_role) {
 
             .action-buttons {
                 flex-direction: column;
+                align-items: stretch;
+                gap: 15px;
+            }
+
+            .action-left,
+            .action-right {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .action-right {
+                order: -1; /* Put action buttons above back button on mobile */
             }
         }
 
@@ -646,29 +693,42 @@ $sidebar_file = match($current_user_role) {
             <div class="profile-container">
                 <!-- Action Buttons -->
                 <div class="action-buttons">
-                    <a href="javascript:history.back()" class="btn btn-secondary">
-                        <i class="fas fa-arrow-left"></i> Go Back
-                    </a>
-                    <?php if ($_SESSION['role'] === 'admin' && !$is_own_profile): ?>
-                        <a href="../management/admin/user-management/edit_employee.php?id=<?= $employee_id ?>" class="btn btn-primary">
-                            <i class="fas fa-edit"></i> Edit Employee
+                    <!-- Left side: Back button -->
+                    <div class="action-left">
+                        <a href="javascript:history.back()" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Go Back
                         </a>
-                        <a href="../management/admin/user-management/user_activity_logs.php?employee_id=<?= $employee_id ?>" class="btn btn-outline">
-                            <i class="fas fa-history"></i> Full Activity Log
-                        </a>
-                    <?php endif; ?>
-                    <?php if ($is_own_profile): ?>
-                        <a href="../management/admin/user-management/edit_employee.php?id=<?= $employee_id ?>" class="btn btn-primary">
-                            <i class="fas fa-user-edit"></i> Edit My Profile
-                        </a>
-                    <?php endif; ?>
+                    </div>
+                    
+                    <!-- Right side: Profile actions -->
+                    <div class="action-right">
+                        <?php if ($_SESSION['role'] === 'admin' && !$is_own_profile): ?>
+                            <a href="../management/admin/user-management/edit_employee.php?id=<?= $employee_id ?>" class="btn btn-primary">
+                                <i class="fas fa-edit"></i> Edit Employee
+                            </a>
+                            <a href="../management/admin/user-management/user_activity_logs.php?employee_id=<?= $employee_id ?>" class="btn btn-outline">
+                                <i class="fas fa-history"></i> Full Activity Log
+                            </a>
+                        <?php endif; ?>
+                        <?php if ($is_own_profile): ?>
+                            <a href="user_settings.php" class="btn btn-primary">
+                                <i class="fas fa-cog"></i> Account Settings
+                            </a>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <!-- Profile Header -->
                 <div class="profile-header">
                     <div class="profile-header-content">
                         <div class="profile-avatar">
-                            <i class="fas fa-user"></i>
+                            <img src="../../vendor/employee_photo_controller.php?employee_id=<?= urlencode($employee_id) ?>" 
+                                 alt="<?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?> Profile Photo" 
+                                 class="profile-photo-img"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="profile-photo-fallback" style="display: none;">
+                                <i class="fas fa-user"></i>
+                            </div>
                         </div>
                         <div class="profile-info">
                             <h1 class="profile-name"><?= htmlspecialchars($employee['first_name'] . ' ' . ($employee['middle_name'] ? $employee['middle_name'] . ' ' : '') . $employee['last_name']) ?></h1>
