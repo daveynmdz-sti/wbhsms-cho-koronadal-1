@@ -56,7 +56,7 @@ test_*.php
 remote_diagnostic.php
 connection_test.php
 database_importer.php
-pages/referrals/no_need/
+scripts/no_need/
 
 # Database backups (but keep main SQL files)
 database/backups/

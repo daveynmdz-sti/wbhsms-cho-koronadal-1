@@ -6,6 +6,9 @@
  * Author: GitHub Copilot
  */
 
+// Load SMS configuration
+require_once dirname(__DIR__) . '/config/sms.php';
+
 class SmsService {
     
     private $api_key;
@@ -17,30 +20,66 @@ class SmsService {
      * Constructor - Initialize SMS service with configuration
      */
     public function __construct() {
-        // Load configuration from environment variables
-        $this->api_key = getenv('SEMAPHORE_API_KEY') ?: $_ENV['SEMAPHORE_API_KEY'] ?? null;
-        $this->sender_name = getenv('SEMAPHORE_SENDER_NAME') ?: $_ENV['SEMAPHORE_SENDER_NAME'] ?? 'CHO-Koronadal';
-        $this->base_url = 'https://api.semaphore.co/api/v4';
-        $this->debug_mode = (getenv('APP_DEBUG') === '1') || (($_ENV['APP_DEBUG'] ?? false) === '1');
+        // Ensure environment is loaded first
+        $this->loadEnvironment();
         
-        // Validate required configuration
-        if (empty($this->api_key)) {
-            error_log("SmsService Warning: SEMAPHORE_API_KEY not configured");
+        // Load configuration from SMS config file
+        $config = SmsConfig::getSmsConfig();
+        
+        $this->api_key = $config['api_key'];
+        $this->sender_name = $config['sender_name'];
+        $this->base_url = $config['base_url'];
+        $this->debug_mode = $config['debug_mode'];
+        
+        // Validate configuration
+        if (!$config['is_configured']) {
+            error_log("SmsService Warning: SMS service not properly configured");
         }
-        
-        // Additional API key validation
-        if (!empty($this->api_key)) {
-            if (strlen($this->api_key) < 10) {
-                error_log("SmsService Warning: SEMAPHORE_API_KEY appears to be invalid (too short)");
-                $this->api_key = null; // Invalidate to prevent API calls
+    }
+    
+    /**
+     * Ensure environment variables are loaded
+     */
+    private function loadEnvironment() {
+        // If environment variables are not already loaded, load them
+        if (empty($_ENV['SEMAPHORE_API_KEY']) && empty(getenv('SEMAPHORE_API_KEY'))) {
+            $root_path = dirname(__DIR__);
+            
+            // Try to load env.php if it exists
+            $env_file = $root_path . '/config/env.php';
+            if (file_exists($env_file)) {
+                require_once $env_file;
             }
             
-            if ($this->api_key === 'your_semaphore_api_key_here' || 
-                $this->api_key === 'your_test_api_key_here' ||
-                $this->api_key === 'your_production_api_key_here') {
-                error_log("SmsService Warning: SEMAPHORE_API_KEY is still using placeholder value");
-                $this->api_key = null; // Invalidate placeholder values
+            // If still no environment variables, try to load .env directly
+            if (empty($_ENV['SEMAPHORE_API_KEY']) && empty(getenv('SEMAPHORE_API_KEY'))) {
+                $this->loadEnvFile($root_path . '/.env');
             }
+        }
+    }
+    
+    /**
+     * Load environment variables from .env file
+     * @param string $env_path Path to .env file
+     */
+    private function loadEnvFile($env_path) {
+        if (!file_exists($env_path)) {
+            return;
+        }
+        
+        $lines = file($env_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            if (strpos(trim($line), '#') === 0) continue;
+            if (!strpos($line, '=')) continue;
+            
+            list($name, $value) = array_map('trim', explode('=', $line, 2));
+            
+            // Remove quotes if present
+            $value = trim($value, '"\'');
+            
+            // Set in both $_ENV and putenv for compatibility
+            $_ENV[$name] = $value;
+            putenv("$name=$value");
         }
     }
     
@@ -178,16 +217,47 @@ class SmsService {
             ], 'GET');
             
             if ($response['success']) {
+                $data = $response['data'];
+                
+                // Try different possible field names for balance/credits
+                $balance = $data['account_balance'] ?? 
+                          $data['balance'] ?? 
+                          $data['credits'] ?? 
+                          $data['credit_balance'] ?? 
+                          $data['credits_available'] ?? 
+                          $data['available_credits'] ?? 0;
+                          
+                // Try different possible field names for status
+                $status = $data['status'] ?? 
+                         $data['account_status'] ?? 
+                         $data['state'] ?? 
+                         ($balance > 0 ? 'Active' : 'unknown');
+                
+                // Log the full response for debugging
+                if ($this->debug_mode) {
+                    error_log("Semaphore Account API Response: " . json_encode($data));
+                }
+                
                 return [
                     'success' => true,
-                    'balance' => $response['data']['account_balance'] ?? 0,
-                    'status' => $response['data']['status'] ?? 'unknown',
-                    'data' => $response['data']
+                    'balance' => $balance,
+                    'status' => $status,
+                    'data' => $data,
+                    'debug_info' => [
+                        'raw_response' => $data,
+                        'checked_fields' => [
+                            'account_balance' => $data['account_balance'] ?? 'not found',
+                            'balance' => $data['balance'] ?? 'not found',
+                            'credits' => $data['credits'] ?? 'not found',
+                            'credit_balance' => $data['credit_balance'] ?? 'not found'
+                        ]
+                    ]
                 ];
             } else {
                 return [
                     'success' => false,
-                    'message' => 'Failed to get account balance: ' . $response['message']
+                    'message' => 'Failed to get account balance: ' . $response['message'],
+                    'raw_response' => $response
                 ];
             }
             
@@ -259,29 +329,48 @@ class SmsService {
         $decoded_response = json_decode($response, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
+            // Log the raw response for debugging
+            if ($this->debug_mode) {
+                error_log("JSON Parse Error - Raw Response: " . substr($response, 0, 500));
+                error_log("JSON Error: " . json_last_error_msg());
+            }
+            
             return [
                 'success' => false,
                 'message' => 'Invalid JSON response: ' . json_last_error_msg(),
                 'error_code' => 'JSON_ERROR',
-                'data' => $response
+                'data' => substr($response, 0, 200) . '...' // Truncate for safety
             ];
         }
         
         // Debug logging
         if ($this->debug_mode) {
             error_log("SMS API Request - URL: $url, Data: " . json_encode($data));
-            error_log("SMS API Response - HTTP Code: $http_code, Response: " . $response);
+            error_log("SMS API Response - HTTP Code: $http_code, Response: " . substr($response, 0, 500));
         }
         
         // Determine success based on HTTP code and response content
-        $is_success = ($http_code >= 200 && $http_code < 300) && 
-                     (isset($decoded_response['status']) ? 
-                      (in_array($decoded_response['status'], ['success', 'queued', 'sent'])) : 
-                      true);
+        $is_success = ($http_code >= 200 && $http_code < 300);
+        
+        // For Semaphore API, also check if there are any validation errors
+        if (isset($decoded_response['message']) && is_array($decoded_response['message'])) {
+            // Convert validation errors to string
+            $error_messages = [];
+            foreach ($decoded_response['message'] as $field => $errors) {
+                if (is_array($errors)) {
+                    $error_messages[] = $field . ': ' . implode(', ', $errors);
+                } else {
+                    $error_messages[] = $field . ': ' . $errors;
+                }
+            }
+            $error_message = implode('; ', $error_messages);
+        } else {
+            $error_message = $decoded_response['message'] ?? ($is_success ? 'Request successful' : 'Request failed');
+        }
         
         return [
             'success' => $is_success,
-            'message' => $decoded_response['message'] ?? ($is_success ? 'Request successful' : 'Request failed'),
+            'message' => $error_message,
             'error_code' => $decoded_response['code'] ?? $http_code,
             'data' => $decoded_response,
             'http_code' => $http_code
@@ -374,26 +463,9 @@ class SmsService {
      * @return string Formatted phone number
      */
     private function formatPhoneNumber($phone_number) {
-        // Remove all non-numeric characters
-        $cleaned = preg_replace('/[^0-9]/', '', $phone_number);
-        
-        // Handle different Philippine phone number formats
-        if (strlen($cleaned) === 11 && substr($cleaned, 0, 1) === '0') {
-            // Convert 09XXXXXXXXX to +639XXXXXXXXX
-            return '+63' . substr($cleaned, 1);
-        } elseif (strlen($cleaned) === 10) {
-            // Convert 9XXXXXXXXX to +639XXXXXXXXX
-            return '+63' . $cleaned;
-        } elseif (strlen($cleaned) === 12 && substr($cleaned, 0, 2) === '63') {
-            // Convert 639XXXXXXXXX to +639XXXXXXXXX
-            return '+' . $cleaned;
-        } elseif (strlen($cleaned) === 13 && substr($cleaned, 0, 3) === '639') {
-            // Already in +639XXXXXXXXX format, just add +
-            return '+' . $cleaned;
-        }
-        
-        // Return as-is if already properly formatted or can't determine format
-        return $phone_number;
+        // Use the centralized phone validation from SMS config
+        $validation = SmsConfig::validatePhoneNumber($phone_number);
+        return $validation['formatted'];
     }
     
     /**
