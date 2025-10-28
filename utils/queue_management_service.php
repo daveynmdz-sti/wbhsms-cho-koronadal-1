@@ -455,4 +455,12 @@ class QueueManagementService {
             return null;
         }
     }
+    
+    /**
+     * Get active station assignment by employee (alias for backward compatibility)
+     * This method provides the same functionality as getEmployeeStationAssignment()
+     */
+    public function getActiveStationByEmployee($employee_id, $date = null) {
+        return $this->getEmployeeStationAssignment($employee_id, $date);
+    }
 }
