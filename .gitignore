@@ -61,3 +61,6 @@ scripts/no_need/
 # Database backups (but keep main SQL files)
 database/backups/
 *.sql.backup
+
+# Queueing system backup folder
+backup_queueing_system/
