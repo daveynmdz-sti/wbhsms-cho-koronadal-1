@@ -76,6 +76,28 @@ if (isset($pdo) && $pdo !== null) {
             -ms-user-select: none;
             user-select: none;
         }
+        
+        /* Hidden feature hover effects */
+        .nav-logo:hover {
+            transform: scale(1.05);
+            transition: transform 0.2s ease;
+        }
+        
+        .service-icon[onclick]:hover {
+            transform: scale(1.1);
+            transition: transform 0.2s ease;
+            background: rgba(37, 99, 235, 0.1);
+            border-radius: 50%;
+        }
+        
+        .service-icon[onclick]:hover i {
+            color: #2563eb;
+        }
+        
+        /* Smooth transitions for revealed elements */
+        #staff-login-nav, #staff-login-hero, #staff-login-cta, #test-connection-hero, #footer-test-connection {
+            transition: opacity 0.3s ease-in-out;
+        }
     </style>
 </head>
 
@@ -83,15 +105,15 @@ if (isset($pdo) && $pdo !== null) {
     <!-- Navigation Header -->
     <nav class="navbar">
         <div class="nav-container">
-            <div class="nav-logo">
+            <div class="nav-logo" onclick="toggleStaffLogin()" style="cursor: pointer;" title="Click to reveal staff login">
                 <img src="assets/images/Nav_Logo_Dark.png" alt="CHO Koronadal Logo" class="logo-img">
             </div>
             <div class="nav-actions">
                 <a href="pages/patient/auth/patient_login.php" class="nav-btn btn-outline">
                     <i class="fas fa-user"></i> Patient Portal
                 </a>
-                <a href="pages/management/auth/employee_login.php" class="nav-btn btn-primary">
-                    <i class="fas fa-user-md"></i> Staff Login
+                <a href="pages/management/auth/employee_login.php" class="nav-btn btn-primary" id="staff-login-nav" style="display: none;">
+                    <i class="fas fa-user-md"></i> Employees Login
                 </a>
             </div>
         </div>
@@ -101,16 +123,16 @@ if (isset($pdo) && $pdo !== null) {
     <section class="hero">
         <div class="hero-content">
             <div class="hero-text">
-                <h1 class="hero-title">Welcome to<br><span class="text-primary">Koronadal City Health Office</span></h1>
-                <p class="hero-subtitle">Providing comprehensive healthcare services across three districts with modern facilities and dedicated professionals.</p>
+                <h1 class="hero-title">Welcome to the<br><span class="text-primary">City Health Office of Koronadal</span></h1>
+                <p class="hero-subtitle">Providing comprehensive healthcare services to all citizens of the City of Koronadal.</p>
                 <div class="hero-buttons">
                     <a href="pages/patient/auth/patient_login.php" class="btn btn-primary btn-large">
                         <i class="fas fa-user"></i> Patient Login
                     </a>
-                    <a href="pages/management/auth/employee_login.php" class="btn btn-outline btn-large">
-                        <i class="fas fa-user-md"></i> Employee Login
+                    <a href="pages/management/auth/employee_login.php" class="btn btn-outline btn-large" id="staff-login-hero" style="display: none;">
+                        <i class="fas fa-user-md"></i> Employees Login
                     </a>
-                    <a href="testdb.php" class="btn btn-secondary btn-large">
+                    <a href="testdb.php" class="btn btn-secondary btn-large" id="test-connection-hero" style="display: none;">
                         <i class="fas fa-database"></i> Test Connection
                     </a>
                 </div>
@@ -232,7 +254,7 @@ if (isset($pdo) && $pdo !== null) {
                     <p>Emergency Medical Services and urgent care</p>
                 </div>
                 <div class="service-card">
-                    <div class="service-icon">
+                    <div class="service-icon" onclick="toggleTestConnection()" style="cursor: pointer;" title="Click to reveal test connection">
                         <i class="fas fa-heart"></i>
                     </div>
                     <h3>Family Planning</h3>
@@ -268,13 +290,13 @@ if (isset($pdo) && $pdo !== null) {
         <div class="container">
             <div class="cta-content">
                 <h2 style="color: #fff;">Ready to Access Healthcare Services?</h2>
-                <p style="color: #fff;">Choose your portal to get started with CHO Koronadal's comprehensive healthcare services</p>
+                <p style="color: #fff;">Access your Patient Portal and get started with your healthcare journey today!</p>
                 <div class="cta-buttons">
                     <a href="pages/patient/auth/patient_login.php" class="btn btn-primary btn-large">
                         <i class="fas fa-user"></i> Patient Portal
                     </a>
-                    <a href="pages/management/auth/employee_login.php" class="btn btn-outline btn-large">
-                        <i class="fas fa-user-md"></i> Staff Portal
+                    <a href="pages/management/auth/employee_login.php" class="btn btn-outline btn-large" id="staff-login-cta" style="display: none;">
+                        <i class="fas fa-user-md"></i> Employees Portal
                     </a>
                 </div>
             </div>
@@ -288,12 +310,12 @@ if (isset($pdo) && $pdo !== null) {
                 <div class="footer-logo">
                     <img src="assets/images/Nav_Logo.png" alt="CHO Koronadal Logo" class="logo-img">
                 </div>
-                <div class="footer-info" style="text-align: center;">
-                    <p>&copy; 2024 City Health Office - Koronadal. All rights reserved.</p>
+                <div class="footer-info" style="text-align: right;">
+                    <p>&copy; 2024 City Health Office of Koronadal. All rights reserved.</p>
                     <p>Modern facilities, accessible healthcare, and essential services for our community.</p>
                 </div>
-                <div class="footer-test">
-                    <a href="tests/testdb.php" class="btn btn-sm btn-secondary">
+                <div class="footer-test" id="footer-test-connection" style="display: none;">
+                    <a href="testdb.php" class="btn btn-sm btn-secondary">
                         <i class="fas fa-database"></i> Test DB Connection
                     </a>
                 </div>
@@ -307,6 +329,121 @@ if (isset($pdo) && $pdo !== null) {
 
 <!-- Carousel JavaScript -->
 <script>
+// Hidden UI Toggle Functions
+function toggleStaffLogin() {
+    const navStaffLogin = document.getElementById('staff-login-nav');
+    const heroStaffLogin = document.getElementById('staff-login-hero');
+    const ctaStaffLogin = document.getElementById('staff-login-cta');
+    
+    // Toggle visibility with smooth animation
+    if (navStaffLogin.style.display === 'none') {
+        navStaffLogin.style.display = 'inline-flex';
+        heroStaffLogin.style.display = 'inline-flex';
+        ctaStaffLogin.style.display = 'inline-flex';
+        
+        // Add a subtle animation
+        navStaffLogin.style.opacity = '0';
+        heroStaffLogin.style.opacity = '0';
+        ctaStaffLogin.style.opacity = '0';
+        
+        setTimeout(() => {
+            navStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
+            heroStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
+            ctaStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
+            navStaffLogin.style.opacity = '1';
+            heroStaffLogin.style.opacity = '1';
+            ctaStaffLogin.style.opacity = '1';
+        }, 10);
+        
+        // Show a subtle notification
+        showHiddenFeatureNotification('Staff login revealed! 👨‍⚕️');
+    } else {
+        navStaffLogin.style.opacity = '0';
+        heroStaffLogin.style.opacity = '0';
+        ctaStaffLogin.style.opacity = '0';
+        
+        setTimeout(() => {
+            navStaffLogin.style.display = 'none';
+            heroStaffLogin.style.display = 'none';
+            ctaStaffLogin.style.display = 'none';
+        }, 300);
+    }
+}
+
+function toggleTestConnection() {
+    const heroTestConnection = document.getElementById('test-connection-hero');
+    const footerTestConnection = document.getElementById('footer-test-connection');
+    
+    // Toggle visibility with smooth animation
+    if (heroTestConnection.style.display === 'none') {
+        heroTestConnection.style.display = 'inline-flex';
+        footerTestConnection.style.display = 'block';
+        
+        // Add a subtle animation
+        heroTestConnection.style.opacity = '0';
+        footerTestConnection.style.opacity = '0';
+        
+        setTimeout(() => {
+            heroTestConnection.style.transition = 'opacity 0.3s ease-in-out';
+            footerTestConnection.style.transition = 'opacity 0.3s ease-in-out';
+            heroTestConnection.style.opacity = '1';
+            footerTestConnection.style.opacity = '1';
+        }, 10);
+        
+        // Show a subtle notification
+        showHiddenFeatureNotification('Database test tools revealed! 🛠️');
+    } else {
+        heroTestConnection.style.opacity = '0';
+        footerTestConnection.style.opacity = '0';
+        
+        setTimeout(() => {
+            heroTestConnection.style.display = 'none';
+            footerTestConnection.style.display = 'none';
+        }, 300);
+    }
+}
+
+function showHiddenFeatureNotification(message) {
+    // Create a temporary notification for hidden features
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10001;
+        opacity: 0;
+        transform: translateX(100%);
+        transition: all 0.3s ease-in-out;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateX(0)';
+    }, 10);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// Carousel functionality
 let slideIndex = 0;
 const slides = document.querySelectorAll('.slide');
 const indicators = document.querySelectorAll('.indicator');
