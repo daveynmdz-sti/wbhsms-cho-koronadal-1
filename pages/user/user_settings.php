@@ -1190,7 +1190,7 @@ $sidebar_file = match ($current_user_role) {
 
                         <div class="photo-upload-container">
                             <div class="photo-preview">
-                                <img src="../../vendor/employee_photo_controller.php?employee_id=<?= urlencode($employee_id) ?>"
+                                <img src="employee_photo.php?id=<?= urlencode($employee_id) ?>"
                                     alt="Profile Photo" id="profilePhotoPreview" class="profile-photo-img"
                                     onerror="this.onerror=null;this.src='https://ik.imagekit.io/wbhsmslogo/user.png?updatedAt=1750423429172';" />
                             </div>

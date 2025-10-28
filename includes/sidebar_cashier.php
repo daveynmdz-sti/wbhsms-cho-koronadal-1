@@ -69,7 +69,7 @@ require_once __DIR__ . '/../config/paths.php';
 
 // Get base URL and extract just the path portion for navigation
 $base_url = getBaseUrl();
-$vendorPath = $base_url . '/vendor/employee_photo_controller.php';
+$vendorPath = $base_url . '/employee_photo.php';
 
 // Extract just the path part from the base URL for relative navigation
 $parsed_url = parse_url($base_url);

@@ -976,7 +976,7 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                             <tr>
                                                 <td>
                                                     <div class="employee-photo-cell">
-                                                        <img src="../../../../vendor/employee_photo_controller.php?employee_id=<?= urlencode($employee['employee_id']) ?>" 
+                                                        <img src="../../employee_photo.php?id=<?= urlencode($employee['employee_id']) ?>" 
                                                              alt="<?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?>" 
                                                              class="employee-photo-thumbnail"
                                                              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">

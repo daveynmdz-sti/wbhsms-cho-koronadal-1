@@ -590,7 +590,7 @@ $sidebar_file = match($current_user_role) {
                 <div class="employee-info">
                     <div class="employee-header">
                         <div class="employee-photo">
-                                <img src="../../vendor/employee_photo_controller.php?employee_id=<?= urlencode($employee['employee_id']) ?>"
+                            <img src="employee_photo.php?id=<?= urlencode($employee['employee_id']) ?>" 
                                  alt="<?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?> Profile Photo" 
                                  class="profile-photo-display"
                                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">

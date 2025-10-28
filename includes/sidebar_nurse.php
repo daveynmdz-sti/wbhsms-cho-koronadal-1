@@ -114,7 +114,7 @@ if (preg_match('#^(/[^/]+)/pages/#', $script_name, $matches)) {
 // Create absolute URL for vendor path to fix photo loading (works on any page depth)
 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'];
-$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/employee_photo_controller.php';
+$vendorPath = $protocol . '://' . $host . $base_path . 'employee_photo.php';
 $cssPath = $base_path . 'assets/css/sidebar.css';
 $nav_base = $base_path . 'pages/';
 ?>

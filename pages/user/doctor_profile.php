@@ -260,7 +260,7 @@ $activePage = 'profile';
     <main class="content-wrapper">
         <div class="profile-container">
             <div class="profile-header">
-                <img src="../../vendor/employee_photo_controller.php?employee_id=<?= $employee_id ?>" 
+                <img src="employee_photo.php?id=<?= $employee_id ?>" 
                      alt="Profile Photo" 
                      class="profile-photo"
                      onerror="this.src='../../assets/images/user-default.png'">

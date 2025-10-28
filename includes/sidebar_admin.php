@@ -83,10 +83,10 @@ if (preg_match('#^(/[^/]+)/pages/#', $script_name, $matches)) {
     }
 }
 
-// Create absolute URL for vendor path to fix photo loading
+// Create absolute URL for production-friendly photo controller
 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'];
-$vendorPath = $protocol . '://' . $host . $base_path . 'vendor/employee_photo_controller.php';
+$vendorPath = $protocol . '://' . $host . $base_path . 'employee_photo.php';
 $nav_base = $base_path . 'pages/';
 ?>
 <!-- CSS is included by the main page, not the sidebar -->
