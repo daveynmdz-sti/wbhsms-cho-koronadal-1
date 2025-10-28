@@ -3,7 +3,7 @@
 $test = isset($_GET['test']) && in_array($_GET['test'], ['local', 'remote']) ? $_GET['test'] : 'local';
 
 // Include the root config files with correct paths
-$root_path = dirname(__DIR__);
+$root_path = __DIR__;
 require_once $root_path . '/config/env.php';
 
 $connection_status = '';
