@@ -1,6 +1,6 @@
 <?php
 // Get test type from URL parameter, default to 'local'
-$test = isset($_GET['test']) && in_array($_GET['test'], ['local', 'remote']) ? $_GET['test'] : 'local';
+$test = isset($_GET['test']) && in_array($_GET['test'], ['local', 'remote']) ? $_GET['test'] : 'remote';
 
 // Include the root config files with correct paths for both local and production
 $root_path = __DIR__;
