@@ -52,23 +52,27 @@ if (isset($pdo) && $pdo !== null) {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         /* Prevent zoom on iOS Safari */
-        input, select, textarea {
+        input,
+        select,
+        textarea {
             font-size: 16px !important;
         }
-        
+
         /* Smooth scrolling for all devices */
         html {
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
         }
-        
+
         /* Mobile touch improvements */
         * {
             -webkit-tap-highlight-color: rgba(37, 99, 235, 0.2);
         }
-        
+
         /* Prevent text selection on buttons */
-        .btn, .nav-btn, .carousel-btn {
+        .btn,
+        .nav-btn,
+        .carousel-btn {
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             -khtml-user-select: none;
@@ -76,26 +80,30 @@ if (isset($pdo) && $pdo !== null) {
             -ms-user-select: none;
             user-select: none;
         }
-        
+
         /* Hidden feature hover effects */
         .nav-logo:hover {
             transform: scale(1.05);
             transition: transform 0.2s ease;
         }
-        
+
         .service-icon[onclick]:hover {
             transform: scale(1.1);
             transition: transform 0.2s ease;
             background: rgba(37, 99, 235, 0.1);
             border-radius: 50%;
         }
-        
+
         .service-icon[onclick]:hover i {
             color: #2563eb;
         }
-        
+
         /* Smooth transitions for revealed elements */
-        #staff-login-nav, #staff-login-hero, #staff-login-cta, #test-connection-hero, #footer-test-connection {
+        #staff-login-nav,
+        #staff-login-hero,
+        #staff-login-cta,
+        #test-connection-hero,
+        #footer-test-connection {
             transition: opacity 0.3s ease-in-out;
         }
     </style>
@@ -141,24 +149,24 @@ if (isset($pdo) && $pdo !== null) {
                 <div class="carousel-container">
                     <div class="carousel-slides">
                         <div class="slide active">
-                            <img src="assets/images/Location_Aerial_View.jpeg" alt="Modern Healthcare Facility">
+                            <img src="assets/images/Location_Aerial_View.jpeg" alt="CHO Koronadal Public Health Facility">
                             <div class="slide-overlay">
-                                <h3>Modern Healthcare Facilities</h3>
-                                <p>State-of-the-art equipment and comfortable patient care areas</p>
+                                <h3>Essential Public Health Services</h3>
+                                <p>Accessible healthcare and disease prevention programs for the community</p>
                             </div>
                         </div>
                         <div class="slide">
-                            <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" alt="Medical Professionals">
+                            <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" alt="CHO Healthcare Professionals">
                             <div class="slide-overlay">
-                                <h3>Expert Medical Team</h3>
-                                <p>Dedicated healthcare professionals serving the community</p>
+                                <h3>Dedicated Public Health Team</h3>
+                                <p>Healthcare professionals committed to community health and wellness</p>
                             </div>
                         </div>
                         <div class="slide">
-                            <img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" alt="Community Health">
+                            <img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" alt="Community Public Health">
                             <div class="slide-overlay">
-                                <h3>Community Healthcare</h3>
-                                <p>Serving all residents across Main, Concepcion, and GPS districts</p>
+                                <h3>Primary Healthcare for All</h3>
+                                <p>Essential health services across Main, Concepcion, and GPS districts</p>
                             </div>
                         </div>
                     </div>
@@ -189,8 +197,8 @@ if (isset($pdo) && $pdo !== null) {
             </div>
             <div class="about-content">
                 <div class="about-text">
-                    <p>The City Health Office (CHO) of Koronadal has long been the primary healthcare provider for the city, but it was only in 2022 that it established its Main District building, making its facilities relatively new.</p>
-                    <p>CHO operates across three districts—<strong>Main</strong>, <strong>Concepcion</strong>, and <strong>GPS</strong>—each covering 8 to 10 barangays to ensure accessible healthcare for all residents.</p>
+                    <p>The City Health Office (CHO) of Koronadal serves as the primary local government health department, providing essential public health services and implementing health programs for the city's residents. Established as the cornerstone of community health, CHO Koronadal was reorganized in 2022 with its Main District facility.</p>
+                    <p>CHO operates across three districts—<strong>Main District</strong>, <strong>Concepcion District</strong>, and <strong>GPS District</strong>—each covering 8 to 10 barangays to ensure accessible primary healthcare, disease prevention, and health education programs reach all residents.</p>
                 </div>
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -214,8 +222,8 @@ if (isset($pdo) && $pdo !== null) {
     <section class="services-section">
         <div class="container">
             <div class="section-header">
-                <h2>Our Healthcare Services</h2>
-                <p>Comprehensive medical care for the Koronadal community</p>
+                <h2>Our Public Health Services</h2>
+                <p>Essential healthcare and disease prevention programs for the Koronadal community</p>
             </div>
             <div class="services-grid">
                 <div class="service-card">
@@ -223,14 +231,14 @@ if (isset($pdo) && $pdo !== null) {
                         <i class="fas fa-stethoscope"></i>
                     </div>
                     <h3>Konsulta</h3>
-                    <p>Free basic healthcare services and medical consultations</p>
+                    <p>Free primary healthcare consultations and basic medical services</p>
                 </div>
                 <div class="service-card">
                     <div class="service-icon">
                         <i class="fas fa-tooth"></i>
                     </div>
                     <h3>Dental Services</h3>
-                    <p>Tooth extraction and comprehensive dental care</p>
+                    <p>Basic dental care including extractions and oral health education</p>
                 </div>
                 <div class="service-card">
                     <div class="service-icon">
@@ -244,7 +252,7 @@ if (isset($pdo) && $pdo !== null) {
                         <i class="fas fa-syringe"></i>
                     </div>
                     <h3>Vaccines</h3>
-                    <p>Tetanus and other vaccine administration services</p>
+                    <p>Immunization programs and vaccination services for disease prevention</p>
                 </div>
                 <div class="service-card">
                     <div class="service-icon">
@@ -258,7 +266,7 @@ if (isset($pdo) && $pdo !== null) {
                         <i class="fas fa-heart"></i>
                     </div>
                     <h3>Family Planning</h3>
-                    <p>Consultation and services for family planning</p>
+                    <p>Reproductive health services and family planning counseling</p>
                 </div>
                 <div class="service-card">
                     <div class="service-icon">
@@ -272,14 +280,14 @@ if (isset($pdo) && $pdo !== null) {
                         <i class="fas fa-vial"></i>
                     </div>
                     <h3>Laboratory Test</h3>
-                    <p>Laboratory testing and diagnostic services for accurate health assessments</p>
+                    <p>Basic laboratory services and diagnostic testing for public health monitoring</p>
                 </div>
                 <div class="service-card">
                     <div class="service-icon">
                         <i class="fas fa-file-medical"></i>
                     </div>
                     <h3>Medical Document Request</h3>
-                    <p>Issuance of medical certificates and other health-related documents</p>
+                    <p>Health certificates and medical documentation for public health requirements</p>
                 </div>
             </div>
         </div>
@@ -289,8 +297,8 @@ if (isset($pdo) && $pdo !== null) {
     <section class="cta-section">
         <div class="container">
             <div class="cta-content">
-                <h2 style="color: #fff;">Ready to Access Healthcare Services?</h2>
-                <p style="color: #fff;">Access your Patient Portal and get started with your healthcare journey today!</p>
+                <h2 style="color: #fff;">Ready to Access Public Health Services?</h2>
+                <p style="color: #fff;">Access your Patient Portal and connect with CHO Koronadal's essential healthcare services today!</p>
                 <div class="cta-buttons">
                     <a href="pages/patient/auth/patient_login.php" class="btn btn-primary btn-large">
                         <i class="fas fa-user"></i> Patient Portal
@@ -312,7 +320,7 @@ if (isset($pdo) && $pdo !== null) {
                 </div>
                 <div class="footer-info" style="text-align: right;">
                     <p>&copy; 2024 City Health Office of Koronadal. All rights reserved.</p>
-                    <p>Modern facilities, accessible healthcare, and essential services for our community.</p>
+                    <p>Essential public health services and disease prevention programs for our community.</p>
                 </div>
                 <div class="footer-test" id="footer-test-connection" style="display: none;">
                     <a href="testdb.php" class="btn btn-sm btn-secondary">
@@ -329,88 +337,88 @@ if (isset($pdo) && $pdo !== null) {
 
 <!-- Carousel JavaScript -->
 <script>
-// Hidden UI Toggle Functions
-function toggleStaffLogin() {
-    const navStaffLogin = document.getElementById('staff-login-nav');
-    const heroStaffLogin = document.getElementById('staff-login-hero');
-    const ctaStaffLogin = document.getElementById('staff-login-cta');
-    
-    // Toggle visibility with smooth animation
-    if (navStaffLogin.style.display === 'none') {
-        navStaffLogin.style.display = 'inline-flex';
-        heroStaffLogin.style.display = 'inline-flex';
-        ctaStaffLogin.style.display = 'inline-flex';
-        
-        // Add a subtle animation
-        navStaffLogin.style.opacity = '0';
-        heroStaffLogin.style.opacity = '0';
-        ctaStaffLogin.style.opacity = '0';
-        
-        setTimeout(() => {
-            navStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
-            heroStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
-            ctaStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
-            navStaffLogin.style.opacity = '1';
-            heroStaffLogin.style.opacity = '1';
-            ctaStaffLogin.style.opacity = '1';
-        }, 10);
-        
-        // Show a subtle notification
-        showHiddenFeatureNotification('Staff login revealed! 👨‍⚕️');
-    } else {
-        navStaffLogin.style.opacity = '0';
-        heroStaffLogin.style.opacity = '0';
-        ctaStaffLogin.style.opacity = '0';
-        
-        setTimeout(() => {
-            navStaffLogin.style.display = 'none';
-            heroStaffLogin.style.display = 'none';
-            ctaStaffLogin.style.display = 'none';
-        }, 300);
-    }
-}
+    // Hidden UI Toggle Functions
+    function toggleStaffLogin() {
+        const navStaffLogin = document.getElementById('staff-login-nav');
+        const heroStaffLogin = document.getElementById('staff-login-hero');
+        const ctaStaffLogin = document.getElementById('staff-login-cta');
 
-function toggleTestConnection() {
-    const heroTestConnection = document.getElementById('test-connection-hero');
-    const footerTestConnection = document.getElementById('footer-test-connection');
-    
-    // Toggle visibility with smooth animation
-    if (heroTestConnection.style.display === 'none') {
-        heroTestConnection.style.display = 'inline-flex';
-        footerTestConnection.style.display = 'block';
-        
-        // Add a subtle animation
-        heroTestConnection.style.opacity = '0';
-        footerTestConnection.style.opacity = '0';
-        
-        setTimeout(() => {
-            heroTestConnection.style.transition = 'opacity 0.3s ease-in-out';
-            footerTestConnection.style.transition = 'opacity 0.3s ease-in-out';
-            heroTestConnection.style.opacity = '1';
-            footerTestConnection.style.opacity = '1';
-        }, 10);
-        
-        // Show a subtle notification
-        showHiddenFeatureNotification('Database test tools revealed! 🛠️');
-    } else {
-        heroTestConnection.style.opacity = '0';
-        footerTestConnection.style.opacity = '0';
-        
-        setTimeout(() => {
-            heroTestConnection.style.display = 'none';
-            footerTestConnection.style.display = 'none';
-        }, 300);
-    }
-}
+        // Toggle visibility with smooth animation
+        if (navStaffLogin.style.display === 'none') {
+            navStaffLogin.style.display = 'inline-flex';
+            heroStaffLogin.style.display = 'inline-flex';
+            ctaStaffLogin.style.display = 'inline-flex';
 
-function showHiddenFeatureNotification(message) {
-    // Create a temporary notification for hidden features
-    const notification = document.createElement('div');
-    notification.style.cssText = `
+            // Add a subtle animation
+            navStaffLogin.style.opacity = '0';
+            heroStaffLogin.style.opacity = '0';
+            ctaStaffLogin.style.opacity = '0';
+
+            setTimeout(() => {
+                navStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
+                heroStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
+                ctaStaffLogin.style.transition = 'opacity 0.3s ease-in-out';
+                navStaffLogin.style.opacity = '1';
+                heroStaffLogin.style.opacity = '1';
+                ctaStaffLogin.style.opacity = '1';
+            }, 10);
+
+            // Show a subtle notification
+            showHiddenFeatureNotification('Employees Login revealed! 👨‍⚕️');
+        } else {
+            navStaffLogin.style.opacity = '0';
+            heroStaffLogin.style.opacity = '0';
+            ctaStaffLogin.style.opacity = '0';
+
+            setTimeout(() => {
+                navStaffLogin.style.display = 'none';
+                heroStaffLogin.style.display = 'none';
+                ctaStaffLogin.style.display = 'none';
+            }, 300);
+        }
+    }
+
+    function toggleTestConnection() {
+        const heroTestConnection = document.getElementById('test-connection-hero');
+        const footerTestConnection = document.getElementById('footer-test-connection');
+
+        // Toggle visibility with smooth animation
+        if (heroTestConnection.style.display === 'none') {
+            heroTestConnection.style.display = 'inline-flex';
+            footerTestConnection.style.display = 'block';
+
+            // Add a subtle animation
+            heroTestConnection.style.opacity = '0';
+            footerTestConnection.style.opacity = '0';
+
+            setTimeout(() => {
+                heroTestConnection.style.transition = 'opacity 0.3s ease-in-out';
+                footerTestConnection.style.transition = 'opacity 0.3s ease-in-out';
+                heroTestConnection.style.opacity = '1';
+                footerTestConnection.style.opacity = '1';
+            }, 10);
+
+            // Show a subtle notification
+            showHiddenFeatureNotification('Oops, how did you find this? 🛠️');
+        } else {
+            heroTestConnection.style.opacity = '0';
+            footerTestConnection.style.opacity = '0';
+
+            setTimeout(() => {
+                heroTestConnection.style.display = 'none';
+                footerTestConnection.style.display = 'none';
+            }, 300);
+        }
+    }
+
+    function showHiddenFeatureNotification(message) {
+        // Create a temporary notification for hidden features
+        const notification = document.createElement('div');
+        notification.style.cssText = `
         position: fixed;
         top: 20px;
         right: 20px;
-        background: linear-gradient(135deg, #667eea, #764ba2);
+        background: linear-gradient(135deg, #2563eb, #1e40af);
         color: white;
         padding: 12px 20px;
         border-radius: 8px;
@@ -422,247 +430,255 @@ function showHiddenFeatureNotification(message) {
         transform: translateX(100%);
         transition: all 0.3s ease-in-out;
     `;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
-    // Animate in
-    setTimeout(() => {
-        notification.style.opacity = '1';
-        notification.style.transform = 'translateX(0)';
-    }, 10);
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transform = 'translateX(100%)';
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        // Animate in
         setTimeout(() => {
-            if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
+            notification.style.opacity = '1';
+            notification.style.transform = 'translateX(0)';
+        }, 10);
+
+        // Remove after 3 seconds
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                if (document.body.contains(notification)) {
+                    document.body.removeChild(notification);
+                }
+            }, 300);
+        }, 3000);
+    }
+
+    // Carousel functionality
+    let slideIndex = 0;
+    const slides = document.querySelectorAll('.slide');
+    const indicators = document.querySelectorAll('.indicator');
+    let autoPlayInterval;
+
+    function showSlide(n) {
+        slides[slideIndex].classList.remove('active');
+        indicators[slideIndex].classList.remove('active');
+
+        slideIndex = (n + slides.length) % slides.length;
+
+        slides[slideIndex].classList.add('active');
+        indicators[slideIndex].classList.add('active');
+    }
+
+    function changeSlide(n) {
+        showSlide(slideIndex + n);
+        resetAutoPlay();
+    }
+
+    function currentSlide(n) {
+        showSlide(n - 1);
+        resetAutoPlay();
+    }
+
+    function startAutoPlay() {
+        autoPlayInterval = setInterval(() => {
+            changeSlide(1);
+        }, 5000);
+    }
+
+    function resetAutoPlay() {
+        clearInterval(autoPlayInterval);
+        startAutoPlay();
+    }
+
+    // Touch/Swipe support for mobile
+    let touchStartX = 0;
+    let touchEndX = 0;
+
+    function handleTouchStart(e) {
+        touchStartX = e.changedTouches[0].screenX;
+    }
+
+    function handleTouchEnd(e) {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+    }
+
+    function handleSwipe() {
+        const swipeThreshold = 50;
+        const swipeDistance = touchEndX - touchStartX;
+
+        if (Math.abs(swipeDistance) > swipeThreshold) {
+            if (swipeDistance > 0) {
+                changeSlide(-1); // Swipe right - previous slide
+            } else {
+                changeSlide(1); // Swipe left - next slide
             }
-        }, 300);
-    }, 3000);
-}
-
-// Carousel functionality
-let slideIndex = 0;
-const slides = document.querySelectorAll('.slide');
-const indicators = document.querySelectorAll('.indicator');
-let autoPlayInterval;
-
-function showSlide(n) {
-    slides[slideIndex].classList.remove('active');
-    indicators[slideIndex].classList.remove('active');
-    
-    slideIndex = (n + slides.length) % slides.length;
-    
-    slides[slideIndex].classList.add('active');
-    indicators[slideIndex].classList.add('active');
-}
-
-function changeSlide(n) {
-    showSlide(slideIndex + n);
-    resetAutoPlay();
-}
-
-function currentSlide(n) {
-    showSlide(n - 1);
-    resetAutoPlay();
-}
-
-function startAutoPlay() {
-    autoPlayInterval = setInterval(() => {
-        changeSlide(1);
-    }, 5000);
-}
-
-function resetAutoPlay() {
-    clearInterval(autoPlayInterval);
-    startAutoPlay();
-}
-
-// Touch/Swipe support for mobile
-let touchStartX = 0;
-let touchEndX = 0;
-
-function handleTouchStart(e) {
-    touchStartX = e.changedTouches[0].screenX;
-}
-
-function handleTouchEnd(e) {
-    touchEndX = e.changedTouches[0].screenX;
-    handleSwipe();
-}
-
-function handleSwipe() {
-    const swipeThreshold = 50;
-    const swipeDistance = touchEndX - touchStartX;
-    
-    if (Math.abs(swipeDistance) > swipeThreshold) {
-        if (swipeDistance > 0) {
-            changeSlide(-1); // Swipe right - previous slide
-        } else {
-            changeSlide(1); // Swipe left - next slide
         }
     }
-}
 
-// Keyboard navigation
-function handleKeyPress(e) {
-    if (e.key === 'ArrowLeft') {
-        changeSlide(-1);
-    } else if (e.key === 'ArrowRight') {
-        changeSlide(1);
+    // Keyboard navigation
+    function handleKeyPress(e) {
+        if (e.key === 'ArrowLeft') {
+            changeSlide(-1);
+        } else if (e.key === 'ArrowRight') {
+            changeSlide(1);
+        }
     }
-}
 
-// Initialize carousel
-document.addEventListener('DOMContentLoaded', function() {
-    const carouselContainer = document.querySelector('.carousel-container');
-    
-    // Add touch events
-    carouselContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
-    carouselContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
-    
-    // Add keyboard events
-    document.addEventListener('keydown', handleKeyPress);
-    
-    // Add click events to indicators for keyboard accessibility
-    indicators.forEach((indicator, index) => {
-        indicator.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                currentSlide(index + 1);
+    // Initialize carousel
+    document.addEventListener('DOMContentLoaded', function() {
+        const carouselContainer = document.querySelector('.carousel-container');
+
+        // Add touch events
+        carouselContainer.addEventListener('touchstart', handleTouchStart, {
+            passive: true
+        });
+        carouselContainer.addEventListener('touchend', handleTouchEnd, {
+            passive: true
+        });
+
+        // Add keyboard events
+        document.addEventListener('keydown', handleKeyPress);
+
+        // Add click events to indicators for keyboard accessibility
+        indicators.forEach((indicator, index) => {
+            indicator.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    currentSlide(index + 1);
+                }
+            });
+        });
+
+        // Start auto-play
+        startAutoPlay();
+
+        // Pause auto-play when user is interacting
+        carouselContainer.addEventListener('mouseenter', () => clearInterval(autoPlayInterval));
+        carouselContainer.addEventListener('mouseleave', startAutoPlay);
+
+        // Pause auto-play when page is not visible
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                clearInterval(autoPlayInterval);
+            } else {
+                startAutoPlay();
             }
         });
     });
-    
-    // Start auto-play
-    startAutoPlay();
-    
-    // Pause auto-play when user is interacting
-    carouselContainer.addEventListener('mouseenter', () => clearInterval(autoPlayInterval));
-    carouselContainer.addEventListener('mouseleave', startAutoPlay);
-    
-    // Pause auto-play when page is not visible
-    document.addEventListener('visibilitychange', function() {
-        if (document.hidden) {
-            clearInterval(autoPlayInterval);
-        } else {
-            startAutoPlay();
-        }
-    });
-});
 
-// Connection status display
-var status = "<?php echo $connectionStatus; ?>";
-if (status) {
-    var snackbar = document.getElementById("snackbar");
-    snackbar.textContent = status === "success" ? "✓ Database connection successful!" : "✗ Connection failed: " + status;
-    snackbar.className = status === "success" ? "show success" : "show error";
-    setTimeout(function() {
-        snackbar.className = snackbar.className.replace("show", "");
-    }, 4000);
-}
-
-// Enhanced smooth scrolling and navbar effects
-document.addEventListener('DOMContentLoaded', function() {
-    // Add smooth scroll behavior
-    document.documentElement.style.scrollBehavior = 'smooth';
-    
-    // Navbar scroll effect with throttling for better performance
-    let ticking = false;
-    
-    function updateNavbar() {
-        const navbar = document.querySelector('.navbar');
-        if (window.scrollY > 50) {
-            navbar.classList.add('scrolled');
-        } else {
-            navbar.classList.remove('scrolled');
-        }
-        ticking = false;
+    // Connection status display
+    var status = "<?php echo $connectionStatus; ?>";
+    if (status) {
+        var snackbar = document.getElementById("snackbar");
+        snackbar.textContent = status === "success" ? "✓ Welcome back to the City Health Office of Koronadal!" : "✗ Oops, something went wrong: " + status;
+        snackbar.className = status === "success" ? "show success" : "show error";
+        setTimeout(function() {
+            snackbar.className = snackbar.className.replace("show", "");
+        }, 4000);
     }
-    
-    window.addEventListener('scroll', function() {
-        if (!ticking) {
-            requestAnimationFrame(updateNavbar);
-            ticking = true;
+
+    // Enhanced smooth scrolling and navbar effects
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add smooth scroll behavior
+        document.documentElement.style.scrollBehavior = 'smooth';
+
+        // Navbar scroll effect with throttling for better performance
+        let ticking = false;
+
+        function updateNavbar() {
+            const navbar = document.querySelector('.navbar');
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+            ticking = false;
         }
-    });
-    
-    // Optimize images loading for mobile
-    const images = document.querySelectorAll('img');
-    images.forEach(img => {
-        img.loading = 'lazy';
-    });
-    
-    // Add focus management for better accessibility
-    const focusableElements = document.querySelectorAll('a, button, [tabindex]:not([tabindex="-1"])');
-    focusableElements.forEach(element => {
-        element.addEventListener('focus', function() {
-            this.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        window.addEventListener('scroll', function() {
+            if (!ticking) {
+                requestAnimationFrame(updateNavbar);
+                ticking = true;
+            }
+        });
+
+        // Optimize images loading for mobile
+        const images = document.querySelectorAll('img');
+        images.forEach(img => {
+            img.loading = 'lazy';
+        });
+
+        // Add focus management for better accessibility
+        const focusableElements = document.querySelectorAll('a, button, [tabindex]:not([tabindex="-1"])');
+        focusableElements.forEach(element => {
+            element.addEventListener('focus', function() {
+                this.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest'
+                });
+            });
         });
     });
-});
 
-// Service Worker registration for better mobile experience (optional)
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-        // This would register a service worker if you create one
-        // navigator.serviceWorker.register('/service-worker.js');
-    });
-}
+    // Service Worker registration for better mobile experience (optional)
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            // This would register a service worker if you create one
+            // navigator.serviceWorker.register('/service-worker.js');
+        });
+    }
 </script>
 <style>
-/* Enhanced Snackbar Styles */
-#snackbar {
-    position: fixed;
-    left: 50%;
-    bottom: 30px;
-    transform: translateX(-50%);
-    min-width: 300px;
-    max-width: 90vw;
-    padding: 16px 24px;
-    border-radius: 12px;
-    color: #fff;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
-    opacity: 0;
-    pointer-events: none;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 10000;
-    font: 500 14px/1.4 'Inter', system-ui, -apple-system, sans-serif;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-#snackbar.show {
-    opacity: 1;
-    pointer-events: auto;
-    transform: translateX(-50%) translateY(0);
-}
-
-#snackbar.success {
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-}
-
-#snackbar.error {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-}
-
-@keyframes slideInUp {
-    from {
-        transform: translateX(-50%) translateY(100%);
+    /* Enhanced Snackbar Styles */
+    #snackbar {
+        position: fixed;
+        left: 50%;
+        bottom: 30px;
+        transform: translateX(-50%);
+        min-width: 300px;
+        max-width: 90vw;
+        padding: 16px 24px;
+        border-radius: 12px;
+        color: #fff;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
         opacity: 0;
+        pointer-events: none;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10000;
+        font: 500 14px/1.4 'Inter', system-ui, -apple-system, sans-serif;
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
-    to {
-        transform: translateX(-50%) translateY(0);
-        opacity: 1;
-    }
-}
 
-#snackbar.show {
-    animation: slideInUp 0.3s ease-out;
-}
+    #snackbar.show {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    #snackbar.success {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+    }
+
+    #snackbar.error {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+    }
+
+    @keyframes slideInUp {
+        from {
+            transform: translateX(-50%) translateY(100%);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+    }
+
+    #snackbar.show {
+        animation: slideInUp 0.3s ease-out;
+    }
 </style>
 
 </html>
