@@ -97,8 +97,19 @@ function renderTopbar($options = []) {
     if ($config['user_type'] === 'patient') {
         $photo_src = $config['vendor_path'] . 'photo_controller.php?' . $photo_param . '=' . $user_id;
     } else {
-        // For employee photos, use relative path to root-level controller
-        $photo_src = '../employee_photo.php?' . $photo_param . '=' . $user_id;
+        // For employee photos, use production-friendly absolute path
+        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'];
+        
+        // Extract base path from script name
+        $script_name = $_SERVER['SCRIPT_NAME'];
+        if (preg_match('#^(/[^/]+)/#', $script_name, $matches)) {
+            $base_path = $matches[1] . '/';
+        } else {
+            $base_path = '/';
+        }
+        
+        $photo_src = $protocol . '://' . $host . $base_path . 'employee_photo.php?' . $photo_param . '=' . $user_id;
     }
     
     // Build logo link
