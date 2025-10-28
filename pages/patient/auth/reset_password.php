@@ -334,7 +334,8 @@ if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false
     <header>
         <div class="logo-container">
             <a href="../../index.php" tabindex="0">
-                <img class="logo" src="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128" alt="CHO Koronadal Logo" />
+                <img class="logo" src="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128"
+                    alt="CHO Koronadal Logo" />
             </a>
         </div>
     </header>
