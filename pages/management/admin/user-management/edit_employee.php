@@ -428,7 +428,19 @@ try {
                     <div class="row align-items-center">
                         <div class="col-auto">
                             <div class="employee-photo">
-                                <img src="../../employee_photo.php?id=<?= urlencode($employee_id) ?>" 
+                                <?php 
+                                // Production-friendly absolute URL for employee photo
+                                $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+                                $host = $_SERVER['HTTP_HOST'];
+                                $script_name = $_SERVER['SCRIPT_NAME'];
+                                if (preg_match('#^(/[^/]+)/#', $script_name, $matches)) {
+                                    $base_path = $matches[1] . '/';
+                                } else {
+                                    $base_path = '/';
+                                }
+                                $photo_url = $protocol . '://' . $host . $base_path . 'employee_photo.php?id=' . urlencode($employee_id);
+                                ?>
+                                <img src="<?= $photo_url ?>" 
                                      alt="<?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?> Profile Photo" 
                                      class="profile-photo-display"
                                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">

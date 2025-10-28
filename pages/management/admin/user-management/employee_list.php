@@ -976,7 +976,19 @@ $facilities = $facilities_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                             <tr>
                                                 <td>
                                                     <div class="employee-photo-cell">
-                                                        <img src="../../employee_photo.php?id=<?= urlencode($employee['employee_id']) ?>" 
+                                                        <?php 
+                                                        // Production-friendly absolute URL for employee photo
+                                                        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+                                                        $host = $_SERVER['HTTP_HOST'];
+                                                        $script_name = $_SERVER['SCRIPT_NAME'];
+                                                        if (preg_match('#^(/[^/]+)/#', $script_name, $matches)) {
+                                                            $base_path = $matches[1] . '/';
+                                                        } else {
+                                                            $base_path = '/';
+                                                        }
+                                                        $photo_url = $protocol . '://' . $host . $base_path . 'employee_photo.php?id=' . urlencode($employee['employee_id']);
+                                                        ?>
+                                                        <img src="<?= $photo_url ?>" 
                                                              alt="<?= htmlspecialchars($employee['first_name'] . ' ' . $employee['last_name']) ?>" 
                                                              class="employee-photo-thumbnail"
                                                              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
