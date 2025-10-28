@@ -123,8 +123,8 @@
 </head>
 <body>
     <div class="loading-container">
-        <img src="../assets/images/Nav_Logo.png" alt="CHO Koronadal Logo" class="logo" 
-             onerror="this.src='https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1750422462527'">
+        <img src="../assets/images/Nav_LogoClosed.png" alt="CHO Koronadal Logo" class="logo" 
+             onerror="this.src='https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128'">
         
         <div class="loading-text">City Health Office</div>
         <div class="loading-subtitle">of Koronadal</div>
