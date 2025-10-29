@@ -35,7 +35,7 @@ if (!is_patient_logged_in()) {
     while (ob_get_level()) {
         ob_end_clean();
     }
-    
+
     // Check if headers can still be sent
     if (!headers_sent()) {
         header("Location: ../auth/patient_login.php");
@@ -135,7 +135,6 @@ try {
     ");
     $stmt->execute([$patient_id]);
     $unpaid_bills = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 } catch (Exception $e) {
     error_log("Billing data error: " . $e->getMessage());
     $error = "Failed to fetch billing data: " . $e->getMessage();
@@ -143,6 +142,7 @@ try {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -664,8 +664,13 @@ try {
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .quick-actions {
@@ -811,6 +816,217 @@ try {
         .btn-close:hover {
             opacity: 1;
         }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(3px);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: auto;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            width: 75%;
+            max-width: 400px;
+            max-height: 70vh;
+            overflow-y: auto;
+            animation: slideIn 0.3s ease;
+        }
+
+
+        .modal-content h2 {
+            color: #fff;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.8rem 1rem;
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .modal-header .close {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .modal-header .close:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .modal-body {
+            padding: 0.8rem;
+        }
+
+        .payment-info-grid {
+            display: grid;
+            gap: 0.6rem;
+        }
+
+        .info-section {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 0.7rem;
+            border-left: 2px solid #0077b6;
+        }
+
+        .info-section.important-note {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+
+        .info-section h3 {
+            margin: 0 0 0.4rem 0;
+            color: #0077b6;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .info-section.important-note h3 {
+            color: #856404;
+        }
+
+        .info-section p {
+            margin: 0.2rem 0;
+            color: #495057;
+            line-height: 1.4;
+            font-size: 0.85rem;
+        }
+
+        .payment-methods {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .payment-methods li {
+            padding: 0.2rem 0;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.85rem;
+        }
+
+        .payment-methods li i {
+            color: #0077b6;
+            width: 16px;
+            font-size: 0.8rem;
+        }
+
+        .modal-footer {
+            padding: 0.6rem 0.8rem;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .modal-footer .btn {
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.9);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .modal-content {
+                width: 90%;
+                margin: 0.5rem;
+                max-width: 350px;
+            }
+
+            .modal-header,
+            .modal-body,
+            .modal-footer {
+                padding: 0.6rem 0.7rem;
+            }
+
+            .payment-info-grid {
+                gap: 0.5rem;
+            }
+
+            .info-section {
+                padding: 0.6rem;
+            }
+
+            .modal-header h2 {
+                font-size: 1rem;
+            }
+
+            .info-section h3 {
+                font-size: 0.85rem;
+            }
+
+            .info-section p,
+            .payment-methods li {
+                font-size: 0.8rem;
+            }
+        }
     </style>
 </head>
 
@@ -869,7 +1085,7 @@ try {
                     <p class="stat-label"><?php echo $billing_summary['unpaid_count'] ?? 0; ?> unpaid bills</p>
                 </div>
             </div>
-            
+
             <div class="stat-card paid">
                 <div class="stat-icon" style="background: linear-gradient(135deg, #28a745, #1e7e34);">
                     <i class="fas fa-check-circle"></i>
@@ -880,7 +1096,7 @@ try {
                     <p class="stat-label"><?php echo $billing_summary['paid_count'] ?? 0; ?> payments made</p>
                 </div>
             </div>
-            
+
             <div class="stat-card total">
                 <div class="stat-icon" style="background: linear-gradient(135deg, #007bff, #0056b3);">
                     <i class="fas fa-receipt"></i>
@@ -895,98 +1111,98 @@ try {
 
         <!-- Unpaid Bills Section -->
         <?php if (!empty($unpaid_bills)): ?>
-        <div class="section-container">
-            <div class="section-header">
-                <div class="section-icon">
-                    <i class="fas fa-exclamation-triangle"></i>
+            <div class="section-container">
+                <div class="section-header">
+                    <div class="section-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h2 class="section-title">Unpaid Bills</h2>
                 </div>
-                <h2 class="section-title">Unpaid Bills</h2>
-            </div>
 
-            <div class="search-filters">
-                <div class="filters-grid">
-                    <div class="filter-group">
-                        <label for="unpaid-search">Search Bills</label>
-                        <input type="text" id="unpaid-search" placeholder="Search by invoice number or amount..." 
-                               onkeyup="handleSearchKeyPress(event, 'unpaid')" class="form-control">
-                    </div>
-                    <div class="filter-group">
-                        <label for="unpaid-date-from">Date From</label>
-                        <input type="date" id="unpaid-date-from" class="form-control">
-                    </div>
-                    <div class="filter-group">
-                        <label for="unpaid-date-to">Date To</label>
-                        <input type="date" id="unpaid-date-to" class="form-control">
-                    </div>
-                    <div class="filter-actions">
-                        <button type="button" class="btn-filter btn-filter-primary" onclick="filterUnpaidBills()">
-                            <i class="fas fa-search"></i> Filter
-                        </button>
-                        <button type="button" class="btn-filter btn-filter-secondary" onclick="clearUnpaidFilters()">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
+                <div class="search-filters">
+                    <div class="filters-grid">
+                        <div class="filter-group">
+                            <label for="unpaid-search">Search Bills</label>
+                            <input type="text" id="unpaid-search" placeholder="Search by invoice number or amount..."
+                                onkeyup="handleSearchKeyPress(event, 'unpaid')" class="form-control">
+                        </div>
+                        <div class="filter-group">
+                            <label for="unpaid-date-from">Date From</label>
+                            <input type="date" id="unpaid-date-from" class="form-control">
+                        </div>
+                        <div class="filter-group">
+                            <label for="unpaid-date-to">Date To</label>
+                            <input type="date" id="unpaid-date-to" class="form-control">
+                        </div>
+                        <div class="filter-actions">
+                            <button type="button" class="btn-filter btn-filter-primary" onclick="filterUnpaidBills()">
+                                <i class="fas fa-search"></i> Filter
+                            </button>
+                            <button type="button" class="btn-filter btn-filter-secondary" onclick="clearUnpaidFilters()">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="table-container">
-                <table class="bill-table">
-                    <thead>
-                        <tr>
-                            <th>Invoice Details</th>
-                            <th>Amount</th>
-                            <th>Due Date</th>
-                            <th>Services</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="unpaid-bills-tbody">
-                        <?php foreach ($unpaid_bills as $bill): ?>
-                            <tr class="bill-row" data-invoice="<?php echo strtolower($bill['billing_id']); ?>" 
-                                data-date="<?php echo $bill['billing_date']; ?>" 
-                                data-amount="<?php echo $bill['total_amount']; ?>">
-                                <td>
-                                    <div class="bill-info">
-                                        <strong style="color: #0077b6;">Invoice #<?php echo str_pad($bill['billing_id'], 6, '0', STR_PAD_LEFT); ?></strong>
-                                        <br><small style="color: #6c757d;"><?php echo date('F j, Y', strtotime($bill['billing_date'])); ?></small>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div style="color: #dc3545; font-weight: bold; font-size: 1.1rem;">
-                                        ₱<?php echo number_format($bill['total_amount'], 2); ?>
-                                    </div>
-                                    <?php if ($bill['balance_due'] > 0 && $bill['balance_due'] < $bill['total_amount']): ?>
-                                        <small style="color: #6c757d;">Balance: ₱<?php echo number_format($bill['balance_due'], 2); ?></small>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php
-                                    $due_date = date('Y-m-d', strtotime($bill['billing_date'] . ' +30 days'));
-                                    $is_overdue = $due_date < date('Y-m-d');
-                                    ?>
-                                    <div style="color: <?php echo $is_overdue ? '#dc3545' : '#495057'; ?>;">
-                                        <?php echo date('M j, Y', strtotime($due_date)); ?>
-                                    </div>
-                                    <?php if ($is_overdue): ?>
-                                        <small style="color: #dc3545; font-weight: bold;">OVERDUE</small>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <div><?php echo $bill['item_count']; ?> service<?php echo $bill['item_count'] != 1 ? 's' : ''; ?></div>
-                                </td>
-                                <td>
-                                    <div class="bill-actions">
-                                        <button class="btn btn-outline-primary btn-sm" onclick="viewBillDetails(<?php echo $bill['billing_id']; ?>)">
-                                            <i class="fas fa-eye"></i> View
-                                        </button>
-                                    </div>
-                                </td>
+                <div class="table-container">
+                    <table class="bill-table">
+                        <thead>
+                            <tr>
+                                <th>Invoice Details</th>
+                                <th>Amount</th>
+                                <th>Due Date</th>
+                                <th>Services</th>
+                                <th>Actions</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody id="unpaid-bills-tbody">
+                            <?php foreach ($unpaid_bills as $bill): ?>
+                                <tr class="bill-row" data-invoice="<?php echo strtolower($bill['billing_id']); ?>"
+                                    data-date="<?php echo $bill['billing_date']; ?>"
+                                    data-amount="<?php echo $bill['total_amount']; ?>">
+                                    <td>
+                                        <div class="bill-info">
+                                            <strong style="color: #0077b6;">Invoice #<?php echo str_pad($bill['billing_id'], 6, '0', STR_PAD_LEFT); ?></strong>
+                                            <br><small style="color: #6c757d;"><?php echo date('F j, Y', strtotime($bill['billing_date'])); ?></small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div style="color: #dc3545; font-weight: bold; font-size: 1.1rem;">
+                                            ₱<?php echo number_format($bill['total_amount'], 2); ?>
+                                        </div>
+                                        <?php if ($bill['balance_due'] > 0 && $bill['balance_due'] < $bill['total_amount']): ?>
+                                            <small style="color: #6c757d;">Balance: ₱<?php echo number_format($bill['balance_due'], 2); ?></small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php
+                                        $due_date = date('Y-m-d', strtotime($bill['billing_date'] . ' +30 days'));
+                                        $is_overdue = $due_date < date('Y-m-d');
+                                        ?>
+                                        <div style="color: <?php echo $is_overdue ? '#dc3545' : '#495057'; ?>;">
+                                            <?php echo date('M j, Y', strtotime($due_date)); ?>
+                                        </div>
+                                        <?php if ($is_overdue): ?>
+                                            <small style="color: #dc3545; font-weight: bold;">OVERDUE</small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <div><?php echo $bill['item_count']; ?> service<?php echo $bill['item_count'] != 1 ? 's' : ''; ?></div>
+                                    </td>
+                                    <td>
+                                        <div class="bill-actions">
+                                            <button class="btn btn-outline-primary btn-sm" onclick="viewBillDetails(<?php echo $bill['billing_id']; ?>)">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
         <?php endif; ?>
 
         <!-- Recent Bills Section -->
@@ -1003,8 +1219,8 @@ try {
                 <div class="filters-grid">
                     <div class="filter-group">
                         <label for="bill-search">Search Bills</label>
-                        <input type="text" id="bill-search" placeholder="Search by invoice number or amount..." 
-                               onkeyup="handleSearchKeyPress(event, 'recent')" class="form-control">
+                        <input type="text" id="bill-search" placeholder="Search by invoice number or amount..."
+                            onkeyup="handleSearchKeyPress(event, 'recent')" class="form-control">
                     </div>
                     <div class="filter-group">
                         <label for="bill-date-from">Date From</label>
@@ -1051,11 +1267,11 @@ try {
                     </div>
                 <?php else: ?>
                     <?php foreach ($recent_bills as $bill): ?>
-                        <div class="bill-card <?php echo strtolower($bill['payment_status']); ?>" 
-                             data-status="<?php echo $bill['payment_status']; ?>"
-                             data-invoice="<?php echo strtolower($bill['billing_id']); ?>" 
-                             data-date="<?php echo $bill['billing_date']; ?>" 
-                             data-amount="<?php echo $bill['total_amount']; ?>">
+                        <div class="bill-card <?php echo strtolower($bill['payment_status']); ?>"
+                            data-status="<?php echo $bill['payment_status']; ?>"
+                            data-invoice="<?php echo strtolower($bill['billing_id']); ?>"
+                            data-date="<?php echo $bill['billing_date']; ?>"
+                            data-amount="<?php echo $bill['total_amount']; ?>">
                             <div class="bill-header">
                                 <div class="bill-info">
                                     <h4>Invoice #<?php echo str_pad($bill['billing_id'], 6, '0', STR_PAD_LEFT); ?></h4>
@@ -1092,6 +1308,44 @@ try {
             </div>
         </div>
     </section>
+
+    <!-- Payment Information Modal -->
+    <div id="paymentInfoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 style="color:#ffffff;"><i class="fas fa-info-circle"></i> Payment Information</h2>
+                <span class="close" onclick="closePaymentModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="payment-info-grid">
+                    <div class="info-section">
+                        <h3><i class="fas fa-map-marker-alt"></i> Visit Our Office</h3>
+                        <p><strong>Location:</strong> City Health Office, Koronadal City</p>
+                        <p><strong>Hours:</strong> Monday-Friday, 8:00 AM - 5:00 PM</p>
+                        <p><strong>Phone:</strong> (083) 228-8045</p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3><i class="fas fa-credit-card"></i> Payment Methods</h3>
+                        <ul class="payment-methods">
+                            <li><i class="fas fa-money-bill-wave"></i> Cash (at cashier window)</li>
+                            <li><i class="fas fa-check"></i> Check (with valid ID)</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-section important-note">
+                        <h3><i class="fas fa-exclamation-triangle"></i> Important Reminder</h3>
+                        <p>Please bring your bill reference number when paying.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closePaymentModal()">
+                    <i class="fas fa-check"></i> Got it
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // Bill filtering functionality
@@ -1279,7 +1533,7 @@ try {
         // Show no results message
         function showNoResultsMessage() {
             hideNoResultsMessage(); // Remove existing message first
-            
+
             const container = document.getElementById('billsContainer');
             const noResultsDiv = document.createElement('div');
             noResultsDiv.className = 'no-results-message empty-state';
@@ -1308,8 +1562,42 @@ try {
         }
 
         function showPaymentInfo() {
-            alert('Payment Information:\n\nVisit CHO Koronadal to pay your bill:\n\nLocation: City Health Office, Koronadal City\nHours: Monday-Friday, 8:00 AM - 5:00 PM\nPhone: (083) 228-8045\n\nPayment Methods:\n• Cash (at cashier window)\n• Check (with valid ID)\n\nPlease bring your bill reference number when paying.');
+            const modal = document.getElementById('paymentInfoModal');
+            modal.classList.add('show');
+            modal.style.display = 'flex';
+
+            // Prevent background scrolling
+            document.body.style.overflow = 'hidden';
         }
+
+        function closePaymentModal() {
+            const modal = document.getElementById('paymentInfoModal');
+            modal.classList.remove('show');
+
+            // Add fade out animation
+            setTimeout(() => {
+                modal.style.display = 'none';
+                document.body.style.overflow = 'auto';
+            }, 300);
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('paymentInfoModal');
+            if (event.target === modal) {
+                closePaymentModal();
+            }
+        }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const modal = document.getElementById('paymentInfoModal');
+                if (modal.classList.contains('show')) {
+                    closePaymentModal();
+                }
+            }
+        });
 
         // Auto-dismiss alerts
         document.querySelectorAll('.alert').forEach(alert => {
@@ -1332,6 +1620,7 @@ try {
         });
     </script>
 </body>
+
 </html>
 <?php
 // Flush output buffer

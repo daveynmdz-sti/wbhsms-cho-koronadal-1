@@ -222,7 +222,6 @@ if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false
                     placeholder="Enter Patient Number (e.g., P000001)"
                     inputmode="text"
                     autocomplete="username"
-                    pattern="^P\d{6}$"
                     title="Format: capital P followed by 6 digits (e.g., P000001)"
                     maxlength="7"
                     value="<?php echo htmlspecialchars($patient_number); ?>"
@@ -294,12 +293,101 @@ if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false
         (function() {
             const form = document.querySelector("form");
             const status = document.getElementById("form-status");
-            if (!form || !status) return;
+            const snackbar = document.getElementById('snackbar');
+            const usernameInput = document.getElementById("username");
+            const passwordInput = document.getElementById("password");
+            
+            if (!form || !status || !snackbar) return;
 
+            // Function to show snackbar with validation messages
+            function showValidationError(message) {
+                snackbar.textContent = message;
+                snackbar.classList.add('error');
+                snackbar.classList.remove('show');
+                void snackbar.offsetWidth; // Force reflow
+                snackbar.classList.add('show');
+                setTimeout(() => snackbar.classList.remove('show'), 4000);
+            }
+
+            // Real-time validation for Patient ID
+            if (usernameInput) {
+                usernameInput.addEventListener('input', function(e) {
+                    let value = e.target.value.toUpperCase();
+                    
+                    // Remove any characters that aren't P or digits
+                    value = value.replace(/[^P0-9]/g, '');
+                    
+                    // Ensure it starts with P
+                    if (value && !value.startsWith('P')) {
+                        value = 'P' + value.replace(/P/g, '');
+                    }
+                    
+                    // Limit to P + 6 digits (7 characters total)
+                    if (value.length > 7) {
+                        value = value.substring(0, 7);
+                    }
+                    
+                    // Update the input value
+                    e.target.value = value;
+                });
+
+                // Validation on blur
+                usernameInput.addEventListener('blur', function(e) {
+                    const value = e.target.value.trim();
+                    if (value && !value.match(/^P\d{6}$/)) {
+                        showValidationError('Patient ID must be in format P000001 (P followed by exactly 6 digits)');
+                        e.target.focus();
+                    }
+                });
+            }
+
+            // Form submission validation
             form.addEventListener("submit", function(e) {
+                const username = usernameInput ? usernameInput.value.trim() : '';
+                const password = passwordInput ? passwordInput.value.trim() : '';
+
+                // Check for empty fields
+                if (!username && !password) {
+                    e.preventDefault();
+                    showValidationError('Please enter both Patient ID and Password');
+                    if (usernameInput) usernameInput.focus();
+                    return;
+                }
+
+                if (!username) {
+                    e.preventDefault();
+                    showValidationError('Please enter your Patient ID');
+                    if (usernameInput) usernameInput.focus();
+                    return;
+                }
+
+                if (!password) {
+                    e.preventDefault();
+                    showValidationError('Please enter your Password');
+                    if (passwordInput) passwordInput.focus();
+                    return;
+                }
+
+                // Validate Patient ID format
+                if (!username.match(/^P\d{6}$/)) {
+                    e.preventDefault();
+                    showValidationError('Patient ID must be in format P000001 (P followed by exactly 6 digits)');
+                    if (usernameInput) usernameInput.focus();
+                    return;
+                }
+
+                // If all validations pass, check native form validity
                 if (!form.checkValidity()) {
                     e.preventDefault();
-                    status.textContent = "Please fix the highlighted fields.";
+                    showValidationError('Please fix the highlighted fields');
+                    return;
+                }
+
+                // Show loading state
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Logging in...';
                 }
             });
         })();
@@ -312,6 +400,7 @@ if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false
             const type = <?php echo json_encode($flash['type'] ?? ''); ?>;
             if (!msg) return;
 
+            // Only show server messages, not validation messages
             el.textContent = msg;
             el.classList.toggle('error', type === 'error');
             el.classList.remove('show');
