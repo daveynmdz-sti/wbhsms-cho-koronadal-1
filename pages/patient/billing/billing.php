@@ -893,31 +893,6 @@ try {
             </div>
         </div>
 
-        <!-- Quick Actions -->
-        <div class="quick-actions">
-            <a href="billing_history.php" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-history"></i>
-                </div>
-                <div class="action-content">
-                    <h3>View Full History</h3>
-                    <p>See all billing records with filters</p>
-                </div>
-                <i class="fas fa-arrow-right action-arrow"></i>
-            </a>
-            
-            <div class="action-card" onclick="showPaymentInfo()">
-                <div class="action-icon">
-                    <i class="fas fa-info-circle"></i>
-                </div>
-                <div class="action-content">
-                    <h3>Payment Information</h3>
-                    <p>How to pay your bills</p>
-                </div>
-                <i class="fas fa-arrow-right action-arrow"></i>
-            </div>
-        </div>
-
         <!-- Unpaid Bills Section -->
         <?php if (!empty($unpaid_bills)): ?>
         <div class="section-container">
