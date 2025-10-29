@@ -79,70 +79,32 @@ if (isset($pdo) && $pdo !== null) {
       "@context": "https://schema.org",
       "@type": "GovernmentOrganization",
       "name": "City Health Office of Koronadal",
+      "alternateName": "CHO Koronadal",
       "url": "https://cityhealthofficeofkoronadal.site",
       "logo": "https://cityhealthofficeofkoronadal.site/assets/images/Nav_LogoClosed.png",
+      "image": "https://cityhealthofficeofkoronadal.site/assets/images/Nav_LogoClosed.png",
       "description": "Primary healthcare provider for Koronadal City, offering essential public health services, immunizations, and disease prevention programs across three districts.",
+      "foundingDate": "2022",
       "address": {
         "@type": "PostalAddress",
+        "streetAddress": "Koronadal City",
         "addressLocality": "Koronadal City",
         "addressRegion": "South Cotabato",
-        "addressCountry": "Philippines"
+        "addressCountry": "PH"
       },
       "contactPoint": {
         "@type": "ContactPoint",
-        "contactType": "Public Health Services",
-        "telephone": "+63-83-228-8045"
+        "telephone": "+63-83-228-8045",
+        "contactType": "customer service",
+        "availableLanguage": ["English", "Filipino"]
       },
-      "serviceArea": {
+      "areaServed": {
         "@type": "Place",
         "name": "Koronadal City, South Cotabato, Philippines"
       },
-      "hasOfferCatalog": {
-        "@type": "OfferCatalog",
-        "name": "Public Health Services",
-        "itemListElement": [
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "Primary Healthcare Consultations",
-              "description": "Free primary healthcare consultations and basic medical services"
-            }
-          },
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "Immunization Services",
-              "description": "Vaccination programs and immunization services for disease prevention"
-            }
-          },
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "Dental Services",
-              "description": "Basic dental care including extractions and oral health education"
-            }
-          },
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "TB DOTS Program",
-              "description": "Tuberculosis Directly Observed Treatment, Short-course"
-            }
-          },
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "Emergency Medical Services",
-              "description": "HEMS (911) emergency medical services and urgent care"
-            }
-          }
-        ]
-      }
+      "sameAs": [
+        "https://cityhealthofficeofkoronadal.site"
+      ]
     }
     </script>
     
