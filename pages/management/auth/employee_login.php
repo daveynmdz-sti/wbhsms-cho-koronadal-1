@@ -487,7 +487,7 @@ $asset_base_url = $protocol . $host . $base_path;
                 <label for="employee_number">Employee Number</label>
                 <input type="text" id="employee_number" name="employee_number" class="input-field"
                     placeholder="Enter Employee Number (e.g., EMP00001)" inputmode="text" autocomplete="username"
-                    pattern="^EMP\d{5}$" aria-describedby="employee-number-help" required
+                    aria-describedby="employee-number-help" required maxlength="8"
                     value="<?= htmlspecialchars($employee_number) ?>" />
                 <span class="input-help" id="employee-number-help">Format: EMP followed by 5 digits (e.g., EMP00001).</span>
                 
@@ -551,22 +551,101 @@ $asset_base_url = $protocol . $host . $base_path;
         (function() {
             const form = document.querySelector("form");
             const status = document.getElementById("form-status");
+            const snackbar = document.getElementById('snackbar');
             const empNumInput = document.getElementById("employee_number");
+            const passwordInput = document.getElementById("password");
             
-            if (!form || !status) return;
+            if (!form || !status || !snackbar) return;
 
-            // Real-time validation for employee number
-            empNumInput?.addEventListener('input', function() {
-                const value = this.value.toUpperCase();
-                if (value !== this.value) {
-                    this.value = value;
-                }
-            });
+            // Function to show snackbar with validation messages
+            function showValidationError(message) {
+                snackbar.textContent = message;
+                snackbar.classList.add('error');
+                snackbar.classList.remove('show');
+                void snackbar.offsetWidth; // Force reflow
+                snackbar.classList.add('show');
+                setTimeout(() => snackbar.classList.remove('show'), 4000);
+            }
 
+            // Real-time validation for Employee Number
+            if (empNumInput) {
+                empNumInput.addEventListener('input', function(e) {
+                    let value = e.target.value.toUpperCase();
+                    
+                    // Remove any characters that aren't EMP or digits
+                    value = value.replace(/[^EMP0-9]/g, '');
+                    
+                    // Ensure it starts with EMP
+                    if (value && !value.startsWith('EMP')) {
+                        value = 'EMP' + value.replace(/EMP/g, '');
+                    }
+                    
+                    // Limit to EMP + 5 digits (8 characters total)
+                    if (value.length > 8) {
+                        value = value.substring(0, 8);
+                    }
+                    
+                    // Update the input value
+                    e.target.value = value;
+                });
+
+                // Validation on blur
+                empNumInput.addEventListener('blur', function(e) {
+                    const value = e.target.value.trim();
+                    if (value && !value.match(/^EMP\d{5}$/)) {
+                        showValidationError('Employee Number must be in format EMP00001 (EMP followed by exactly 5 digits)');
+                        e.target.focus();
+                    }
+                });
+            }
+
+            // Form submission validation
             form.addEventListener("submit", function(e) {
+                const empNumber = empNumInput ? empNumInput.value.trim() : '';
+                const password = passwordInput ? passwordInput.value.trim() : '';
+
+                // Check for empty fields
+                if (!empNumber && !password) {
+                    e.preventDefault();
+                    showValidationError('Please enter both Employee Number and Password');
+                    if (empNumInput) empNumInput.focus();
+                    return;
+                }
+
+                if (!empNumber) {
+                    e.preventDefault();
+                    showValidationError('Please enter your Employee Number');
+                    if (empNumInput) empNumInput.focus();
+                    return;
+                }
+
+                if (!password) {
+                    e.preventDefault();
+                    showValidationError('Please enter your Password');
+                    if (passwordInput) passwordInput.focus();
+                    return;
+                }
+
+                // Validate Employee Number format
+                if (!empNumber.match(/^EMP\d{5}$/)) {
+                    e.preventDefault();
+                    showValidationError('Employee Number must be in format EMP00001 (EMP followed by exactly 5 digits)');
+                    if (empNumInput) empNumInput.focus();
+                    return;
+                }
+
+                // If all validations pass, check native form validity
                 if (!form.checkValidity()) {
                     e.preventDefault();
-                    status.textContent = "Please fix the highlighted fields.";
+                    showValidationError('Please fix the highlighted fields');
+                    return;
+                }
+
+                // Show loading state
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Logging in...';
                 }
             });
         })();
@@ -580,6 +659,7 @@ $asset_base_url = $protocol . $host . $base_path;
             const type = <?php echo json_encode($flash['type'] ?? ''); ?>;
             if (!msg) return;
 
+            // Only show server messages, not validation messages
             el.textContent = msg;
             el.classList.toggle('error', type === 'error');
             // restart animation reliably
