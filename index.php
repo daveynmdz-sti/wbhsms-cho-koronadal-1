@@ -43,18 +43,108 @@ if (isset($pdo) && $pdo !== null) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <meta name="description" content="City Health Office of Koronadal - Providing essential public health services, primary healthcare consultations, immunizations, and disease prevention programs to all citizens across Main, Concepcion, and GPS districts.">
+    <meta name="keywords" content="City Health Office, Koronadal, healthcare, public health, medical services, immunization, dental care, TB DOTS, family planning, emergency services">
+    <meta name="author" content="City Health Office of Koronadal">
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://cityhealthofficeofkoronadal.site/">
+    <meta property="og:title" content="City Health Office - Koronadal">
+    <meta property="og:description" content="Providing essential public health services, primary healthcare consultations, immunizations, and disease prevention programs to all citizens of Koronadal City.">
+    <meta property="og:image" content="https://cityhealthofficeofkoronadal.site/assets/images/Nav_LogoClosed.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://cityhealthofficeofkoronadal.site/">
+    <meta property="twitter:title" content="City Health Office - Koronadal">
+    <meta property="twitter:description" content="Providing essential public health services, primary healthcare consultations, immunizations, and disease prevention programs to all citizens of Koronadal City.">
+    <meta property="twitter:image" content="https://cityhealthofficeofkoronadal.site/assets/images/Nav_LogoClosed.png">
 
     <meta name="apple-mobile-web-app-title" content="CHO Koronadal">
     <title>City Health Office - Koronadal</title>
     
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
-    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
-    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
-    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="icon" type="image/png" href="assets/images/Nav_LogoClosed.png">
+    <link rel="shortcut icon" type="image/png" href="assets/images/Nav_LogoClosed.png">
+    <link rel="apple-touch-icon" href="assets/images/Nav_LogoClosed.png">
+    <link rel="apple-touch-icon-precomposed" href="assets/images/Nav_LogoClosed.png">
+    
+    <!-- Schema.org Organization Markup for Search Engines -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "GovernmentOrganization",
+      "name": "City Health Office of Koronadal",
+      "url": "https://cityhealthofficeofkoronadal.site",
+      "logo": "https://cityhealthofficeofkoronadal.site/assets/images/Nav_LogoClosed.png",
+      "description": "Primary healthcare provider for Koronadal City, offering essential public health services, immunizations, and disease prevention programs across three districts.",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Koronadal City",
+        "addressRegion": "South Cotabato",
+        "addressCountry": "Philippines"
+      },
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "Public Health Services",
+        "telephone": "+63-83-228-8045"
+      },
+      "serviceArea": {
+        "@type": "Place",
+        "name": "Koronadal City, South Cotabato, Philippines"
+      },
+      "hasOfferCatalog": {
+        "@type": "OfferCatalog",
+        "name": "Public Health Services",
+        "itemListElement": [
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Primary Healthcare Consultations",
+              "description": "Free primary healthcare consultations and basic medical services"
+            }
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Immunization Services",
+              "description": "Vaccination programs and immunization services for disease prevention"
+            }
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Dental Services",
+              "description": "Basic dental care including extractions and oral health education"
+            }
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "TB DOTS Program",
+              "description": "Tuberculosis Directly Observed Treatment, Short-course"
+            }
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "Emergency Medical Services",
+              "description": "HEMS (911) emergency medical services and urgent care"
+            }
+          }
+        ]
+      }
+    }
+    </script>
     
     <link rel="stylesheet" href="assets/css/index.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
