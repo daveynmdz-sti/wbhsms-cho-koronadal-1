@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Standalone New Consultation Interface
  * Allows creation of consultations without requiring appointments or visits
@@ -46,11 +47,11 @@ $employee_role = strtolower($_SESSION['role']);
 // Handle AJAX requests FIRST - before any HTML output
 if (isset($_GET['action'])) {
     header('Content-Type: application/json');
-    
+
     if ($_GET['action'] === 'get_patient_vitals') {
         try {
             $patient_id = $_GET['patient_id'] ?? null;
-            
+
             if (!$patient_id) {
                 echo json_encode([
                     'success' => false,
@@ -58,7 +59,7 @@ if (isset($_GET['action'])) {
                 ]);
                 exit;
             }
-            
+
             // Get today's vitals for this patient
             $stmt = $conn->prepare("
                 SELECT 
@@ -81,12 +82,12 @@ if (isset($_GET['action'])) {
                 ORDER BY v.recorded_at DESC
                 LIMIT 1
             ");
-            
+
             $stmt->bind_param('s', $patient_id);
             $stmt->execute();
             $result = $stmt->get_result();
             $vitals = $result->fetch_assoc();
-            
+
             if ($vitals) {
                 echo json_encode([
                     'success' => true,
@@ -99,7 +100,6 @@ if (isset($_GET['action'])) {
                 ]);
             }
             exit;
-            
         } catch (Exception $e) {
             echo json_encode([
                 'success' => false,
@@ -108,50 +108,50 @@ if (isset($_GET['action'])) {
             exit;
         }
     }
-    
+
     if ($_GET['action'] === 'search_patients') {
         try {
             $search_patient_id = trim($_GET['patient_id'] ?? '');
             $search_first_name = trim($_GET['first_name'] ?? '');
             $search_last_name = trim($_GET['last_name'] ?? '');
             $search_barangay = trim($_GET['barangay'] ?? '');
-            
+
             // Build search conditions
             $search_conditions = [];
             $search_params = [];
             $param_types = '';
-            
+
             if (!empty($search_patient_id)) {
                 $search_conditions[] = "p.username LIKE ?";
                 $search_params[] = "%{$search_patient_id}%";
                 $param_types .= 's';
             }
-            
+
             if (!empty($search_first_name)) {
                 $search_conditions[] = "p.first_name LIKE ?";
                 $search_params[] = "%{$search_first_name}%";
                 $param_types .= 's';
             }
-            
+
             if (!empty($search_last_name)) {
                 $search_conditions[] = "p.last_name LIKE ?";
                 $search_params[] = "%{$search_last_name}%";
                 $param_types .= 's';
             }
-            
+
             if (!empty($search_barangay)) {
                 $search_conditions[] = "p.barangay_id = ?";
                 $search_params[] = $search_barangay;
                 $param_types .= 'i';
             }
-            
+
             if (empty($search_conditions)) {
                 echo json_encode([]);
                 exit();
             }
-            
+
             $where_clause = implode(' AND ', $search_conditions);
-            
+
             // Search patients with multiple field criteria
             $sql = "SELECT DISTINCT
                         p.patient_id,
@@ -182,20 +182,20 @@ if (isset($_GET['action'])) {
                     WHERE p.status = 'active' AND ({$where_clause})
                     ORDER BY p.first_name, p.last_name
                     LIMIT 50";
-            
+
             $stmt = $conn->prepare($sql);
             if (!$stmt) {
                 throw new Exception('Failed to prepare SQL statement: ' . $conn->error);
             }
-            
+
             if (!empty($search_params)) {
                 $stmt->bind_param($param_types, ...$search_params);
             }
-            
+
             if (!$stmt->execute()) {
                 throw new Exception('Failed to execute query: ' . $stmt->error);
             }
-            
+
             $result = $stmt->get_result();
             $patients = [];
             while ($row = $result->fetch_assoc()) {
@@ -207,20 +207,19 @@ if (isset($_GET['action'])) {
                 } else {
                     $row['age'] = null;
                 }
-                
+
                 // Format full name
                 $row['full_name'] = trim($row['first_name'] . ' ' . ($row['middle_name'] ? $row['middle_name'] . ' ' : '') . $row['last_name']);
-                
+
                 // Consultation status
                 $row['has_consultation_today'] = !empty($row['today_consultation_id']);
                 $row['has_vitals_today'] = !empty($row['today_vitals_id']);
-                
+
                 $patients[] = $row;
             }
-            
+
             echo json_encode($patients);
             exit();
-            
         } catch (Exception $e) {
             http_response_code(500);
             echo json_encode([
@@ -244,52 +243,80 @@ $saved_vitals_data = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    
+
     if ($action === 'save_vitals') {
         try {
             $conn->begin_transaction();
-            
+
             // Get and validate form data
             $patient_id = filter_input(INPUT_POST, 'patient_id', FILTER_VALIDATE_INT);
-            
+
             // Validate vitals with medical ranges
-            $systolic_bp = filter_input(INPUT_POST, 'systolic_bp', FILTER_VALIDATE_INT, 
-                array("options" => array("min_range" => 60, "max_range" => 300)));
-            $diastolic_bp = filter_input(INPUT_POST, 'diastolic_bp', FILTER_VALIDATE_INT,
-                array("options" => array("min_range" => 30, "max_range" => 200)));
-            $heart_rate = filter_input(INPUT_POST, 'heart_rate', FILTER_VALIDATE_INT,
-                array("options" => array("min_range" => 30, "max_range" => 300)));
-            $respiratory_rate = filter_input(INPUT_POST, 'respiratory_rate', FILTER_VALIDATE_INT,
-                array("options" => array("min_range" => 5, "max_range" => 60)));
-            $temperature = filter_input(INPUT_POST, 'temperature', FILTER_VALIDATE_FLOAT,
-                array("options" => array("min_range" => 30.0, "max_range" => 45.0)));
-            $weight = filter_input(INPUT_POST, 'weight', FILTER_VALIDATE_FLOAT,
-                array("options" => array("min_range" => 1.0, "max_range" => 500.0)));
-            $height = filter_input(INPUT_POST, 'height', FILTER_VALIDATE_FLOAT,
-                array("options" => array("min_range" => 30.0, "max_range" => 250.0)));
+            $systolic_bp = filter_input(
+                INPUT_POST,
+                'systolic_bp',
+                FILTER_VALIDATE_INT,
+                array("options" => array("min_range" => 60, "max_range" => 300))
+            );
+            $diastolic_bp = filter_input(
+                INPUT_POST,
+                'diastolic_bp',
+                FILTER_VALIDATE_INT,
+                array("options" => array("min_range" => 30, "max_range" => 200))
+            );
+            $heart_rate = filter_input(
+                INPUT_POST,
+                'heart_rate',
+                FILTER_VALIDATE_INT,
+                array("options" => array("min_range" => 30, "max_range" => 300))
+            );
+            $respiratory_rate = filter_input(
+                INPUT_POST,
+                'respiratory_rate',
+                FILTER_VALIDATE_INT,
+                array("options" => array("min_range" => 5, "max_range" => 60))
+            );
+            $temperature = filter_input(
+                INPUT_POST,
+                'temperature',
+                FILTER_VALIDATE_FLOAT,
+                array("options" => array("min_range" => 30.0, "max_range" => 45.0))
+            );
+            $weight = filter_input(
+                INPUT_POST,
+                'weight',
+                FILTER_VALIDATE_FLOAT,
+                array("options" => array("min_range" => 1.0, "max_range" => 500.0))
+            );
+            $height = filter_input(
+                INPUT_POST,
+                'height',
+                FILTER_VALIDATE_FLOAT,
+                array("options" => array("min_range" => 30.0, "max_range" => 250.0))
+            );
             $vitals_remarks = sanitize_input($_POST['vitals_remarks'] ?? '');
-            
+
             // Limit remarks length
             if (strlen($vitals_remarks) > 500) {
                 throw new Exception('Vitals remarks cannot exceed 500 characters.');
             }
-            
+
             // Calculate BMI if both weight and height are provided
             $bmi = null;
             if ($weight && $height) {
                 $height_m = $height / 100; // Convert cm to meters
                 $bmi = round($weight / ($height_m * $height_m), 2);
             }
-            
+
             // Validation
             if (!$patient_id || $patient_id <= 0) {
                 throw new Exception('Please select a valid patient.');
             }
-            
+
             if (!$systolic_bp && !$diastolic_bp && !$heart_rate && !$temperature && !$weight && !$height) {
                 throw new Exception('Please enter at least one vital sign measurement.');
             }
-            
+
             // Check if vitals already exist for this patient today
             $stmt = $conn->prepare("
                 SELECT vitals_id 
@@ -300,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('i', $patient_id);
             $stmt->execute();
             $existing_vitals = $stmt->get_result()->fetch_assoc();
-            
+
             if ($existing_vitals) {
                 // Update existing vitals
                 $stmt = $conn->prepare("
@@ -311,10 +338,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE vitals_id = ?
                 ");
                 $stmt->bind_param(
-                    'iiiiddddisi', 
-                    $systolic_bp, $diastolic_bp, $heart_rate, 
-                    $respiratory_rate, $temperature, $weight, $height, $bmi, 
-                    $employee_id, $vitals_remarks, $existing_vitals['vitals_id']
+                    'iiiiddddisi',
+                    $systolic_bp,
+                    $diastolic_bp,
+                    $heart_rate,
+                    $respiratory_rate,
+                    $temperature,
+                    $weight,
+                    $height,
+                    $bmi,
+                    $employee_id,
+                    $vitals_remarks,
+                    $existing_vitals['vitals_id']
                 );
                 $vitals_id = $existing_vitals['vitals_id'];
             } else {
@@ -327,36 +362,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ");
                 $stmt->bind_param(
-                    'iiiiddddiss', 
-                    $patient_id, $systolic_bp, $diastolic_bp, $heart_rate, 
-                    $respiratory_rate, $temperature, $weight, $height, $bmi, 
-                    $employee_id, $vitals_remarks
+                    'iiiiddddiss',
+                    $patient_id,
+                    $systolic_bp,
+                    $diastolic_bp,
+                    $heart_rate,
+                    $respiratory_rate,
+                    $temperature,
+                    $weight,
+                    $height,
+                    $bmi,
+                    $employee_id,
+                    $vitals_remarks
                 );
                 $stmt->execute();
                 $vitals_id = $conn->insert_id;
             }
-            
+
             $conn->commit();
             $success_message = "Patient vitals saved successfully! Vitals ID: " . $vitals_id;
-            
+
             // Keep the patient selected and show saved vitals
             $selected_patient_id = $patient_id;
             $saved_vitals_id = $vitals_id;
-            
         } catch (Exception $e) {
             $conn->rollback();
             $error_message = $e->getMessage();
         }
-    }
-    
-    elseif ($action === 'save_consultation') {
+    } elseif ($action === 'save_consultation') {
         try {
             $conn->begin_transaction();
-            
+
             // Get and validate form data
             $patient_id = filter_input(INPUT_POST, 'patient_id', FILTER_VALIDATE_INT);
             $provided_vitals_id = filter_input(INPUT_POST, 'vitals_id', FILTER_VALIDATE_INT);
-            
+
             // Consultation data with validation
             $service_id = filter_input(INPUT_POST, 'service_id', FILTER_VALIDATE_INT);
             $chief_complaint = sanitize_input($_POST['chief_complaint'] ?? '');
@@ -364,9 +404,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $treatment_plan = sanitize_input($_POST['treatment_plan'] ?? '');
             $follow_up_date = sanitize_input($_POST['follow_up_date'] ?? '');
             $remarks = sanitize_input($_POST['remarks'] ?? '');
-            $consultation_status = in_array($_POST['consultation_status'] ?? '', ['ongoing', 'completed', 'follow_up_required']) 
+            $consultation_status = in_array($_POST['consultation_status'] ?? '', ['ongoing', 'completed', 'follow_up_required'])
                 ? $_POST['consultation_status'] : 'ongoing';
-            
+
             // Handle empty follow-up date (convert to NULL for database)
             if (empty($follow_up_date)) {
                 $follow_up_date = null;
@@ -376,37 +416,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Invalid follow-up date format.');
                 }
             }
-            
+
             // Length validation
             if (strlen($chief_complaint) > 1000) {
                 throw new Exception('Chief complaint cannot exceed 1000 characters.');
             }
-            
+
             if (strlen($diagnosis) > 1000) {
                 throw new Exception('Diagnosis cannot exceed 1000 characters.');
             }
-            
+
             if (strlen($treatment_plan) > 2000) {
                 throw new Exception('Treatment plan cannot exceed 2000 characters.');
             }
-            
+
             if (strlen($remarks) > 1000) {
                 throw new Exception('Remarks cannot exceed 1000 characters.');
             }
-            
+
             // Required field validation
             if (!$patient_id || $patient_id <= 0) {
                 throw new Exception('Please select a valid patient.');
             }
-            
+
             if (!$service_id || $service_id <= 0) {
                 throw new Exception('Please select a valid service type.');
             }
-            
+
             if (empty($chief_complaint)) {
                 throw new Exception('Chief complaint is required.');
             }
-            
+
             // Auto-detect today's vitals for this patient if not provided
             $vitals_id = $provided_vitals_id;
             if (!$vitals_id) {
@@ -423,7 +463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $vitals_id = $today_vitals['vitals_id'];
                 }
             }
-            
+
             // Check if consultation already exists for this patient today
             $stmt = $conn->prepare("
                 SELECT consultation_id 
@@ -434,7 +474,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('i', $patient_id);
             $stmt->execute();
             $existing_consultation = $stmt->get_result()->fetch_assoc();
-            
+
             if ($existing_consultation) {
                 // Update existing consultation
                 $stmt = $conn->prepare("
@@ -446,8 +486,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmt->bind_param(
                     'iissssssii',
-                    $service_id, $vitals_id, $chief_complaint, $diagnosis, $treatment_plan,
-                    $follow_up_date, $remarks, $consultation_status, $employee_id, 
+                    $service_id,
+                    $vitals_id,
+                    $chief_complaint,
+                    $diagnosis,
+                    $treatment_plan,
+                    $follow_up_date,
+                    $remarks,
+                    $consultation_status,
+                    $employee_id,
                     $existing_consultation['consultation_id']
                 );
                 $stmt->execute();
@@ -463,19 +510,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmt->bind_param(
                     'iiissssssii',
-                    $patient_id, $service_id, $vitals_id, $chief_complaint, $diagnosis,
-                    $treatment_plan, $follow_up_date, $remarks, $consultation_status,
-                    $employee_id, $employee_id
+                    $patient_id,
+                    $service_id,
+                    $vitals_id,
+                    $chief_complaint,
+                    $diagnosis,
+                    $treatment_plan,
+                    $follow_up_date,
+                    $remarks,
+                    $consultation_status,
+                    $employee_id,
+                    $employee_id
                 );
                 $stmt->execute();
                 $consultation_id = $conn->insert_id;
             }
-            
+
             // Create ONE-WAY link: consultation → vitals (NO back-reference needed)
             // Vitals remain reusable for referrals, lab orders, etc.
-            
+
             $conn->commit();
-            
+
             // Enhanced success message with vitals linking info
             $success_message = "Consultation saved successfully! Consultation ID: " . $consultation_id;
             if ($vitals_id) {
@@ -483,11 +538,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $success_message .= " (No vitals linked - none recorded today)";
             }
-            
+
             // Keep the patient selected after saving consultation
             $selected_patient_id = $patient_id;
             $saved_consultation_id = $consultation_id;
-            
         } catch (Exception $e) {
             $conn->rollback();
             $error_message = $e->getMessage();
@@ -535,7 +589,7 @@ if ($selected_patient_id) {
         $stmt->bind_param('i', $selected_patient_id);
         $stmt->execute();
         $selected_patient_data = $stmt->get_result()->fetch_assoc();
-        
+
         if ($selected_patient_data) {
             // Calculate age
             if ($selected_patient_data['date_of_birth']) {
@@ -545,13 +599,13 @@ if ($selected_patient_id) {
             } else {
                 $selected_patient_data['age'] = null;
             }
-            
+
             // Format full name
-            $selected_patient_data['full_name'] = trim($selected_patient_data['first_name'] . ' ' . 
-                ($selected_patient_data['middle_name'] ? $selected_patient_data['middle_name'] . ' ' : '') . 
+            $selected_patient_data['full_name'] = trim($selected_patient_data['first_name'] . ' ' .
+                ($selected_patient_data['middle_name'] ? $selected_patient_data['middle_name'] . ' ' : '') .
                 $selected_patient_data['last_name']);
         }
-        
+
         // Get today's vitals for this patient
         $stmt = $conn->prepare("
             SELECT v.*, e.first_name as recorded_by_name, e.last_name as recorded_by_lastname
@@ -563,7 +617,6 @@ if ($selected_patient_id) {
         $stmt->bind_param('i', $selected_patient_id);
         $stmt->execute();
         $saved_vitals_data = $stmt->get_result()->fetch_assoc();
-        
     } catch (Exception $e) {
         // Continue without patient data
     }
@@ -575,6 +628,11 @@ if ($selected_patient_id) {
 
 <head>
     <meta charset="UTF-8" />
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <title>New Consultation | CHO Koronadal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="../../assets/css/topbar.css" />
@@ -583,9 +641,10 @@ if ($selected_patient_id) {
     <link rel="stylesheet" href="../../assets/css/edit.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <style>
-        .profile-wrapper{
+        .profile-wrapper {
             max-width: 1200px;
         }
+
         .search-container {
             background: white;
             border-radius: 10px;
@@ -933,7 +992,7 @@ if ($selected_patient_id) {
                 display: none;
             }
         }
-        
+
         /* Redirect Overlay Styles */
         .redirect-overlay {
             position: fixed;
@@ -948,7 +1007,7 @@ if ($selected_patient_id) {
             z-index: 9999;
             animation: fadeIn 0.3s ease-in;
         }
-        
+
         .redirect-content {
             background: white;
             padding: 3rem;
@@ -959,25 +1018,25 @@ if ($selected_patient_id) {
             width: 90%;
             animation: slideIn 0.5s ease-out;
         }
-        
+
         .redirect-content .loading i {
             color: #28a745;
             font-size: 3em;
             margin-bottom: 1rem;
             animation: spin 2s linear infinite;
         }
-        
+
         .redirect-content h3 {
             color: #28a745;
             margin-bottom: 1rem;
             font-size: 1.5rem;
         }
-        
+
         .redirect-content p {
             color: #6c757d;
             margin-bottom: 1.5rem;
         }
-        
+
         .countdown {
             background: #f8f9fa;
             padding: 1rem;
@@ -986,40 +1045,51 @@ if ($selected_patient_id) {
             color: #495057;
             border: 2px solid #28a745;
         }
-        
+
         .countdown span {
             color: #28a745;
             font-size: 1.2em;
         }
-        
+
         @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
         }
-        
+
         @keyframes slideIn {
-            from { 
+            from {
                 transform: translateY(-30px);
                 opacity: 0;
             }
-            to { 
+
+            to {
                 transform: translateY(0);
                 opacity: 1;
             }
         }
-        
+
         @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
 
 <body>
-    <?php 
+    <?php
     // Render snackbar notification system
     renderSnackbar();
-    
+
     // Render topbar
     renderTopbar([
         'title' => 'New Consultation',
@@ -1030,7 +1100,7 @@ if ($selected_patient_id) {
     ?>
 
     <section class="homepage">
-        <?php 
+        <?php
         // Render back button with modal
         renderBackButton([
             'back_url' => 'index.php',
@@ -1064,7 +1134,7 @@ if ($selected_patient_id) {
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i> <?= htmlspecialchars($success_message) ?>
                 </div>
-                
+
                 <!-- Loading Screen for Redirect -->
                 <div id="successRedirectOverlay" class="redirect-overlay">
                     <div class="redirect-content">
@@ -1076,27 +1146,27 @@ if ($selected_patient_id) {
                         </div>
                     </div>
                 </div>
-                
+
                 <script>
                     // Auto-redirect after successful consultation creation
                     let countdownValue = 3;
                     const countdownElement = document.getElementById('countdown');
                     const overlay = document.getElementById('successRedirectOverlay');
-                    
+
                     // Show the overlay immediately
                     overlay.style.display = 'flex';
-                    
+
                     // Start countdown
                     const countdownInterval = setInterval(() => {
                         countdownValue--;
                         countdownElement.textContent = countdownValue;
-                        
+
                         if (countdownValue <= 0) {
                             clearInterval(countdownInterval);
                             window.location.href = 'index.php';
                         }
                     }, 1000);
-                    
+
                     // Allow manual click to redirect immediately
                     overlay.addEventListener('click', () => {
                         clearInterval(countdownInterval);
@@ -1115,41 +1185,41 @@ if ($selected_patient_id) {
             <div class="search-container">
                 <h3><i class="fas fa-search"></i> Search Patient</h3>
                 <p class="text-muted">Use multiple fields to search for patients</p>
-                
+
                 <form id="searchForm" class="search-form">
                     <div class="search-fields">
                         <div class="form-group">
                             <label>Patient ID</label>
-                            <input type="text" 
-                                   id="patientIdSearch" 
-                                   name="patient_id"
-                                   class="form-control" 
-                                   placeholder="e.g. P000001"
-                                   autocomplete="off">
+                            <input type="text"
+                                id="patientIdSearch"
+                                name="patient_id"
+                                class="form-control"
+                                placeholder="e.g. P000001"
+                                autocomplete="off">
                         </div>
                         <div class="form-group">
                             <label>First Name</label>
-                            <input type="text" 
-                                   id="firstNameSearch" 
-                                   name="first_name"
-                                   class="form-control" 
-                                   placeholder="Enter first name"
-                                   autocomplete="off">
+                            <input type="text"
+                                id="firstNameSearch"
+                                name="first_name"
+                                class="form-control"
+                                placeholder="Enter first name"
+                                autocomplete="off">
                         </div>
                         <div class="form-group">
                             <label>Last Name</label>
-                            <input type="text" 
-                                   id="lastNameSearch" 
-                                   name="last_name"
-                                   class="form-control" 
-                                   placeholder="Enter last name"
-                                   autocomplete="off">
+                            <input type="text"
+                                id="lastNameSearch"
+                                name="last_name"
+                                class="form-control"
+                                placeholder="Enter last name"
+                                autocomplete="off">
                         </div>
                         <div class="form-group">
                             <label>Barangay</label>
-                            <select id="barangaySearch" 
-                                    name="barangay"
-                                    class="form-control">
+                            <select id="barangaySearch"
+                                name="barangay"
+                                class="form-control">
                                 <option value="">Select Barangay</option>
                                 <?php foreach ($barangays as $barangay): ?>
                                     <option value="<?= htmlspecialchars($barangay['barangay_id']) ?>">
@@ -1159,7 +1229,7 @@ if ($selected_patient_id) {
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="search-actions">
                         <button type="button" class="btn btn-primary" onclick="searchPatients()">
                             <i class="fas fa-search"></i> Search Patients
@@ -1174,18 +1244,18 @@ if ($selected_patient_id) {
             <!-- Patient Results Section -->
             <div class="patient-results" id="patientResults" style="display: none;">
                 <h3><i class="fas fa-users"></i> Search Results</h3>
-                
+
                 <div id="loading" class="loading" style="display: none;">
                     <i class="fas fa-spinner fa-spin"></i>
                     <p>Searching patients...</p>
                 </div>
-                
+
                 <div id="emptySearch" class="empty-search" style="display: none;">
                     <i class="fas fa-user-search"></i>
                     <h4>No patients found</h4>
                     <p>Try adjusting your search criteria or check the spelling.</p>
                 </div>
-                
+
                 <div id="searchResults" class="table-container" style="display: none;">
                     <table class="patients-table">
                         <thead>
@@ -1207,22 +1277,22 @@ if ($selected_patient_id) {
 
             <!-- Selected Patient Info -->
             <?php if ($selected_patient_data): ?>
-            <div class="selected-patient-info" style="display: block;">
-                <strong>Selected Patient:</strong> <?= htmlspecialchars($selected_patient_data['full_name']) ?>
-                <?php if ($saved_vitals_data): ?>
-                    <span style="color: #28a745;"> (Vitals recorded today)</span>
-                <?php else: ?>
-                    <span style="color: #856404;"> (No vitals today)</span>
-                <?php endif; ?><br>
-                <small>ID: <?= htmlspecialchars($selected_patient_data['patient_code']) ?> | 
-                Age/Sex: <?= htmlspecialchars(($selected_patient_data['age'] ?? '-') . '/' . $selected_patient_data['sex']) ?> | 
-                Barangay: <?= htmlspecialchars($selected_patient_data['barangay']) ?></small>
-            </div>
+                <div class="selected-patient-info" style="display: block;">
+                    <strong>Selected Patient:</strong> <?= htmlspecialchars($selected_patient_data['full_name']) ?>
+                    <?php if ($saved_vitals_data): ?>
+                        <span style="color: #28a745;"> (Vitals recorded today)</span>
+                    <?php else: ?>
+                        <span style="color: #856404;"> (No vitals today)</span>
+                    <?php endif; ?><br>
+                    <small>ID: <?= htmlspecialchars($selected_patient_data['patient_code']) ?> |
+                        Age/Sex: <?= htmlspecialchars(($selected_patient_data['age'] ?? '-') . '/' . $selected_patient_data['sex']) ?> |
+                        Barangay: <?= htmlspecialchars($selected_patient_data['barangay']) ?></small>
+                </div>
             <?php else: ?>
-            <div class="selected-patient-info" id="selectedPatientInfo">
-                <strong>Selected Patient:</strong> <span id="selectedPatientName"></span><br>
-                <small>ID: <span id="selectedPatientId"></span> | Age/Sex: <span id="selectedPatientAge"></span> | Barangay: <span id="selectedPatientBarangay"></span></small>
-            </div>
+                <div class="selected-patient-info" id="selectedPatientInfo">
+                    <strong>Selected Patient:</strong> <span id="selectedPatientName"></span><br>
+                    <small>ID: <span id="selectedPatientId"></span> | Age/Sex: <span id="selectedPatientAge"></span> | Barangay: <span id="selectedPatientBarangay"></span></small>
+                </div>
             <?php endif; ?>
 
             <!-- Vitals Form Section -->
@@ -1230,56 +1300,56 @@ if ($selected_patient_id) {
                 <form class="profile-card" id="vitalsForm" method="post">
                     <input type="hidden" name="action" value="save_vitals">
                     <input type="hidden" name="patient_id" id="vitalsPatientId" value="<?= $selected_patient_data ? htmlspecialchars($selected_patient_data['patient_id']) : '' ?>">
-                    
+
                     <h3><i class="fas fa-heartbeat"></i> Patient Vital Signs</h3>
                     <p class="text-muted">Record patient's vital signs measurements</p>
-                    
+
                     <?php if ($saved_vitals_data): ?>
-                    <div style="background: #d4edda; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #28a745;">
-                        <strong><i class="fas fa-check-circle"></i> Current Vitals (Recorded Today)</strong><br>
-                        <small>Recorded by: <?= htmlspecialchars(($saved_vitals_data['recorded_by_name'] ?? '') . ' ' . ($saved_vitals_data['recorded_by_lastname'] ?? '')) ?> 
-                        at <?= date('g:i A', strtotime($saved_vitals_data['recorded_at'])) ?></small>
-                    </div>
+                        <div style="background: #d4edda; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #28a745;">
+                            <strong><i class="fas fa-check-circle"></i> Current Vitals (Recorded Today)</strong><br>
+                            <small>Recorded by: <?= htmlspecialchars(($saved_vitals_data['recorded_by_name'] ?? '') . ' ' . ($saved_vitals_data['recorded_by_lastname'] ?? '')) ?>
+                                at <?= date('g:i A', strtotime($saved_vitals_data['recorded_at'])) ?></small>
+                        </div>
                     <?php endif; ?>
-                    
+
                     <div class="vitals-grid">
                         <div class="form-group">
                             <label>Systolic BP (mmHg)</label>
                             <input type="number" name="systolic_bp" class="form-control" placeholder="120" min="60" max="300"
-                                   value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['systolic_bp']) : '' ?>">
+                                value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['systolic_bp']) : '' ?>">
                         </div>
                         <div class="form-group">
                             <label>Diastolic BP (mmHg)</label>
                             <input type="number" name="diastolic_bp" class="form-control" placeholder="80" min="40" max="200"
-                                   value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['diastolic_bp']) : '' ?>">
+                                value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['diastolic_bp']) : '' ?>">
                         </div>
                         <div class="form-group">
                             <label>Heart Rate (bpm)</label>
                             <input type="number" name="heart_rate" class="form-control" placeholder="72" min="40" max="200"
-                                   value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['heart_rate']) : '' ?>">
+                                value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['heart_rate']) : '' ?>">
                         </div>
                         <div class="form-group">
                             <label>Respiratory Rate (/min)</label>
                             <input type="number" name="respiratory_rate" class="form-control" placeholder="16" min="8" max="60"
-                                   value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['respiratory_rate']) : '' ?>">
+                                value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['respiratory_rate']) : '' ?>">
                         </div>
                         <div class="form-group">
                             <label>Temperature (°C)</label>
                             <input type="number" name="temperature" step="0.1" class="form-control" placeholder="36.5" min="35" max="42"
-                                   value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['temperature']) : '' ?>">
+                                value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['temperature']) : '' ?>">
                         </div>
                         <div class="form-group">
                             <label>Weight (kg)</label>
                             <input type="number" name="weight" step="0.1" class="form-control" placeholder="70.0" min="1" max="300"
-                                   value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['weight']) : '' ?>">
+                                value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['weight']) : '' ?>">
                         </div>
                         <div class="form-group">
                             <label>Height (cm)</label>
                             <input type="number" name="height" step="0.1" class="form-control" placeholder="170" min="50" max="250"
-                                   value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['height']) : '' ?>">
+                                value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['height']) : '' ?>">
                         </div>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Vitals Remarks</label>
                         <textarea name="vitals_remarks" class="form-control" placeholder="Additional notes about vital signs..." rows="2"><?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['remarks']) : '' ?></textarea>
@@ -1295,99 +1365,99 @@ if ($selected_patient_id) {
 
             <!-- Consultation Form Section -->
             <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
-            <div class="form-section <?= $selected_patient_data ? 'enabled' : '' ?>" id="consultationSection">
-                <form class="profile-card" id="consultationForm" method="post">
-                    <input type="hidden" name="action" value="save_consultation">
-                    <input type="hidden" name="patient_id" id="consultationPatientId" value="<?= $selected_patient_data ? htmlspecialchars($selected_patient_data['patient_id']) : '' ?>">
-                    <input type="hidden" name="vitals_id" id="consultationVitalsId" value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['vitals_id']) : '' ?>">
-                    
-                    <h3><i class="fas fa-stethoscope"></i> Clinical Consultation</h3>
-                    <p class="text-muted">Complete the consultation with clinical findings and diagnosis</p>
-                    
-                    <?php if ($saved_vitals_data): ?>
-                    <div style="background: #e8f5e8; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #28a745;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <i class="fas fa-link" style="color: #28a745;"></i>
-                            <strong style="color: #1e7e34;">Vitals Auto-Linking Enabled</strong>
-                        </div>
-                        <div style="font-size: 0.9rem; color: #155724; margin-top: 0.5rem;">
-                            <i class="fas fa-check-circle"></i> Today's vitals (ID: <?= $saved_vitals_data['vitals_id'] ?>) will be automatically linked to this consultation.<br>
-                            <small>Recorded at <?= date('g:i A', strtotime($saved_vitals_data['recorded_at'])) ?> by <?= htmlspecialchars(($saved_vitals_data['recorded_by_name'] ?? '') . ' ' . ($saved_vitals_data['recorded_by_lastname'] ?? '')) ?></small>
-                        </div>
-                    </div>
-                    <?php elseif ($selected_patient_data): ?>
-                    <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #ffc107;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <i class="fas fa-exclamation-triangle" style="color: #856404;"></i>
-                            <strong style="color: #856404;">No Vitals Today</strong>
-                        </div>
-                        <div style="font-size: 0.9rem; color: #856404; margin-top: 0.5rem;">
-                            <i class="fas fa-info-circle"></i> No vitals recorded today. You can record vitals first or create consultation without vitals linking.
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="consultation-grid">
-                        
-                        <div class="form-group">
-                            <label>Service Type *</label>
-                            <select name="service_id" class="form-control" required>
-                                <option value="">Select Service Type</option>
-                                <?php foreach ($services as $service): ?>
-                                    <option value="<?= htmlspecialchars($service['service_id']) ?>">
-                                        <?= htmlspecialchars($service['name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                <div class="form-section <?= $selected_patient_data ? 'enabled' : '' ?>" id="consultationSection">
+                    <form class="profile-card" id="consultationForm" method="post">
+                        <input type="hidden" name="action" value="save_consultation">
+                        <input type="hidden" name="patient_id" id="consultationPatientId" value="<?= $selected_patient_data ? htmlspecialchars($selected_patient_data['patient_id']) : '' ?>">
+                        <input type="hidden" name="vitals_id" id="consultationVitalsId" value="<?= $saved_vitals_data ? htmlspecialchars($saved_vitals_data['vitals_id']) : '' ?>">
+
+                        <h3><i class="fas fa-stethoscope"></i> Clinical Consultation</h3>
+                        <p class="text-muted">Complete the consultation with clinical findings and diagnosis</p>
+
+                        <?php if ($saved_vitals_data): ?>
+                            <div style="background: #e8f5e8; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #28a745;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <i class="fas fa-link" style="color: #28a745;"></i>
+                                    <strong style="color: #1e7e34;">Vitals Auto-Linking Enabled</strong>
+                                </div>
+                                <div style="font-size: 0.9rem; color: #155724; margin-top: 0.5rem;">
+                                    <i class="fas fa-check-circle"></i> Today's vitals (ID: <?= $saved_vitals_data['vitals_id'] ?>) will be automatically linked to this consultation.<br>
+                                    <small>Recorded at <?= date('g:i A', strtotime($saved_vitals_data['recorded_at'])) ?> by <?= htmlspecialchars(($saved_vitals_data['recorded_by_name'] ?? '') . ' ' . ($saved_vitals_data['recorded_by_lastname'] ?? '')) ?></small>
+                                </div>
+                            </div>
+                        <?php elseif ($selected_patient_data): ?>
+                            <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #ffc107;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <i class="fas fa-exclamation-triangle" style="color: #856404;"></i>
+                                    <strong style="color: #856404;">No Vitals Today</strong>
+                                </div>
+                                <div style="font-size: 0.9rem; color: #856404; margin-top: 0.5rem;">
+                                    <i class="fas fa-info-circle"></i> No vitals recorded today. You can record vitals first or create consultation without vitals linking.
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <div class="consultation-grid">
+
+                            <div class="form-group">
+                                <label>Service Type *</label>
+                                <select name="service_id" class="form-control" required>
+                                    <option value="">Select Service Type</option>
+                                    <?php foreach ($services as $service): ?>
+                                        <option value="<?= htmlspecialchars($service['service_id']) ?>">
+                                            <?= htmlspecialchars($service['name']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Chief Complaint *</label>
+                                <textarea name="chief_complaint" class="form-control" placeholder="Patient's main concern or reason for visit..." required rows="3"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Diagnosis</label>
+                                <textarea name="diagnosis" class="form-control" placeholder="Clinical diagnosis or assessment..." rows="3"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Treatment Plan</label>
+                                <textarea name="treatment_plan" class="form-control" placeholder="Treatment plan and recommendations..." rows="4"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0.5rem;">
+                                    <input type="checkbox" id="requireFollowUp" onchange="toggleFollowUpDate()" style="width: 18px; height: 18px; cursor: pointer;">
+                                    <span>Schedule Follow-up Date</span>
+                                </label>
+                                <input type="date" name="follow_up_date" id="followUpDateInput" class="form-control" min="<?= date('Y-m-d') ?>" style="display: none;" disabled>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Remarks</label>
+                                <textarea name="remarks" class="form-control" placeholder="Additional notes or observations..." rows="3"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Consultation Status</label>
+                                <select name="consultation_status" class="form-control">
+                                    <option value="ongoing">Ongoing</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="awaiting_lab_results">Awaiting Lab Results</option>
+                                    <option value="awaiting_followup">Awaiting Follow-up</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </div>
                         </div>
 
-                        <div class="form-group">
-                            <label>Chief Complaint *</label>
-                            <textarea name="chief_complaint" class="form-control" placeholder="Patient's main concern or reason for visit..." required rows="3"></textarea>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-check-circle"></i> Save Consultation
+                            </button>
                         </div>
-                        
-                        <div class="form-group">
-                            <label>Diagnosis</label>
-                            <textarea name="diagnosis" class="form-control" placeholder="Clinical diagnosis or assessment..." rows="3"></textarea>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Treatment Plan</label>
-                            <textarea name="treatment_plan" class="form-control" placeholder="Treatment plan and recommendations..." rows="4"></textarea>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0.5rem;">
-                                <input type="checkbox" id="requireFollowUp" onchange="toggleFollowUpDate()" style="width: 18px; height: 18px; cursor: pointer;">
-                                <span>Schedule Follow-up Date</span>
-                            </label>
-                            <input type="date" name="follow_up_date" id="followUpDateInput" class="form-control" min="<?= date('Y-m-d') ?>" style="display: none;" disabled>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Remarks</label>
-                            <textarea name="remarks" class="form-control" placeholder="Additional notes or observations..." rows="3"></textarea>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Consultation Status</label>
-                            <select name="consultation_status" class="form-control">
-                                <option value="ongoing">Ongoing</option>
-                                <option value="completed">Completed</option>
-                                <option value="awaiting_lab_results">Awaiting Lab Results</option>
-                                <option value="awaiting_followup">Awaiting Follow-up</option>
-                                <option value="cancelled">Cancelled</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-check-circle"></i> Save Consultation
-                        </button>
-                    </div>
-                </form>
-            </div>
+                    </form>
+                </div>
             <?php endif; ?>
         </div>
     </section>
@@ -1398,20 +1468,20 @@ if ($selected_patient_id) {
         document.addEventListener('DOMContentLoaded', function() {
             // Check if we have a patient selected from PHP (after form submission)
             <?php if ($selected_patient_data): ?>
-            selectedPatient = {
-                id: <?= $selected_patient_data['patient_id'] ?>,
-                name: '<?= addslashes($selected_patient_data['full_name']) ?>',
-                code: '<?= addslashes($selected_patient_data['patient_code']) ?>',
-                age: '<?= $selected_patient_data['age'] ?? '-' ?>',
-                sex: '<?= addslashes($selected_patient_data['sex']) ?>',
-                barangay: '<?= addslashes($selected_patient_data['barangay']) ?>',
-                vitalsId: <?= $saved_vitals_data ? $saved_vitals_data['vitals_id'] : 'null' ?>
-            };
-            
-            // Load vitals for the selected patient (even if already saved)
-            loadPatientVitals(selectedPatient.id);
+                selectedPatient = {
+                    id: <?= $selected_patient_data['patient_id'] ?>,
+                    name: '<?= addslashes($selected_patient_data['full_name']) ?>',
+                    code: '<?= addslashes($selected_patient_data['patient_code']) ?>',
+                    age: '<?= $selected_patient_data['age'] ?? '-' ?>',
+                    sex: '<?= addslashes($selected_patient_data['sex']) ?>',
+                    barangay: '<?= addslashes($selected_patient_data['barangay']) ?>',
+                    vitalsId: <?= $saved_vitals_data ? $saved_vitals_data['vitals_id'] : 'null' ?>
+                };
+
+                // Load vitals for the selected patient (even if already saved)
+                loadPatientVitals(selectedPatient.id);
             <?php endif; ?>
-            
+
             // Add enter key functionality to search fields
             document.querySelectorAll('#searchForm input').forEach(input => {
                 input.addEventListener('keydown', function(e) {
@@ -1426,46 +1496,46 @@ if ($selected_patient_id) {
         function searchPatients() {
             const formData = new FormData(document.getElementById('searchForm'));
             const searchParams = new URLSearchParams();
-            
+
             // Add non-empty fields to search
             for (let [key, value] of formData.entries()) {
                 if (value.trim()) {
                     searchParams.append(key, value.trim());
                 }
             }
-            
+
             // Check if at least one field is filled
             if (searchParams.toString() === '') {
                 showError('Please enter at least one search criteria.');
                 return;
             }
-            
+
             const resultsContainer = document.getElementById('patientResults');
             const loadingElement = document.getElementById('loading');
             const emptySearchElement = document.getElementById('emptySearch');
             const searchResults = document.getElementById('searchResults');
-            
+
             resultsContainer.style.display = 'block';
             loadingElement.style.display = 'block';
             emptySearchElement.style.display = 'none';
             searchResults.style.display = 'none';
-            
+
             fetch(`?action=search_patients&${searchParams.toString()}`)
                 .then(response => response.json())
                 .then(data => {
                     loadingElement.style.display = 'none';
-                    
+
                     if (data.error) {
                         showError('Error searching patients: ' + data.message);
                         return;
                     }
-                    
+
                     if (data.length === 0) {
                         emptySearchElement.style.display = 'block';
                         searchResults.style.display = 'none';
                         return;
                     }
-                    
+
                     displayPatientsTable(data);
                 })
                 .catch(error => {
@@ -1477,20 +1547,20 @@ if ($selected_patient_id) {
         function clearSearch() {
             // Clear all form fields
             document.getElementById('searchForm').reset();
-            
+
             // Hide results
             document.getElementById('patientResults').style.display = 'none';
-            
+
             // Only clear selected patient if we don't have PHP-loaded data
             <?php if (!$selected_patient_data): ?>
-            clearSelectedPatient();
+                clearSelectedPatient();
             <?php endif; ?>
         }
 
         function displayPatientsTable(patients) {
             const searchResults = document.getElementById('searchResults');
             const tableBody = document.getElementById('patientsTableBody');
-            
+
             tableBody.innerHTML = patients.map(patient => `
                 <tr onclick="selectPatientFromTable(this, ${patient.patient_id}, '${patient.full_name}', '${patient.patient_code}', '${patient.age || '-'}', '${patient.sex}', '${patient.barangay}', ${patient.today_vitals_id || 'null'})">
                     <td>
@@ -1517,7 +1587,7 @@ if ($selected_patient_id) {
                     </td>
                 </tr>
             `).join('');
-            
+
             searchResults.style.display = 'block';
         }
 
@@ -1531,21 +1601,21 @@ if ($selected_patient_id) {
                 barangay: barangay,
                 vitalsId: vitalsId
             };
-            
+
             // Remove selection from all rows
             document.querySelectorAll('.patients-table tbody tr').forEach(tr => {
                 tr.classList.remove('selected');
             });
-            
+
             // Add selection to clicked row
             row.classList.add('selected');
-            
+
             // Check the radio button
             const radio = row.querySelector('.patient-radio');
             if (radio) {
                 radio.checked = true;
             }
-            
+
             // Update selected patient info with vitals status
             let vitalsStatus = vitalsId ? ' (Vitals recorded today)' : ' (No vitals today)';
             document.getElementById('selectedPatientName').textContent = fullName + vitalsStatus;
@@ -1553,25 +1623,25 @@ if ($selected_patient_id) {
             document.getElementById('selectedPatientAge').textContent = `${age}/${sex}`;
             document.getElementById('selectedPatientBarangay').textContent = barangay;
             document.getElementById('selectedPatientInfo').style.display = 'block';
-            
+
             // Enable forms and populate patient IDs
             document.getElementById('vitalsSection').classList.add('enabled');
             document.getElementById('vitalsPatientId').value = patientId;
-            
+
             <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
-            document.getElementById('consultationSection').classList.add('enabled');
-            document.getElementById('consultationPatientId').value = patientId;
-            // Auto-link today's vitals if available
-            document.getElementById('consultationVitalsId').value = vitalsId || '';
-            
-            // Show vitals info in consultation form if available
-            if (vitalsId) {
-                showVitalsInfo('Vitals from today will be automatically linked to this consultation.');
-            } else {
-                showVitalsInfo('No vitals recorded today. You can record vitals first or create consultation without vitals.');
-            }
+                document.getElementById('consultationSection').classList.add('enabled');
+                document.getElementById('consultationPatientId').value = patientId;
+                // Auto-link today's vitals if available
+                document.getElementById('consultationVitalsId').value = vitalsId || '';
+
+                // Show vitals info in consultation form if available
+                if (vitalsId) {
+                    showVitalsInfo('Vitals from today will be automatically linked to this consultation.');
+                } else {
+                    showVitalsInfo('No vitals recorded today. You can record vitals first or create consultation without vitals.');
+                }
             <?php endif; ?>
-            
+
             // Load today's vitals for this patient and populate the vitals form
             loadPatientVitals(patientId);
         }
@@ -1579,28 +1649,28 @@ if ($selected_patient_id) {
         function clearSelectedPatient() {
             // Only clear if we don't have PHP-loaded patient data
             <?php if (!$selected_patient_data): ?>
-            selectedPatient = null;
-            
-            // Hide selected patient info
-            document.getElementById('selectedPatientInfo').style.display = 'none';
-            
-            // Disable forms
-            document.getElementById('vitalsSection').classList.remove('enabled');
-            
-            <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
-            document.getElementById('consultationSection').classList.remove('enabled');
-            
-            // Remove vitals info
-            const vitalsInfo = document.getElementById('vitalsInfo');
-            if (vitalsInfo) {
-                vitalsInfo.remove();
-            }
-            <?php endif; ?>
-            
-            // Clear form fields
-            document.getElementById('vitalsPatientId').value = '';
-            document.getElementById('consultationPatientId').value = '';
-            document.getElementById('consultationVitalsId').value = '';
+                selectedPatient = null;
+
+                // Hide selected patient info
+                document.getElementById('selectedPatientInfo').style.display = 'none';
+
+                // Disable forms
+                document.getElementById('vitalsSection').classList.remove('enabled');
+
+                <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
+                    document.getElementById('consultationSection').classList.remove('enabled');
+
+                    // Remove vitals info
+                    const vitalsInfo = document.getElementById('vitalsInfo');
+                    if (vitalsInfo) {
+                        vitalsInfo.remove();
+                    }
+                <?php endif; ?>
+
+                // Clear form fields
+                document.getElementById('vitalsPatientId').value = '';
+                document.getElementById('consultationPatientId').value = '';
+                document.getElementById('consultationVitalsId').value = '';
             <?php endif; ?>
         }
 
@@ -1624,7 +1694,7 @@ if ($selected_patient_id) {
                     if (data.success && data.vitals) {
                         // Populate vitals form with today's data
                         populateVitalsForm(data.vitals);
-                        
+
                         // Update vitals status info
                         updateVitalsStatusDisplay(data.vitals);
                     } else {
@@ -1641,7 +1711,7 @@ if ($selected_patient_id) {
         function populateVitalsForm(vitalsData) {
             // Populate form fields with vitals data
             const vitalsForm = document.getElementById('vitalsForm');
-            
+
             if (vitalsData.systolic_bp) vitalsForm.querySelector('[name="systolic_bp"]').value = vitalsData.systolic_bp;
             if (vitalsData.diastolic_bp) vitalsForm.querySelector('[name="diastolic_bp"]').value = vitalsData.diastolic_bp;
             if (vitalsData.heart_rate) vitalsForm.querySelector('[name="heart_rate"]').value = vitalsData.heart_rate;
@@ -1650,25 +1720,28 @@ if ($selected_patient_id) {
             if (vitalsData.weight) vitalsForm.querySelector('[name="weight"]').value = vitalsData.weight;
             if (vitalsData.height) vitalsForm.querySelector('[name="height"]').value = vitalsData.height;
             if (vitalsData.remarks) vitalsForm.querySelector('[name="vitals_remarks"]').value = vitalsData.remarks;
-            
+
             // Update button text to "Update"
             const submitButton = vitalsForm.querySelector('button[type="submit"]');
             submitButton.innerHTML = '<i class="fas fa-save"></i> Update Vital Signs';
-            
+
             // Show current vitals info
             let currentVitalsDiv = vitalsForm.querySelector('.current-vitals-info');
             if (!currentVitalsDiv) {
                 currentVitalsDiv = document.createElement('div');
                 currentVitalsDiv.className = 'current-vitals-info';
                 currentVitalsDiv.style.cssText = 'background: #d4edda; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #28a745;';
-                
+
                 const vitalsHeader = vitalsForm.querySelector('h3');
                 vitalsHeader.insertAdjacentElement('afterend', currentVitalsDiv);
             }
-            
+
             const recordedByName = (vitalsData.recorded_by_name || '') + ' ' + (vitalsData.recorded_by_lastname || '');
-            const recordedTime = new Date(vitalsData.recorded_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            
+            const recordedTime = new Date(vitalsData.recorded_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
             currentVitalsDiv.innerHTML = `
                 <strong><i class="fas fa-check-circle"></i> Current Vitals (Recorded Today)</strong><br>
                 <small>Recorded by: ${recordedByName.trim()} at ${recordedTime}</small>
@@ -1679,11 +1752,11 @@ if ($selected_patient_id) {
             // Clear all vitals form fields
             const vitalsForm = document.getElementById('vitalsForm');
             vitalsForm.reset();
-            
+
             // Reset button text to "Save"
             const submitButton = vitalsForm.querySelector('button[type="submit"]');
             submitButton.innerHTML = '<i class="fas fa-save"></i> Save Vital Signs';
-            
+
             // Remove current vitals info if exists
             const currentVitalsDiv = vitalsForm.querySelector('.current-vitals-info');
             if (currentVitalsDiv) {
@@ -1700,16 +1773,16 @@ if ($selected_patient_id) {
                 if (patientNameSpan) {
                     patientNameSpan.textContent = selectedPatient.name + vitalsStatus;
                 }
-                
+
                 // Update consultation form vitals ID
                 <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
-                if (vitalsData && vitalsData.vitals_id) {
-                    document.getElementById('consultationVitalsId').value = vitalsData.vitals_id;
-                    showVitalsInfo('Vitals from today will be automatically linked to this consultation.');
-                } else {
-                    document.getElementById('consultationVitalsId').value = '';
-                    showVitalsInfo('No vitals recorded today. You can record vitals first or create consultation without vitals.');
-                }
+                    if (vitalsData && vitalsData.vitals_id) {
+                        document.getElementById('consultationVitalsId').value = vitalsData.vitals_id;
+                        showVitalsInfo('Vitals from today will be automatically linked to this consultation.');
+                    } else {
+                        document.getElementById('consultationVitalsId').value = '';
+                        showVitalsInfo('No vitals recorded today. You can record vitals first or create consultation without vitals.');
+                    }
                 <?php endif; ?>
             }
         }
@@ -1717,17 +1790,17 @@ if ($selected_patient_id) {
         function toggleFollowUpDate() {
             const checkbox = document.getElementById('requireFollowUp');
             const dateInput = document.getElementById('followUpDateInput');
-            
+
             if (checkbox.checked) {
                 // Show date input with smooth transition
                 dateInput.style.display = 'block';
                 dateInput.disabled = false;
-                
+
                 // Small delay to ensure display is set before focusing
                 setTimeout(() => {
                     dateInput.focus();
                 }, 50);
-                
+
                 // Add visual feedback
                 dateInput.style.opacity = '0';
                 setTimeout(() => {
@@ -1738,7 +1811,7 @@ if ($selected_patient_id) {
                 // Hide date input with smooth transition
                 dateInput.style.transition = 'opacity 0.3s ease';
                 dateInput.style.opacity = '0';
-                
+
                 setTimeout(() => {
                     dateInput.style.display = 'none';
                     dateInput.disabled = true;
@@ -1757,4 +1830,5 @@ if ($selected_patient_id) {
         }
     </script>
 </body>
+
 </html>

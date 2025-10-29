@@ -112,6 +112,11 @@ $asset_base_url = $protocol . $host . $base_path;
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+        <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logout - CHO Employee Portal</title>
     <link rel="stylesheet" href="<?= $asset_base_url ?>/assets/css/login.css">

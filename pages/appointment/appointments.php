@@ -22,7 +22,7 @@ $error = '';
 try {
     $status_updater = new AutomaticStatusUpdater($conn);
     $update_result = $status_updater->runAllUpdates();
-    
+
     // Optional: Show update message to user (you can remove this if you don't want to show it)
     if ($update_result['success'] && $update_result['total_updates'] > 0) {
         $message = "Status updates applied: " . $update_result['total_updates'] . " records updated automatically.";
@@ -90,6 +90,11 @@ try {
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <title>My Appointments - CHO Koronadal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="../../assets/css/dashboard.css">
@@ -647,8 +652,8 @@ try {
                 <div class="filters-grid">
                     <div class="filter-group">
                         <label for="appointment-search">Search Appointments</label>
-                        <input type="text" id="appointment-search" placeholder="Search by service, doctor, or appointment ID..." 
-                               onkeypress="handleSearchKeyPress(event, 'appointment')">
+                        <input type="text" id="appointment-search" placeholder="Search by service, doctor, or appointment ID..."
+                            onkeypress="handleSearchKeyPress(event, 'appointment')">
                     </div>
                     <div class="filter-group">
                         <label for="appointment-date-from">From Date</label>
@@ -713,9 +718,9 @@ try {
                     </div>
                 <?php else: ?>
                     <?php foreach ($appointments as $appointment): ?>
-                        <div class="appointment-card" data-status="<?= htmlspecialchars($appointment['status']) ?>" 
-                             data-date="<?= htmlspecialchars($appointment['appointment_date']) ?>" 
-                             data-search-text="<?= htmlspecialchars(strtolower(($appointment['service_name'] ?? '') . ' ' . ($appointment['doctor_first_name'] ?? '') . ' ' . ($appointment['doctor_last_name'] ?? '') . ' ' . ($appointment['appointment_id'] ?? ''))) ?>">
+                        <div class="appointment-card" data-status="<?= htmlspecialchars($appointment['status']) ?>"
+                            data-date="<?= htmlspecialchars($appointment['appointment_date']) ?>"
+                            data-search-text="<?= htmlspecialchars(strtolower(($appointment['service_name'] ?? '') . ' ' . ($appointment['doctor_first_name'] ?? '') . ' ' . ($appointment['doctor_last_name'] ?? '') . ' ' . ($appointment['appointment_id'] ?? ''))) ?>">
                             <div class="card-header">
                                 <h3 class="card-title">
                                     <?= htmlspecialchars($appointment['service_name'] ?? 'General Consultation') ?>
@@ -731,70 +736,70 @@ try {
                                     <strong>ID:</strong>
                                     <span class="value"><?= htmlspecialchars($appointment['appointment_id']) ?></span>
                                 </div>
-                                
+
                                 <div class="info-row">
                                     <i class="fas fa-calendar"></i>
                                     <strong>Date:</strong>
                                     <span class="value"><?= date('M j, Y', strtotime($appointment['appointment_date'])) ?></span>
                                 </div>
-                                
+
                                 <div class="info-row">
                                     <i class="fas fa-clock"></i>
                                     <strong>Time:</strong>
                                     <span class="value"><?= date('g:i A', strtotime($appointment['appointment_time'])) ?></span>
                                 </div>
-                                
+
                                 <?php if (!empty($appointment['doctor_first_name']) || !empty($appointment['doctor_last_name'])): ?>
-                                <div class="info-row">
-                                    <i class="fas fa-user-md"></i>
-                                    <strong>Doctor:</strong>
-                                    <span class="value">Dr. <?= htmlspecialchars(trim($appointment['doctor_first_name'] . ' ' . $appointment['doctor_last_name'])) ?></span>
-                                </div>
+                                    <div class="info-row">
+                                        <i class="fas fa-user-md"></i>
+                                        <strong>Doctor:</strong>
+                                        <span class="value">Dr. <?= htmlspecialchars(trim($appointment['doctor_first_name'] . ' ' . $appointment['doctor_last_name'])) ?></span>
+                                    </div>
                                 <?php elseif (!empty($appointment['employee_first_name']) || !empty($appointment['employee_last_name'])): ?>
-                                <div class="info-row">
-                                    <i class="fas fa-user"></i>
-                                    <strong>Staff:</strong>
-                                    <span class="value"><?= htmlspecialchars(trim($appointment['employee_first_name'] . ' ' . $appointment['employee_last_name'])) ?></span>
-                                </div>
+                                    <div class="info-row">
+                                        <i class="fas fa-user"></i>
+                                        <strong>Staff:</strong>
+                                        <span class="value"><?= htmlspecialchars(trim($appointment['employee_first_name'] . ' ' . $appointment['employee_last_name'])) ?></span>
+                                    </div>
                                 <?php endif; ?>
-                                
+
                                 <?php if (!empty($appointment['facility_name'])): ?>
-                                <div class="info-row">
-                                    <i class="fas fa-hospital"></i>
-                                    <strong>Facility:</strong>
-                                    <span class="value"><?= htmlspecialchars($appointment['facility_name']) ?></span>
-                                </div>
+                                    <div class="info-row">
+                                        <i class="fas fa-hospital"></i>
+                                        <strong>Facility:</strong>
+                                        <span class="value"><?= htmlspecialchars($appointment['facility_name']) ?></span>
+                                    </div>
                                 <?php endif; ?>
-                                
+
                                 <?php if (!empty($appointment['notes'])): ?>
-                                <div class="info-row">
-                                    <i class="fas fa-sticky-note"></i>
-                                    <strong>Notes:</strong>
-                                    <span class="value"><?= htmlspecialchars($appointment['notes']) ?></span>
-                                </div>
+                                    <div class="info-row">
+                                        <i class="fas fa-sticky-note"></i>
+                                        <strong>Notes:</strong>
+                                        <span class="value"><?= htmlspecialchars($appointment['notes']) ?></span>
+                                    </div>
                                 <?php endif; ?>
                             </div>
 
                             <div class="card-actions">
-                                <button class="btn btn-outline btn-outline-primary btn-sm" 
-                                        onclick="viewAppointmentDetails(<?= $appointment['appointment_id'] ?>)">
+                                <button class="btn btn-outline btn-outline-primary btn-sm"
+                                    onclick="viewAppointmentDetails(<?= $appointment['appointment_id'] ?>)">
                                     <i class="fas fa-eye"></i> View Details
                                 </button>
-                                
+
                                 <?php if (in_array($appointment['status'], ['scheduled', 'confirmed'])): ?>
-                                    <button class="btn btn-outline btn-outline-success btn-sm" 
-                                            onclick="rescheduleAppointment(<?= $appointment['appointment_id'] ?>)">
+                                    <button class="btn btn-outline btn-outline-success btn-sm"
+                                        onclick="rescheduleAppointment(<?= $appointment['appointment_id'] ?>)">
                                         <i class="fas fa-calendar-alt"></i> Reschedule
                                     </button>
-                                    <button class="btn btn-outline btn-outline-danger btn-sm" 
-                                            onclick="cancelAppointment(<?= $appointment['appointment_id'] ?>)">
+                                    <button class="btn btn-outline btn-outline-danger btn-sm"
+                                        onclick="cancelAppointment(<?= $appointment['appointment_id'] ?>)">
                                         <i class="fas fa-times"></i> Cancel
                                     </button>
                                 <?php endif; ?>
-                                
+
                                 <?php if ($appointment['status'] === 'completed'): ?>
-                                    <button class="btn btn-outline btn-outline-secondary btn-sm" 
-                                            onclick="downloadAppointmentReport(<?= $appointment['appointment_id'] ?>)">
+                                    <button class="btn btn-outline btn-outline-secondary btn-sm"
+                                        onclick="downloadAppointmentReport(<?= $appointment['appointment_id'] ?>)">
                                         <i class="fas fa-download"></i> Download Report
                                     </button>
                                 <?php endif; ?>
@@ -834,7 +839,7 @@ try {
             appointments.forEach(card => {
                 const cardStatus = card.getAttribute('data-status');
                 const shouldShow = status === 'all' || cardStatus === status;
-                
+
                 card.style.display = shouldShow ? 'block' : 'none';
                 if (shouldShow) visibleCount++;
             });
@@ -1000,12 +1005,12 @@ try {
             const today = new Date();
             const threeMonthsAgo = new Date();
             threeMonthsAgo.setMonth(today.getMonth() - 3);
-            
+
             // Format dates for input fields
             const formatDate = (date) => {
                 return date.toISOString().split('T')[0];
             };
-            
+
             // Uncomment these if you want to set default date range
             // document.getElementById('appointment-date-from').value = formatDate(threeMonthsAgo);
             // document.getElementById('appointment-date-to').value = formatDate(today);
@@ -1042,4 +1047,5 @@ try {
     </style>
 
 </body>
+
 </html>

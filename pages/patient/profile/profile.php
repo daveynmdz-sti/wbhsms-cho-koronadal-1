@@ -677,6 +677,11 @@ if (isset($_GET['logout'])) {
 
 <head>
     <meta charset="UTF-8" />
+        <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <title><?= 
         $view_mode === 'admin' ? "Admin View - Patient Profile" : 
         ($view_mode === 'bhw' ? "BHW View - Patient Profile" : 

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Billing Management Dashboard
  * Purpose: Main dashboard for cashiers/admins to manage invoices and payments
@@ -56,7 +57,7 @@ if (!$canViewBilling) {
     // Map role_id to role name for redirect
     $roleMap = [
         1 => 'admin',
-        2 => 'doctor', 
+        2 => 'doctor',
         3 => 'nurse',
         4 => 'pharmacist',
         5 => 'dho',
@@ -132,7 +133,7 @@ try {
     $stmt = $pdo->prepare($invoicesSql);
     $stmt->execute($params);
     $invoicesResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // Debug information (stored for later display)
     $debug_info = null;
     if (isset($_GET['debug'])) {
@@ -190,6 +191,11 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <title>Billing Management - WBHSMS</title>
     <link rel="stylesheet" href="<?= $assets_path ?>/css/sidebar.css">
     <link rel="stylesheet" href="<?= $assets_path ?>/css/dashboard.css">
@@ -532,7 +538,7 @@ try {
             justify-content: center;
             align-items: center;
         }
-        
+
         .modal-content {
             background: white;
             width: 90%;
@@ -543,7 +549,7 @@ try {
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
             box-sizing: content-box;
         }
-        
+
         .modal-header {
             background: #007bff;
             color: white;
@@ -552,12 +558,12 @@ try {
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .modal-header h3 {
             margin: 0;
             font-size: 1.25rem;
         }
-        
+
         .modal-close {
             background: none;
             border: none;
@@ -571,18 +577,18 @@ try {
             align-items: center;
             justify-content: center;
         }
-        
+
         .modal-close:hover {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 4px;
         }
-        
+
         .modal-body {
             padding: 0;
             max-height: calc(90vh - 120px);
             overflow-y: auto;
         }
-        
+
         .modal-footer {
             background: #f8f9fa;
             padding: 1rem 1.5rem;
@@ -606,20 +612,22 @@ try {
 
     <section class="content-wrapper">
         <?php if ($debug_info): ?>
-        <div style='background: #f0f8ff; border: 1px solid #007bff; padding: 15px; margin: 20px; border-radius: 5px;'>
-            <h4>Debug Information:</h4>
-            <p><strong>SQL Query:</strong><br><code><?= htmlspecialchars($debug_info['sql']) ?></code></p>
-            <p><strong>Parameters:</strong> <?= htmlspecialchars(json_encode($debug_info['params'])) ?></p>
-            <p><strong>Results Count:</strong> <?= $debug_info['results_count'] ?></p>
-            <p><strong>Status Filter:</strong> <?= htmlspecialchars($debug_info['status_filter']) ?></p>
-            <p><strong>Search Query:</strong> <?= htmlspecialchars($debug_info['search_query']) ?></p>
-            <p><strong>Date Filter:</strong> <?= htmlspecialchars($debug_info['date_filter']) ?></p>
-            <?php if ($debug_info['sample_result']): ?>
-            <p><strong>Sample Result:</strong><br><pre><?= htmlspecialchars(json_encode($debug_info['sample_result'], JSON_PRETTY_PRINT)) ?></pre></p>
-            <?php endif; ?>
-        </div>
+            <div style='background: #f0f8ff; border: 1px solid #007bff; padding: 15px; margin: 20px; border-radius: 5px;'>
+                <h4>Debug Information:</h4>
+                <p><strong>SQL Query:</strong><br><code><?= htmlspecialchars($debug_info['sql']) ?></code></p>
+                <p><strong>Parameters:</strong> <?= htmlspecialchars(json_encode($debug_info['params'])) ?></p>
+                <p><strong>Results Count:</strong> <?= $debug_info['results_count'] ?></p>
+                <p><strong>Status Filter:</strong> <?= htmlspecialchars($debug_info['status_filter']) ?></p>
+                <p><strong>Search Query:</strong> <?= htmlspecialchars($debug_info['search_query']) ?></p>
+                <p><strong>Date Filter:</strong> <?= htmlspecialchars($debug_info['date_filter']) ?></p>
+                <?php if ($debug_info['sample_result']): ?>
+                    <p><strong>Sample Result:</strong><br>
+                    <pre><?= htmlspecialchars(json_encode($debug_info['sample_result'], JSON_PRETTY_PRINT)) ?></pre>
+                    </p>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
-        
+
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
             <a href="<?= getRoleDashboardUrl() ?>"><i class="fas fa-home"></i> Dashboard</a>
@@ -638,7 +646,7 @@ try {
 
         <!-- Success/Error Messages -->
         <div id="alertContainer"></div>
-        
+
         <!-- Display server-side messages -->
         <?php if (isset($_SESSION['success_message'])): ?>
             <div class="alert alert-success">
@@ -719,9 +727,9 @@ try {
                     <!-- Quick Actions Button -->
                     <div style="margin-bottom: 15px;">
                         <?php if ($canGenerateReports): ?>
-                        <button type="button" class="btn btn-primary" onclick="openReportsModal()">
-                            <i class="fas fa-chart-bar"></i> Reports
-                        </button>
+                            <button type="button" class="btn btn-primary" onclick="openReportsModal()">
+                                <i class="fas fa-chart-bar"></i> Reports
+                            </button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -754,9 +762,9 @@ try {
                             <h3>No Invoices Found</h3>
                             <p>No invoices match your current search criteria.</p>
                             <?php if ($canCreateInvoices): ?>
-                            <a href="create_invoice.php" class="btn btn-primary" style="margin-top: 15px;">
-                                <i class="fas fa-plus"></i> Create First Invoice
-                            </a>
+                                <a href="create_invoice.php" class="btn btn-primary" style="margin-top: 15px;">
+                                    <i class="fas fa-plus"></i> Create First Invoice
+                                </a>
                             <?php endif; ?>
                         </div>
                     <?php else: ?>
@@ -774,41 +782,41 @@ try {
                             </thead>
                             <tbody>
                                 <?php foreach ($invoicesResult as $invoice): ?>
-                                <tr>
-                                    <td><strong>#<?= $invoice['billing_id'] ?></strong></td>
-                                    <td>
-                                        <strong><?= htmlspecialchars($invoice['first_name'] . ' ' . $invoice['last_name']) ?></strong><br>
-                                        <small style="color: #666;"><?= htmlspecialchars($invoice['patient_id_display']) ?></small>
-                                    </td>
-                                    <td><?= date('M d, Y', strtotime($invoice['billing_date'])) ?></td>
-                                    <td><?= $invoice['items_count'] ?> items</td>
-                                    <td>
-                                        <strong>₱<?= number_format($invoice['net_amount'], 2) ?></strong><br>
-                                        <?php if ($invoice['paid_amount'] > 0): ?>
-                                        <small style="color: #666;">Paid: ₱<?= number_format($invoice['paid_amount'], 2) ?></small>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-<?= $invoice['payment_status'] ?>">
-                                            <?= ucfirst($invoice['payment_status']) ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            <button class="btn btn-info btn-sm" onclick="viewInvoice(<?= $invoice['billing_id'] ?>)" title="View Details">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                            <?php if ($invoice['payment_status'] !== 'paid' && $canProcessPayments): ?>
-                                            <a href="process_payment.php?billing_id=<?= $invoice['billing_id'] ?>" class="btn btn-success btn-sm" title="Process Payment">
-                                                <i class="fas fa-credit-card"></i>
-                                            </a>
+                                    <tr>
+                                        <td><strong>#<?= $invoice['billing_id'] ?></strong></td>
+                                        <td>
+                                            <strong><?= htmlspecialchars($invoice['first_name'] . ' ' . $invoice['last_name']) ?></strong><br>
+                                            <small style="color: #666;"><?= htmlspecialchars($invoice['patient_id_display']) ?></small>
+                                        </td>
+                                        <td><?= date('M d, Y', strtotime($invoice['billing_date'])) ?></td>
+                                        <td><?= $invoice['items_count'] ?> items</td>
+                                        <td>
+                                            <strong>₱<?= number_format($invoice['net_amount'], 2) ?></strong><br>
+                                            <?php if ($invoice['paid_amount'] > 0): ?>
+                                                <small style="color: #666;">Paid: ₱<?= number_format($invoice['paid_amount'], 2) ?></small>
                                             <?php endif; ?>
-                                            <button class="btn btn-secondary btn-sm" onclick="printInvoice(<?= $invoice['billing_id'] ?>)" title="Print Invoice">
-                                                <i class="fas fa-print"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?= $invoice['payment_status'] ?>">
+                                                <?= ucfirst($invoice['payment_status']) ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="action-buttons">
+                                                <button class="btn btn-info btn-sm" onclick="viewInvoice(<?= $invoice['billing_id'] ?>)" title="View Details">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <?php if ($invoice['payment_status'] !== 'paid' && $canProcessPayments): ?>
+                                                    <a href="process_payment.php?billing_id=<?= $invoice['billing_id'] ?>" class="btn btn-success btn-sm" title="Process Payment">
+                                                        <i class="fas fa-credit-card"></i>
+                                                    </a>
+                                                <?php endif; ?>
+                                                <button class="btn btn-secondary btn-sm" onclick="printInvoice(<?= $invoice['billing_id'] ?>)" title="Print Invoice">
+                                                    <i class="fas fa-print"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -834,29 +842,29 @@ try {
                     <?php else: ?>
                         <div style="max-height: 500px; overflow-y: auto;">
                             <?php foreach ($recentPaymentsResult as $payment): ?>
-                            <div style="border-bottom: 1px solid #eee; padding: 15px 0;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <strong><?= htmlspecialchars($payment['first_name'] . ' ' . $payment['last_name']) ?></strong><br>
-                                        <small style="color: #666;">
-                                            Invoice #<?= $payment['billing_id'] ?> • 
-                                            <?= ucfirst($payment['payment_method']) ?>
-                                            <?php if ($payment['change_amount'] > 0): ?>
-                                                • Change: ₱<?= number_format($payment['change_amount'], 2) ?>
-                                            <?php endif; ?>
-                                        </small>
-                                    </div>
-                                    <div style="text-align: right;">
-                                        <strong style="color: #28a745;">₱<?= number_format($payment['actual_payment_applied'], 2) ?></strong><br>
-                                        <small style="color: #666;"><?= date('M d, g:i A', strtotime($payment['payment_date'])) ?></small>
-                                        <?php if ($payment['change_amount'] > 0): ?>
-                                            <br><small style="color: #999; font-size: 0.8em;">
-                                                Paid: ₱<?= number_format($payment['amount_paid'], 2) ?>
+                                <div style="border-bottom: 1px solid #eee; padding: 15px 0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <strong><?= htmlspecialchars($payment['first_name'] . ' ' . $payment['last_name']) ?></strong><br>
+                                            <small style="color: #666;">
+                                                Invoice #<?= $payment['billing_id'] ?> •
+                                                <?= ucfirst($payment['payment_method']) ?>
+                                                <?php if ($payment['change_amount'] > 0): ?>
+                                                    • Change: ₱<?= number_format($payment['change_amount'], 2) ?>
+                                                <?php endif; ?>
                                             </small>
-                                        <?php endif; ?>
+                                        </div>
+                                        <div style="text-align: right;">
+                                            <strong style="color: #28a745;">₱<?= number_format($payment['actual_payment_applied'], 2) ?></strong><br>
+                                            <small style="color: #666;"><?= date('M d, g:i A', strtotime($payment['payment_date'])) ?></small>
+                                            <?php if ($payment['change_amount'] > 0): ?>
+                                                <br><small style="color: #999; font-size: 0.8em;">
+                                                    Paid: ₱<?= number_format($payment['amount_paid'], 2) ?>
+                                                </small>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>
@@ -892,37 +900,37 @@ try {
         // API base path for production compatibility
         const API_BASE_PATH = '<?= $api_base_path ?>';
         console.log('API Base Path:', API_BASE_PATH);
-        
+
         // Search and filter functions
         function applyFilters() {
             const searchQuery = document.getElementById('searchInvoices').value;
             const statusFilter = document.getElementById('statusFilter').value;
             const dateFilter = document.getElementById('dateFilter').value;
-            
+
             const params = new URLSearchParams();
             if (searchQuery) params.append('search', searchQuery);
             if (statusFilter) params.append('status', statusFilter);
             if (dateFilter) params.append('date', dateFilter);
-            
+
             window.location.href = '?' + params.toString();
         }
-        
+
         function clearFilters() {
             document.getElementById('searchInvoices').value = '';
             document.getElementById('statusFilter').value = '';
             document.getElementById('dateFilter').value = '';
             window.location.href = window.location.pathname;
         }
-        
+
         // View invoice details in modal
         function viewInvoice(billingId) {
             try {
                 // Show loading state
                 showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
-                
+
                 const apiUrl = `${API_BASE_PATH}/api/billing/management/get_invoice_details.php?billing_id=${billingId}`;
                 console.log('Fetching invoice details from:', apiUrl);
-                
+
                 fetch(apiUrl)
                     .then(response => {
                         if (!response.ok) {
@@ -946,7 +954,7 @@ try {
                 alert('Error loading invoice details. Please try again.');
             }
         }
-        
+
         // Print invoice using dedicated API
         function printInvoice(billingId) {
             try {
@@ -958,23 +966,23 @@ try {
                 alert('Error printing invoice. Please try again.');
             }
         }
-        
+
         // Modal functions
         let currentInvoiceId = null;
-        
+
         function showInvoiceModal(content) {
             document.getElementById('invoice-content').innerHTML = content;
             document.getElementById('invoice-modal').style.display = 'flex';
         }
-        
+
         function closeInvoiceModal() {
             document.getElementById('invoice-modal').style.display = 'none';
             currentInvoiceId = null;
         }
-        
+
         function displayInvoiceDetails(invoice) {
             currentInvoiceId = invoice.billing_id;
-            
+
             // Build items HTML
             let itemsHtml = '';
             if (invoice.items && invoice.items.length > 0) {
@@ -991,7 +999,7 @@ try {
             } else {
                 itemsHtml = '<tr><td colspan="5" style="text-align: center; color: #666;">No items found</td></tr>';
             }
-            
+
             // Build payments HTML
             let paymentsHtml = '';
             if (invoice.payments && invoice.payments.length > 0) {
@@ -1012,100 +1020,100 @@ try {
             } else {
                 paymentsHtml = '<p style="text-align: center; color: #666; padding: 1rem;">No payments recorded</p>';
             }
-            
+
             // Build discount HTML if applicable
-            const discountHtml = invoice.discount_amount > 0 ? 
+            const discountHtml = invoice.discount_amount > 0 ?
                 '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Discount (' + (invoice.discount_type || 'Standard') + '):</span><span>-₱' + parseFloat(invoice.discount_amount).toFixed(2) + '</span></div>' : '';
-            
+
             // Calculate balance and color
             const balance = parseFloat(invoice.net_amount) - parseFloat(invoice.paid_amount);
             const balanceColor = balance > 0 ? '#dc3545' : '#28a745';
-            
+
             // Build complete invoice HTML
-            const invoiceHtml = 
+            const invoiceHtml =
                 '<div style="padding: 2rem; font-family: Arial, sans-serif;">' +
-                    '<div style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid #007bff;">' +
-                        '<div>' +
-                            '<h2 style="color: #007bff; margin: 0 0 0.5rem 0;">City Health Office</h2>' +
-                            '<p style="margin: 0.25rem 0; color: #666;">Koronadal City, South Cotabato</p>' +
-                            '<p style="margin: 0.25rem 0; color: #666;">Phone: (083) 228-xxxx</p>' +
-                        '</div>' +
-                        '<div style="text-align: right;">' +
-                            '<h3 style="color: #333; margin: 0 0 1rem 0;">INVOICE #' + invoice.billing_id + '</h3>' +
-                            '<p><strong>Date:</strong> ' + new Date(invoice.billing_date).toLocaleDateString() + '</p>' +
-                            '<p><strong>Status:</strong> <span class="status-badge status-' + invoice.payment_status + '">' + invoice.payment_status.toUpperCase() + '</span></p>' +
-                        '</div>' +
-                    '</div>' +
-                    
-                    '<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">' +
-                        '<h4 style="margin: 0 0 1rem 0; color: #333;"><i class="fas fa-user"></i> Patient Information</h4>' +
-                        '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">' +
-                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient Name</span><span style="color: #333;">' + (invoice.first_name || '') + ' ' + (invoice.last_name || '') + '</span></div>' +
-                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient ID</span><span style="color: #333;">' + (invoice.patient_number || 'N/A') + '</span></div>' +
-                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Age</span><span style="color: #333;">' + (invoice.age || 'N/A') + ' years old</span></div>' +
-                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Contact</span><span style="color: #333;">' + (invoice.contact_number || 'N/A') + '</span></div>' +
-                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Address</span><span style="color: #333;">' + (invoice.barangay_name || 'N/A') + ', ' + (invoice.city || 'Koronadal') + '</span></div>' +
-                            '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Visit Purpose</span><span style="color: #333;">' + (invoice.visit_purpose || 'General Consultation') + '</span></div>' +
-                        '</div>' +
-                    '</div>' +
-                    
-                    '<h4><i class="fas fa-list"></i> Services & Items</h4>' +
-                    '<table style="width: 100%; border-collapse: collapse; margin-bottom: 2rem;">' +
-                        '<thead>' +
-                            '<tr>' +
-                                '<th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Service/Item</th>' +
-                                '<th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Category</th>' +
-                                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Qty</th>' +
-                                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Unit Price</th>' +
-                                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Subtotal</th>' +
-                            '</tr>' +
-                        '</thead>' +
-                        '<tbody>' + itemsHtml + '</tbody>' +
-                    '</table>' +
-                    
-                    '<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">' +
-                        '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Subtotal:</span><span>₱' + parseFloat(invoice.total_amount).toFixed(2) + '</span></div>' +
-                        discountHtml +
-                        '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: bold; font-size: 1.1rem; border-top: 2px solid #007bff; padding-top: 0.5rem; margin-top: 1rem;"><span>Total Amount:</span><span>₱' + parseFloat(invoice.net_amount).toFixed(2) + '</span></div>' +
-                        '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Amount Paid:</span><span>₱' + parseFloat(invoice.paid_amount).toFixed(2) + '</span></div>' +
-                        '<div style="display: flex; justify-content: space-between; color: ' + balanceColor + ';"><span>Balance:</span><span>₱' + balance.toFixed(2) + '</span></div>' +
-                    '</div>' +
-                    
-                    '<div>' +
-                        '<h4><i class="fas fa-credit-card"></i> Payment History</h4>' +
-                        paymentsHtml +
-                    '</div>' +
+                '<div style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid #007bff;">' +
+                '<div>' +
+                '<h2 style="color: #007bff; margin: 0 0 0.5rem 0;">City Health Office</h2>' +
+                '<p style="margin: 0.25rem 0; color: #666;">Koronadal City, South Cotabato</p>' +
+                '<p style="margin: 0.25rem 0; color: #666;">Phone: (083) 228-xxxx</p>' +
+                '</div>' +
+                '<div style="text-align: right;">' +
+                '<h3 style="color: #333; margin: 0 0 1rem 0;">INVOICE #' + invoice.billing_id + '</h3>' +
+                '<p><strong>Date:</strong> ' + new Date(invoice.billing_date).toLocaleDateString() + '</p>' +
+                '<p><strong>Status:</strong> <span class="status-badge status-' + invoice.payment_status + '">' + invoice.payment_status.toUpperCase() + '</span></p>' +
+                '</div>' +
+                '</div>' +
+
+                '<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">' +
+                '<h4 style="margin: 0 0 1rem 0; color: #333;"><i class="fas fa-user"></i> Patient Information</h4>' +
+                '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">' +
+                '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient Name</span><span style="color: #333;">' + (invoice.first_name || '') + ' ' + (invoice.last_name || '') + '</span></div>' +
+                '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Patient ID</span><span style="color: #333;">' + (invoice.patient_number || 'N/A') + '</span></div>' +
+                '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Age</span><span style="color: #333;">' + (invoice.age || 'N/A') + ' years old</span></div>' +
+                '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Contact</span><span style="color: #333;">' + (invoice.contact_number || 'N/A') + '</span></div>' +
+                '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Address</span><span style="color: #333;">' + (invoice.barangay_name || 'N/A') + ', ' + (invoice.city || 'Koronadal') + '</span></div>' +
+                '<div><span style="font-weight: 600; color: #666; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Visit Purpose</span><span style="color: #333;">' + (invoice.visit_purpose || 'General Consultation') + '</span></div>' +
+                '</div>' +
+                '</div>' +
+
+                '<h4><i class="fas fa-list"></i> Services & Items</h4>' +
+                '<table style="width: 100%; border-collapse: collapse; margin-bottom: 2rem;">' +
+                '<thead>' +
+                '<tr>' +
+                '<th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Service/Item</th>' +
+                '<th style="padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Category</th>' +
+                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Qty</th>' +
+                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Unit Price</th>' +
+                '<th style="padding: 0.75rem; text-align: right; border-bottom: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; color: #333;">Subtotal</th>' +
+                '</tr>' +
+                '</thead>' +
+                '<tbody>' + itemsHtml + '</tbody>' +
+                '</table>' +
+
+                '<div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">' +
+                '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Subtotal:</span><span>₱' + parseFloat(invoice.total_amount).toFixed(2) + '</span></div>' +
+                discountHtml +
+                '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: bold; font-size: 1.1rem; border-top: 2px solid #007bff; padding-top: 0.5rem; margin-top: 1rem;"><span>Total Amount:</span><span>₱' + parseFloat(invoice.net_amount).toFixed(2) + '</span></div>' +
+                '<div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;"><span>Amount Paid:</span><span>₱' + parseFloat(invoice.paid_amount).toFixed(2) + '</span></div>' +
+                '<div style="display: flex; justify-content: space-between; color: ' + balanceColor + ';"><span>Balance:</span><span>₱' + balance.toFixed(2) + '</span></div>' +
+                '</div>' +
+
+                '<div>' +
+                '<h4><i class="fas fa-credit-card"></i> Payment History</h4>' +
+                paymentsHtml +
+                '</div>' +
                 '</div>';
-            
+
             showInvoiceModal(invoiceHtml);
             document.getElementById('print-modal-invoice').style.display = 'inline-block';
         }
-        
+
         function printModalInvoice() {
             if (currentInvoiceId) {
                 printInvoice(currentInvoiceId);
             }
         }
-        
+
         // Close modal when clicking outside
         document.getElementById('invoice-modal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeInvoiceModal();
             }
         });
-        
+
         // Close modal with ESC key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && document.getElementById('invoice-modal').style.display === 'flex') {
                 closeInvoiceModal();
             }
         });
-        
+
         // Navigate to reports page
         function openReportsModal() {
             window.location.href = 'billing_reports.php';
         }
-        
+
         // Helper function to get role dashboard URL
         function getRoleDashboardUrl() {
             // Get role from session via a safer method
@@ -1114,7 +1122,7 @@ try {
             const currentRole = pathParts.includes('admin') ? 'admin' : 'cashier';
             return '../management/' + currentRole + '/dashboard.php';
         }
-        
+
         // Ensure functions are globally accessible
         window.viewInvoice = viewInvoice;
         window.printInvoice = printInvoice;
@@ -1126,4 +1134,5 @@ try {
     </script>
 
 </body>
+
 </html>

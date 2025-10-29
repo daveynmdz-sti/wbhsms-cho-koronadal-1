@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Billing Reports Dashboard
  * Purpose: Generate comprehensive billing analytics and financial reports
@@ -49,7 +50,7 @@ if (!$canViewReports) {
     // Map role_id to role name for redirect
     $roleMap = [
         1 => 'admin',
-        2 => 'doctor', 
+        2 => 'doctor',
         3 => 'nurse',
         4 => 'pharmacist',
         5 => 'dho',
@@ -74,7 +75,7 @@ try {
     if ($report_type === 'monthly') {
         $month_start = date('Y-m-01', strtotime($month));
         $month_end = date('Y-m-t', strtotime($month));
-        
+
         // Daily collections summary
         $daily_collections_query = "SELECT 
                                         DATE(p.paid_at) as payment_date,
@@ -84,11 +85,11 @@ try {
                                     WHERE DATE(p.paid_at) BETWEEN ? AND ?
                                     GROUP BY DATE(p.paid_at)
                                     ORDER BY payment_date ASC";
-        
+
         $stmt = $pdo->prepare($daily_collections_query);
         $stmt->execute([$month_start, $month_end]);
         $daily_collections = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         // Monthly summary
         $monthly_summary_query = "SELECT 
                                     COUNT(DISTINCT b.billing_id) as total_invoices,
@@ -101,12 +102,12 @@ try {
                                   FROM billing b
                                   LEFT JOIN payments p ON b.billing_id = p.billing_id AND DATE(p.paid_at) BETWEEN ? AND ?
                                   WHERE DATE(b.billing_date) BETWEEN ? AND ?";
-        
+
         $stmt = $pdo->prepare($monthly_summary_query);
         $stmt->execute([$month_start, $month_end, $month_start, $month_end]);
         $monthly_summary = $stmt->fetch(PDO::FETCH_ASSOC);
     }
-    
+
     // Service Analytics Report
     $services_query = "SELECT 
                           si.item_name,
@@ -123,11 +124,11 @@ try {
                        GROUP BY si.item_id, si.item_name, s.service_name
                        ORDER BY total_revenue DESC
                        LIMIT 20";
-    
+
     $stmt = $pdo->prepare($services_query);
     $stmt->execute([$date_from, $date_to]);
     $service_analytics = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // Payment Method Analysis
     $payment_methods_query = "SELECT 
                                 p.payment_method,
@@ -138,11 +139,11 @@ try {
                               WHERE DATE(p.paid_at) BETWEEN ? AND ?
                               GROUP BY p.payment_method
                               ORDER BY total_amount DESC";
-    
+
     $stmt = $pdo->prepare($payment_methods_query);
     $stmt->execute([$date_from, $date_to]);
     $payment_methods = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // Outstanding Balances
     $outstanding_query = "SELECT 
                             b.billing_id,
@@ -159,11 +160,11 @@ try {
                           WHERE b.payment_status IN ('unpaid', 'partial')
                           ORDER BY outstanding_amount DESC
                           LIMIT 50";
-    
+
     $stmt = $pdo->prepare($outstanding_query);
     $stmt->execute();
     $outstanding_balances = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // Cashier Performance (if admin)
     $cashier_performance = [];
     if ($canViewCashierPerformance) {
@@ -179,12 +180,11 @@ try {
                           WHERE DATE(p.paid_at) BETWEEN ? AND ?
                           GROUP BY e.employee_id, e.first_name, e.last_name, e.role
                           ORDER BY total_collected DESC";
-        
+
         $stmt = $pdo->prepare($cashier_query);
         $stmt->execute([$date_from, $date_to]);
         $cashier_performance = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-
 } catch (Exception $e) {
     $error_message = 'Error generating reports: ' . $e->getMessage();
     $daily_collections = [];
@@ -202,6 +202,11 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <title>Billing Reports - WBHSMS</title>
     <link rel="stylesheet" href="<?= $assets_path ?>/css/sidebar.css">
     <link rel="stylesheet" href="<?= $assets_path ?>/css/dashboard.css">
@@ -281,7 +286,10 @@ try {
         }
 
         /* Form elements styling to match billing management */
-        select, input[type="text"], input[type="date"], input[type="month"] {
+        select,
+        input[type="text"],
+        input[type="date"],
+        input[type="month"] {
             padding: 0.5rem;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -289,7 +297,8 @@ try {
             width: 100%;
         }
 
-        select:focus, input:focus {
+        select:focus,
+        input:focus {
             border-color: #007bff;
             outline: none;
             box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
@@ -302,44 +311,44 @@ try {
             color: #495057;
             font-size: 0.9rem;
         }
-        
+
         .report-filters {
             background: white;
             padding: 1.5rem;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             margin-bottom: 2rem;
         }
-        
+
         .filters-row {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
             align-items: end;
         }
-        
+
         .report-section {
             background: white;
             padding: 1.5rem;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             margin-bottom: 2rem;
         }
-        
+
         .report-section h3 {
             margin-bottom: 1rem;
             padding-bottom: 0.5rem;
             border-bottom: 2px solid #e9ecef;
             color: #495057;
         }
-        
+
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 1rem;
             margin-bottom: 1.5rem;
         }
-        
+
         .summary-card {
             text-align: center;
             padding: 1rem;
@@ -347,83 +356,88 @@ try {
             border-radius: 6px;
             border-left: 4px solid #007bff;
         }
-        
+
         .summary-card.revenue {
             border-left-color: #28a745;
         }
-        
+
         .summary-card.warning {
             border-left-color: #ffc107;
         }
-        
+
         .summary-card.danger {
             border-left-color: #dc3545;
         }
-        
+
         .summary-number {
             font-size: 1.5rem;
             font-weight: bold;
             color: #495057;
         }
-        
+
         .summary-label {
             font-size: 0.9rem;
             color: #6c757d;
             margin-top: 0.25rem;
         }
-        
+
         .data-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 1rem;
         }
-        
+
         .data-table th,
         .data-table td {
             padding: 0.75rem;
             text-align: left;
             border-bottom: 1px solid #dee2e6;
         }
-        
+
         .data-table th {
             background-color: #f8f9fa;
             font-weight: 600;
             color: #495057;
         }
-        
+
         .data-table tbody tr:hover {
             background-color: #f8f9fa;
         }
-        
+
         .text-right {
             text-align: right;
         }
-        
+
         .text-center {
             text-align: center;
         }
-        
+
         .chart-container {
             height: 300px;
             margin: 1rem 0;
             position: relative;
         }
-        
+
         .print-section {
             margin-top: 2rem;
             text-align: center;
         }
-        
+
         @media print {
-            .sidebar, .report-filters, .print-section, .breadcrumb, .page-header .btn {
+
+            .sidebar,
+            .report-filters,
+            .print-section,
+            .breadcrumb,
+            .page-header .btn {
                 display: none;
             }
-            
+
             .content-wrapper {
                 margin-left: 0;
                 padding: 10px;
             }
-            
+
             .report-section {
                 break-inside: avoid;
                 margin-bottom: 1rem;
@@ -431,13 +445,13 @@ try {
                 border: 1px solid #ddd;
             }
         }
-        
+
         .tab-buttons {
             display: flex;
             gap: 0.5rem;
             margin-bottom: 1rem;
         }
-        
+
         .tab-btn {
             padding: 0.5rem 1rem;
             border: 1px solid #dee2e6;
@@ -446,17 +460,17 @@ try {
             border-radius: 4px;
             transition: all 0.3s;
         }
-        
+
         .tab-btn.active {
             background: #007bff;
             color: white;
             border-color: #007bff;
         }
-        
+
         .tab-content {
             display: none;
         }
-        
+
         .tab-content.active {
             display: block;
         }
@@ -523,53 +537,53 @@ try {
             </div>
         </div>
 
-            <!-- Report Filters -->
-            <div class="report-filters">
-                <h3><i class="fas fa-filter"></i> Report Parameters</h3>
-                <form method="GET" id="report-form">
-                    <div class="filters-row">
-                        <div>
-                            <label for="report_type">Report Type</label>
-                            <select id="report_type" name="report_type" onchange="toggleDateInputs()">
-                                <option value="monthly" <?= $report_type === 'monthly' ? 'selected' : '' ?>>Monthly Report</option>
-                                <option value="custom" <?= $report_type === 'custom' ? 'selected' : '' ?>>Custom Date Range</option>
-                            </select>
-                        </div>
-                        
-                        <div id="month-input" style="<?= $report_type === 'custom' ? 'display: none;' : '' ?>">
-                            <label for="month">Month</label>
-                            <input type="month" id="month" name="month" value="<?= $month ?>">
-                        </div>
-                        
-                        <div id="date-range" style="<?= $report_type === 'monthly' ? 'display: none;' : '' ?>">
-                            <label for="date_from">From Date</label>
-                            <input type="date" id="date_from" name="date_from" value="<?= $date_from ?>">
-                        </div>
-                        
-                        <div id="date-range-to" style="<?= $report_type === 'monthly' ? 'display: none;' : '' ?>">
-                            <label for="date_to">To Date</label>
-                            <input type="date" id="date_to" name="date_to" value="<?= $date_to ?>">
-                        </div>
-                        
-                        <div>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-chart-line"></i> Generate Report
-                            </button>
-                            <?php if ($canExportReports): ?>
+        <!-- Report Filters -->
+        <div class="report-filters">
+            <h3><i class="fas fa-filter"></i> Report Parameters</h3>
+            <form method="GET" id="report-form">
+                <div class="filters-row">
+                    <div>
+                        <label for="report_type">Report Type</label>
+                        <select id="report_type" name="report_type" onchange="toggleDateInputs()">
+                            <option value="monthly" <?= $report_type === 'monthly' ? 'selected' : '' ?>>Monthly Report</option>
+                            <option value="custom" <?= $report_type === 'custom' ? 'selected' : '' ?>>Custom Date Range</option>
+                        </select>
+                    </div>
+
+                    <div id="month-input" style="<?= $report_type === 'custom' ? 'display: none;' : '' ?>">
+                        <label for="month">Month</label>
+                        <input type="month" id="month" name="month" value="<?= $month ?>">
+                    </div>
+
+                    <div id="date-range" style="<?= $report_type === 'monthly' ? 'display: none;' : '' ?>">
+                        <label for="date_from">From Date</label>
+                        <input type="date" id="date_from" name="date_from" value="<?= $date_from ?>">
+                    </div>
+
+                    <div id="date-range-to" style="<?= $report_type === 'monthly' ? 'display: none;' : '' ?>">
+                        <label for="date_to">To Date</label>
+                        <input type="date" id="date_to" name="date_to" value="<?= $date_to ?>">
+                    </div>
+
+                    <div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-chart-line"></i> Generate Report
+                        </button>
+                        <?php if ($canExportReports): ?>
                             <button type="button" class="btn btn-secondary" onclick="exportReport()">
                                 <i class="fas fa-download"></i> Export
                             </button>
-                            <?php endif; ?>
-                        </div>
+                        <?php endif; ?>
                     </div>
-                </form>
-            </div>
+                </div>
+            </form>
+        </div>
 
-            <?php if ($report_type === 'monthly' && !empty($monthly_summary)): ?>
+        <?php if ($report_type === 'monthly' && !empty($monthly_summary)): ?>
             <!-- Monthly Summary -->
             <div class="report-section">
                 <h3><i class="fas fa-calendar"></i> Monthly Summary - <?= date('F Y', strtotime($month)) ?></h3>
-                
+
                 <div class="summary-grid">
                     <div class="summary-card revenue">
                         <div class="summary-number">₱<?= number_format($monthly_summary['total_collected'] ?? 0, 2) ?></div>
@@ -602,35 +616,35 @@ try {
                 </div>
 
                 <?php if (!empty($daily_collections)): ?>
-                <h4>Daily Collections</h4>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th class="text-center">Payments</th>
-                            <th class="text-right">Daily Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($daily_collections as $day): ?>
-                        <tr>
-                            <td><?= date('M d, Y (D)', strtotime($day['payment_date'])) ?></td>
-                            <td class="text-center"><?= $day['payment_count'] ?></td>
-                            <td class="text-right">₱<?= number_format($day['daily_total'], 2) ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                    <h4>Daily Collections</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th class="text-center">Payments</th>
+                                <th class="text-right">Daily Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($daily_collections as $day): ?>
+                                <tr>
+                                    <td><?= date('M d, Y (D)', strtotime($day['payment_date'])) ?></td>
+                                    <td class="text-center"><?= $day['payment_count'] ?></td>
+                                    <td class="text-right">₱<?= number_format($day['daily_total'], 2) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 <?php endif; ?>
             </div>
-            <?php endif; ?>
+        <?php endif; ?>
 
-            <!-- Service Analytics -->
-            <?php if (!empty($service_analytics)): ?>
+        <!-- Service Analytics -->
+        <?php if (!empty($service_analytics)): ?>
             <div class="report-section">
                 <h3><i class="fas fa-chart-pie"></i> Service Analytics</h3>
                 <p class="text-muted">Most availed services by revenue and frequency</p>
-                
+
                 <table class="data-table">
                     <thead>
                         <tr>
@@ -644,25 +658,25 @@ try {
                     </thead>
                     <tbody>
                         <?php foreach ($service_analytics as $service): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($service['item_name']) ?></td>
-                            <td><?= htmlspecialchars($service['service_name']) ?></td>
-                            <td class="text-center"><?= $service['frequency'] ?></td>
-                            <td class="text-center"><?= $service['total_quantity'] ?></td>
-                            <td class="text-right">₱<?= number_format($service['average_price'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($service['total_revenue'], 2) ?></td>
-                        </tr>
+                            <tr>
+                                <td><?= htmlspecialchars($service['item_name']) ?></td>
+                                <td><?= htmlspecialchars($service['service_name']) ?></td>
+                                <td class="text-center"><?= $service['frequency'] ?></td>
+                                <td class="text-center"><?= $service['total_quantity'] ?></td>
+                                <td class="text-right">₱<?= number_format($service['average_price'], 2) ?></td>
+                                <td class="text-right">₱<?= number_format($service['total_revenue'], 2) ?></td>
+                            </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-            <?php endif; ?>
+        <?php endif; ?>
 
-            <!-- Payment Methods -->
-            <?php if (!empty($payment_methods)): ?>
+        <!-- Payment Methods -->
+        <?php if (!empty($payment_methods)): ?>
             <div class="report-section">
                 <h3><i class="fas fa-credit-card"></i> Payment Methods Analysis</h3>
-                
+
                 <table class="data-table">
                     <thead>
                         <tr>
@@ -674,30 +688,30 @@ try {
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
+                        <?php
                         $total_amount = array_sum(array_column($payment_methods, 'total_amount'));
-                        foreach ($payment_methods as $method): 
+                        foreach ($payment_methods as $method):
                             $percentage = $total_amount > 0 ? ($method['total_amount'] / $total_amount) * 100 : 0;
                         ?>
-                        <tr>
-                            <td><?= strtoupper($method['payment_method']) ?></td>
-                            <td class="text-center"><?= $method['transaction_count'] ?></td>
-                            <td class="text-right">₱<?= number_format($method['total_amount'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($method['average_amount'], 2) ?></td>
-                            <td class="text-right"><?= number_format($percentage, 1) ?>%</td>
-                        </tr>
+                            <tr>
+                                <td><?= strtoupper($method['payment_method']) ?></td>
+                                <td class="text-center"><?= $method['transaction_count'] ?></td>
+                                <td class="text-right">₱<?= number_format($method['total_amount'], 2) ?></td>
+                                <td class="text-right">₱<?= number_format($method['average_amount'], 2) ?></td>
+                                <td class="text-right"><?= number_format($percentage, 1) ?>%</td>
+                            </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-            <?php endif; ?>
+        <?php endif; ?>
 
-            <!-- Outstanding Balances -->
-            <?php if (!empty($outstanding_balances)): ?>
+        <!-- Outstanding Balances -->
+        <?php if (!empty($outstanding_balances)): ?>
             <div class="report-section">
                 <h3><i class="fas fa-exclamation-triangle"></i> Outstanding Balances</h3>
                 <p class="text-muted">Unpaid and partially paid invoices requiring follow-up</p>
-                
+
                 <table class="data-table">
                     <thead>
                         <tr>
@@ -712,34 +726,34 @@ try {
                     </thead>
                     <tbody>
                         <?php foreach ($outstanding_balances as $balance): ?>
-                        <tr>
-                            <td><?= $balance['billing_id'] ?></td>
-                            <td><?= date('M d, Y', strtotime($balance['billing_date'])) ?></td>
-                            <td>
-                                <?= htmlspecialchars($balance['first_name'] . ' ' . $balance['last_name']) ?><br>
-                                <small><?= htmlspecialchars($balance['patient_username']) ?></small>
-                            </td>
-                            <td class="text-right">₱<?= number_format($balance['net_amount'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($balance['paid_amount'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($balance['outstanding_amount'], 2) ?></td>
-                            <td>
-                                <span class="status-badge status-<?= $balance['payment_status'] ?>">
-                                    <?= ucfirst($balance['payment_status']) ?>
-                                </span>
-                            </td>
-                        </tr>
+                            <tr>
+                                <td><?= $balance['billing_id'] ?></td>
+                                <td><?= date('M d, Y', strtotime($balance['billing_date'])) ?></td>
+                                <td>
+                                    <?= htmlspecialchars($balance['first_name'] . ' ' . $balance['last_name']) ?><br>
+                                    <small><?= htmlspecialchars($balance['patient_username']) ?></small>
+                                </td>
+                                <td class="text-right">₱<?= number_format($balance['net_amount'], 2) ?></td>
+                                <td class="text-right">₱<?= number_format($balance['paid_amount'], 2) ?></td>
+                                <td class="text-right">₱<?= number_format($balance['outstanding_amount'], 2) ?></td>
+                                <td>
+                                    <span class="status-badge status-<?= $balance['payment_status'] ?>">
+                                        <?= ucfirst($balance['payment_status']) ?>
+                                    </span>
+                                </td>
+                            </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-            <?php endif; ?>
+        <?php endif; ?>
 
-            <!-- Cashier Performance (Admin only) -->
-            <?php if ($canViewCashierPerformance && !empty($cashier_performance)): ?>
+        <!-- Cashier Performance (Admin only) -->
+        <?php if ($canViewCashierPerformance && !empty($cashier_performance)): ?>
             <div class="report-section">
                 <h3><i class="fas fa-users"></i> Cashier Performance</h3>
                 <p class="text-muted">Payment processing performance by cashier</p>
-                
+
                 <table class="data-table">
                     <thead>
                         <tr>
@@ -752,28 +766,28 @@ try {
                     </thead>
                     <tbody>
                         <?php foreach ($cashier_performance as $cashier): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($cashier['first_name'] . ' ' . $cashier['last_name']) ?></td>
-                            <td><?= ucfirst($cashier['role']) ?></td>
-                            <td class="text-center"><?= $cashier['payments_processed'] ?></td>
-                            <td class="text-right">₱<?= number_format($cashier['total_collected'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($cashier['average_transaction'], 2) ?></td>
-                        </tr>
+                            <tr>
+                                <td><?= htmlspecialchars($cashier['first_name'] . ' ' . $cashier['last_name']) ?></td>
+                                <td><?= ucfirst($cashier['role']) ?></td>
+                                <td class="text-center"><?= $cashier['payments_processed'] ?></td>
+                                <td class="text-right">₱<?= number_format($cashier['total_collected'], 2) ?></td>
+                                <td class="text-right">₱<?= number_format($cashier['average_transaction'], 2) ?></td>
+                            </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-            <?php endif; ?>
+        <?php endif; ?>
 
-            <!-- Print Section -->
-            <div class="print-section">
-                <button type="button" class="btn btn-secondary" onclick="window.print()">
-                    <i class="fas fa-print"></i> Print Report
-                </button>
-                <a href="billing_management.php" class="btn btn-primary">
-                    <i class="fas fa-arrow-left"></i> Back to Billing
-                </a>
-            </div>
+        <!-- Print Section -->
+        <div class="print-section">
+            <button type="button" class="btn btn-secondary" onclick="window.print()">
+                <i class="fas fa-print"></i> Print Report
+            </button>
+            <a href="billing_management.php" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i> Back to Billing
+            </a>
+        </div>
     </section>
 
     <script>
@@ -782,7 +796,7 @@ try {
             const monthInput = document.getElementById('month-input');
             const dateRange = document.getElementById('date-range');
             const dateRangeTo = document.getElementById('date-range-to');
-            
+
             if (reportType === 'monthly') {
                 monthInput.style.display = 'block';
                 dateRange.style.display = 'none';
@@ -798,17 +812,17 @@ try {
             // Simple CSV export - can be enhanced for more formats
             const tables = document.querySelectorAll('.data-table');
             let csvContent = "data:text/csv;charset=utf-8,";
-            
+
             tables.forEach((table, index) => {
                 const section = table.closest('.report-section');
                 const title = section.querySelector('h3').textContent;
-                
+
                 csvContent += title + "\n\n";
-                
+
                 // Headers
                 const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
                 csvContent += headers.join(',') + "\n";
-                
+
                 // Rows
                 const rows = table.querySelectorAll('tbody tr');
                 rows.forEach(row => {
@@ -817,7 +831,7 @@ try {
                     });
                     csvContent += cells.join(',') + "\n";
                 });
-                
+
                 csvContent += "\n";
             });
 
@@ -834,4 +848,5 @@ try {
         toggleDateInputs();
     </script>
 </body>
+
 </html>

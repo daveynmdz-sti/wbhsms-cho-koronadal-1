@@ -90,7 +90,7 @@ try {
         LEFT JOIN employees ve ON v.recorded_by = ve.employee_id
         WHERE c.consultation_id = ?
     ");
-    
+
     if (!$consultation_stmt) {
         error_log("Failed to prepare consultation statement in view_consultation.php: " . $conn->error);
         $error_message = "Database error occurred while loading consultation.";
@@ -105,7 +105,7 @@ try {
             $consultation_data = $result->fetch_assoc();
         }
     }
-    
+
     if (!$consultation_data) {
         if (empty($error_message)) {
             // No database error, just not found
@@ -116,25 +116,25 @@ try {
         }
         exit();
     }
-    
+
     // Check role-based access for specific patients
     if (in_array($employee_role, ['bhw', 'dho'])) {
         $has_access = false;
-        
+
         if ($employee_role === 'bhw' && isset($employee_details['assigned_barangay_id'])) {
             $has_access = ($employee_details['assigned_barangay_id'] == $consultation_data['barangay_id']);
         } elseif ($employee_role === 'dho' && isset($employee_details['assigned_district_id'])) {
             $has_access = ($employee_details['assigned_district_id'] == $consultation_data['district_id']);
         }
-        
+
         if (!$has_access) {
             header("Location: /wbhsms-cho-koronadal/pages/clinical-encounter-management/index.php?error=access_denied");
             exit();
         }
     }
-    
+
     $patient_data = $consultation_data;
-    
+
     // Vitals data is now included in the main query
     $vitals_data = null;
     if ($consultation_data['vitals_id']) {
@@ -142,8 +142,8 @@ try {
             'vitals_id' => $consultation_data['vitals_id'],
             'systolic_bp' => $consultation_data['systolic_bp'],
             'diastolic_bp' => $consultation_data['diastolic_bp'],
-            'blood_pressure' => ($consultation_data['systolic_bp'] && $consultation_data['diastolic_bp']) 
-                ? $consultation_data['systolic_bp'] . '/' . $consultation_data['diastolic_bp'] 
+            'blood_pressure' => ($consultation_data['systolic_bp'] && $consultation_data['diastolic_bp'])
+                ? $consultation_data['systolic_bp'] . '/' . $consultation_data['diastolic_bp']
                 : null,
             'heart_rate' => $consultation_data['heart_rate'],
             'respiratory_rate' => $consultation_data['respiratory_rate'],
@@ -157,7 +157,7 @@ try {
             'taken_by_last_name' => $consultation_data['vitals_recorded_by_last_name']
         ];
     }
-    
+
     // Get lab orders (updated for standalone consultations)
     $lab_stmt = $conn->prepare("
         SELECT l.*, e.first_name as ordered_by_first_name, e.last_name as ordered_by_last_name
@@ -174,7 +174,7 @@ try {
     } else {
         $lab_orders = [];
     }
-    
+
     // Get prescriptions (updated for standalone consultations)
     $prescription_stmt = $conn->prepare("
         SELECT p.*, e.first_name as prescribed_by_first_name, e.last_name as prescribed_by_last_name
@@ -191,7 +191,7 @@ try {
     } else {
         $prescriptions = [];
     }
-    
+
     // Get follow-up appointments
     $followup_stmt = $conn->prepare("
         SELECT a.*, e.first_name as scheduled_by_first_name, e.last_name as scheduled_by_last_name
@@ -209,7 +209,6 @@ try {
     } else {
         $followup_appointments = [];
     }
-    
 } catch (Exception $e) {
     $error_message = "Error loading consultation data: " . $e->getMessage();
 }
@@ -223,6 +222,11 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
 
 <head>
     <meta charset="UTF-8" />
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
+    <link rel="apple-touch-icon-precomposed" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <title>View Consultation | CHO Koronadal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="../../assets/css/topbar.css" />
@@ -491,6 +495,7 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
         }
 
         @media (max-width: 768px) {
+
             .info-grid,
             .vitals-grid,
             .order-details {
@@ -508,6 +513,7 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
 
         /* Print Styles */
         @media print {
+
             .action-buttons,
             .alert,
             .read-only-notice {
@@ -589,7 +595,7 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
 </head>
 
 <body>
-    <?php 
+    <?php
     // Render topbar
     renderTopbar([
         'title' => 'View Consultation',
@@ -693,21 +699,21 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                             </div>
                         </div>
                         <?php if ($consultation_data['vitals_id']): ?>
-                        <div class="info-item">
-                            <div class="info-label">Linked Vitals</div>
-                            <div class="info-value">
-                                <span style="color: #28a745;"><i class="fas fa-link"></i> Vitals ID: <?= htmlspecialchars($consultation_data['vitals_id']) ?></span>
-                                <br><small style="color: #6c757d;">Recorded: <?= date('M j, Y g:i A', strtotime($consultation_data['vitals_recorded_at'])) ?></small>
+                            <div class="info-item">
+                                <div class="info-label">Linked Vitals</div>
+                                <div class="info-value">
+                                    <span style="color: #28a745;"><i class="fas fa-link"></i> Vitals ID: <?= htmlspecialchars($consultation_data['vitals_id']) ?></span>
+                                    <br><small style="color: #6c757d;">Recorded: <?= date('M j, Y g:i A', strtotime($consultation_data['vitals_recorded_at'])) ?></small>
+                                </div>
                             </div>
-                        </div>
                         <?php endif; ?>
                         <?php if ($consultation_data['follow_up_date']): ?>
-                        <div class="info-item">
-                            <div class="info-label">Follow-up Date</div>
-                            <div class="info-value">
-                                <span style="color: #007bff;"><i class="fas fa-calendar-check"></i> <?= date('M j, Y', strtotime($consultation_data['follow_up_date'])) ?></span>
+                            <div class="info-item">
+                                <div class="info-label">Follow-up Date</div>
+                                <div class="info-value">
+                                    <span style="color: #007bff;"><i class="fas fa-calendar-check"></i> <?= date('M j, Y', strtotime($consultation_data['follow_up_date'])) ?></span>
+                                </div>
                             </div>
-                        </div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -718,7 +724,7 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                         <h3 class="section-title">
                             <i class="fas fa-heartbeat"></i> Vital Signs
                             <small style="margin-left: auto; font-size: 0.8rem; color: #6c757d;">
-                                Taken by: <?= htmlspecialchars($vitals_data['taken_by_first_name'] . ' ' . $vitals_data['taken_by_last_name']) ?> 
+                                Taken by: <?= htmlspecialchars($vitals_data['taken_by_first_name'] . ' ' . $vitals_data['taken_by_last_name']) ?>
                                 on <?= date('M j, Y g:i A', strtotime($vitals_data['recorded_at'])) ?>
                             </small>
                         </h3>
@@ -733,40 +739,40 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                                 <div class="vitals-item">
                                     <div class="vitals-label">Blood Pressure</div>
                                     <div class="vitals-value">
-                                        <?= htmlspecialchars(($vitals_data['systolic_bp'] ?: '--') . '/' . ($vitals_data['diastolic_bp'] ?: '--')) ?> 
+                                        <?= htmlspecialchars(($vitals_data['systolic_bp'] ?: '--') . '/' . ($vitals_data['diastolic_bp'] ?: '--')) ?>
                                         <span class="vitals-unit">mmHg</span>
                                     </div>
                                 </div>
                             <?php endif; ?>
-                            
+
                             <?php if ($vitals_data['heart_rate']): ?>
                                 <div class="vitals-item">
                                     <div class="vitals-label">Heart Rate</div>
                                     <div class="vitals-value"><?= htmlspecialchars($vitals_data['heart_rate']) ?> <span class="vitals-unit">bpm</span></div>
                                 </div>
                             <?php endif; ?>
-                            
+
                             <?php if ($vitals_data['temperature']): ?>
                                 <div class="vitals-item">
                                     <div class="vitals-label">Temperature</div>
                                     <div class="vitals-value"><?= htmlspecialchars($vitals_data['temperature']) ?> <span class="vitals-unit">°C</span></div>
                                 </div>
                             <?php endif; ?>
-                            
+
                             <?php if ($vitals_data['respiratory_rate']): ?>
                                 <div class="vitals-item">
                                     <div class="vitals-label">Respiratory Rate</div>
                                     <div class="vitals-value"><?= htmlspecialchars($vitals_data['respiratory_rate']) ?> <span class="vitals-unit">rpm</span></div>
                                 </div>
                             <?php endif; ?>
-                            
+
                             <?php if ($vitals_data['height']): ?>
                                 <div class="vitals-item">
                                     <div class="vitals-label">Height</div>
                                     <div class="vitals-value"><?= htmlspecialchars($vitals_data['height']) ?> <span class="vitals-unit">cm</span></div>
                                 </div>
                             <?php endif; ?>
-                            
+
                             <?php if ($vitals_data['weight']): ?>
                                 <div class="vitals-item">
                                     <div class="vitals-label">Weight</div>
@@ -945,15 +951,15 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                         <a href="index.php" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Back to List
                         </a>
-                        
+
                         <button onclick="printConsultation()" class="btn btn-secondary" style="background: #6f42c1; border-color: #6f42c1;">
                             <i class="fas fa-print"></i> Print
                         </button>
-                        
+
                         <button onclick="downloadConsultationPDF()" class="btn btn-secondary" style="background: #e83e8c; border-color: #e83e8c;">
                             <i class="fas fa-download"></i> Download PDF
                         </button>
-                        
+
                         <?php if ($can_edit_consultation): ?>
                             <a href="edit_consultation_new.php?id=<?= $consultation_id ?>" class="btn btn-primary">
                                 <i class="fas fa-edit"></i> Edit Consultation
@@ -980,18 +986,21 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
         function printConsultation() {
             // Create a printable version of the consultation details
             const consultationContainer = document.querySelector('.consultation-container');
-            
+
             if (!consultationContainer) {
                 alert('No consultation data found to print.');
                 return;
             }
-            
+
             // Create print content with header using string concatenation
-            const printDate = new Date().toLocaleDateString('en-US', { 
-                year: 'numeric', month: 'long', day: 'numeric', 
-                hour: '2-digit', minute: '2-digit' 
+            const printDate = new Date().toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
             });
-            
+
             const printContent = '<!DOCTYPE html>' +
                 '<html>' +
                 '<head>' +
@@ -1038,7 +1047,7 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
                 '<\/script>' +
                 '<\/body>' +
                 '<\/html>';
-            
+
             // Open print popup window
             const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
             printWindow.document.write(printContent);
@@ -1047,7 +1056,7 @@ require_once $root_path . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR
 
         function downloadConsultationPDF() {
             const consultationId = <?= $consultation_id ?>;
-            
+
             if (!consultationId) {
                 alert('No consultation selected for download.');
                 return;
