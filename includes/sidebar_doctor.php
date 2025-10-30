@@ -230,6 +230,7 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'prescription_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
+        <!-- QUEUE MANAGEMENT - COMMENTED OUT FOR DEPLOYMENT
         <?php if ($hasStationAssignment): ?>
             <a href="#"
                 class="<?= $activePage === 'queueing' || $activePage === 'queue_management' ? 'active' : '' ?>" 
@@ -250,6 +251,7 @@ $nav_base = $base_path . 'pages/';
                 </small>
             </a>
         <?php endif; ?>
+        -->
     </div>
 
     <a href="<?= $nav_base ?>user/employee_profile.php"

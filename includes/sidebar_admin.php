@@ -154,10 +154,12 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'reports' ? 'active' : '' ?> disabled" role="menuitem">
             <i class="fas fa-chart-bar"></i> Reports
         </a>
+        <!-- QUEUE MANAGEMENT - COMMENTED OUT FOR DEPLOYMENT
         <a href="#"
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Queue Management
         </a>
+        -->
         <a href="<?= $nav_base ?>management/admin/staff-management/staff_assignments.php"
             class="<?= $activePage === 'staff_assignments' ? 'active' : '' ?>" role="menuitem">
             <i class="fa-solid fa-person-booth"></i> Station Assignment

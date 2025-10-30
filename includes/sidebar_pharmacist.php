@@ -122,10 +122,12 @@ $nav_base = $base_path . 'pages/';
             <i class="fas fa-prescription-bottle-alt"></i> Prescription Management
         </a>
         
+        <!-- QUEUE MANAGEMENT - COMMENTED OUT FOR DEPLOYMENT
         <a href="#"
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Queue Management
         </a>
+        -->
 
     </div>
 

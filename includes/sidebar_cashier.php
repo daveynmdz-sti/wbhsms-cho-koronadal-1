@@ -136,10 +136,12 @@ if ($cashier_base && !str_starts_with($cashier_base, '/')) {
             class="<?= $activePage === 'billing_reports' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-chart-line"></i> Billing Reports
         </a>
+        <!-- QUEUE MANAGEMENT - COMMENTED OUT FOR DEPLOYMENT
         <a href="#"
             class="<?= $activePage === 'queueing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-list-ol"></i> Queue Management
         </a>
+        -->
     </div>
 
     <a href="<?= $nav_base ?>user/employee_profile.php"

@@ -143,10 +143,12 @@ $vendor_path = $base_path . '/vendor/photo_controller.php';
             class="<?= $activePage === 'id_card' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-id-card"></i> My ID Card
         </a>
+        <!-- QUEUE STATUS - COMMENTED OUT FOR DEPLOYMENT
         <a href="<?= $nav_base ?>queueing/queue_status.php"
             class="<?= $activePage === 'queue_status' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-ticket-alt"></i> My Queue Status
         </a>
+        -->
     </div>
 
     <a href="<?= $nav_base ?>profile/profile.php"
