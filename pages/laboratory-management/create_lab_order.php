@@ -33,65 +33,6 @@ if (isset($_GET['action'])) {
                            p.date_of_birth, p.sex, p.contact_number, b.barangay_name
                     FROM patients p 
                     LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
-                    WHERE p.status = 'active' AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? 
-                           OR p.contact_number LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
-                           OR b.barangay_name LIKE ?)
-                    ORDER BY p.last_name, p.first_name 
-                    LIMIT 20";
-            
-            $stmt = $conn->prepare($sql);
-            if (!$stmt) {
-                throw new Exception('Failed to prepare SQL statement: ' . $conn->error);
-            }
-            
-            $stmt->bind_param("ssssss", $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
-            
-            if (!$stmt->execute()) {
-                throw new Exception('Failed to execute query: ' . $stmt->error);
-            }
-            
-            $result = $stmt->get_result();
-            if (!$result) {
-                throw new Exception('Failed to get result: ' . $stmt->error);
-            }
-            
-            $patients = [];
-            while ($row = $result->fetch_assoc()) {
-                $patients[] = $row;
-            }
-            
-            echo json_encode($patients);
-            exit();
-            
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode([
-                'error' => true,
-                'message' => 'Search failed: ' . $e->getMessage(),
-                'debug' => [
-                    'file' => basename(__FILE__),
-                    'line' => __LINE__,
-                    'search_term' => $search ?? 'undefined'
-                ]
-            ]);
-            exit();
-        }
-    }
-    
-    if ($_GET['action'] === 'search_patients_direct') {
-        try {
-            // Validate database connection
-            if (!$conn || $conn->connect_error) {
-                throw new Exception('Database connection failed: ' . ($conn ? $conn->connect_error : 'No connection object'));
-            }
-            
-            $search = $_GET['search'] ?? '';
-            $barangay_filter = $_GET['barangay'] ?? '';
-            
-            $sql = "SELECT p.patient_id, p.first_name, p.last_name, p.middle_name, p.username, 
-                           p.date_of_birth, p.sex, p.contact_number, b.barangay_name
-                    FROM patients p 
-                    LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
                     WHERE p.status = 'active'";
             
             $params = [];
@@ -105,12 +46,15 @@ if (isset($_GET['action'])) {
                 $types .= "sssss";
             }
             
+            // Check if barangay filter is provided in GET parameters
+            $barangay_filter = $_GET['barangay'] ?? '';
             if (!empty($barangay_filter)) {
                 $sql .= " AND b.barangay_name LIKE ?";
                 $barangayParam = "%{$barangay_filter}%";
                 array_push($params, $barangayParam);
                 $types .= "s";
             }
+            
             
             $sql .= " ORDER BY p.last_name, p.first_name LIMIT 50";
             
@@ -145,67 +89,6 @@ if (isset($_GET['action'])) {
             echo json_encode([
                 'error' => true,
                 'message' => 'Search failed: ' . $e->getMessage(),
-                'debug' => [
-                    'file' => basename(__FILE__),
-                    'line' => __LINE__,
-                    'search_term' => $search ?? 'undefined',
-                    'barangay_filter' => $barangay_filter ?? 'undefined'
-                ]
-            ]);
-            exit();
-        }
-    }
-    
-    if ($_GET['action'] === 'search_visits') {
-        try {
-            // Validate database connection
-            if (!$conn || $conn->connect_error) {
-                throw new Exception('Database connection failed: ' . ($conn ? $conn->connect_error : 'No connection object'));
-            }
-            
-            $search = $_GET['search'] ?? '';
-            $searchParam = "%{$search}%";
-            
-            $sql = "SELECT v.visit_id, v.patient_id, v.appointment_id, v.visit_date, v.visit_status,
-                           p.first_name, p.last_name, p.username,
-                           a.scheduled_date, a.scheduled_time
-                    FROM visits v
-                    LEFT JOIN patients p ON v.patient_id = p.patient_id
-                    LEFT JOIN appointments a ON v.appointment_id = a.appointment_id
-                    WHERE (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? 
-                           OR v.visit_id LIKE ? OR a.appointment_id LIKE ?)
-                    ORDER BY v.visit_date DESC 
-                    LIMIT 20";
-            
-            $stmt = $conn->prepare($sql);
-            if (!$stmt) {
-                throw new Exception('Failed to prepare SQL statement: ' . $conn->error);
-            }
-            
-            $stmt->bind_param("sssss", $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
-            
-            if (!$stmt->execute()) {
-                throw new Exception('Failed to execute query: ' . $stmt->error);
-            }
-            
-            $result = $stmt->get_result();
-            if (!$result) {
-                throw new Exception('Failed to get result: ' . $stmt->error);
-            }
-            
-            $visits = [];
-            while ($row = $result->fetch_assoc()) {
-                $visits[] = $row;
-            }
-            
-            echo json_encode($visits);
-            exit();
-            
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode([
-                'error' => true,
-                'message' => 'Search visits failed: ' . $e->getMessage(),
                 'debug' => [
                     'file' => basename(__FILE__),
                     'line' => __LINE__,
@@ -711,65 +594,21 @@ require_once $root_path . '/includes/topbar.php';
                 <strong>Reminders:</strong>
                 <ul>
                     <li>Search and select a patient from the list below before creating a lab order.</li>
-                    <li>You can search by patient ID, name, appointment, or visit details.</li>
-                    <li>Direct patient search allows creating orders without appointments (for authorized roles).</li>
+                    <li>You can search by patient ID, name, or barangay.</li>
                     <li>Select at least one lab test from the available options.</li>
                     <li>Fields marked with * are required.</li>
                 </ul>
             </div>
 
             <!-- Patient Search Section -->
-            <div class="form-section">
-                <h3 style="color: #0077b6; margin-bottom: 1rem;">
-                    <i class="fas fa-search"></i> Patient Search Method
-                </h3>
-                
-                <div style="display: flex; gap: 20px; margin-bottom: 20px; justify-content: center;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="radio" name="searchMode" value="appointment" id="appointmentMode" checked onchange="toggleSearchMode()">
-                        <span>Search with Appointment/Visit</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="radio" name="searchMode" value="direct" id="directMode" onchange="toggleSearchMode()">
-                        <span>Direct Patient Search (No Appointment Required)</span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Appointment-based Search Section -->
-            <div class="search-container" id="appointmentSearchSection">
-                <h4 style="color: #0077b6; margin-bottom: 1rem;">Search by Appointment/Visit Details</h4>
-                <div class="search-grid">
-                    <div class="form-group">
-                        <label for="patientIdFilter">Patient ID</label>
-                        <input type="text" id="patientIdFilter" placeholder="Enter Patient ID">
-                    </div>
-                    <div class="form-group">
-                        <label for="appointmentIdFilter">Appointment ID</label>
-                        <input type="text" id="appointmentIdFilter" placeholder="Enter Appointment ID">
-                    </div>
-                    <div class="form-group">
-                        <label for="visitIdFilter">Visit ID</label>
-                        <input type="text" id="visitIdFilter" placeholder="Enter Visit ID">
-                    </div>
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1rem;">
-                    <button type="button" class="btn btn-primary" onclick="searchPatients()">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                    <button type="button" class="btn" onclick="clearSearch()" style="background: #6c757d; color: white;">
-                        <i class="fas fa-times"></i> Clear
-                    </button>
-                </div>
-            </div>
-
-            <!-- Direct Patient Search Section -->
-            <div class="search-container" id="directSearchSection" style="display: none;">
-                <h4 style="color: #0077b6; margin-bottom: 1rem;">Direct Patient Search</h4>
+            <div class="search-container">
+                <h4 style="color: #0077b6; margin-bottom: 1rem;">
+                    <i class="fas fa-search"></i> Patient Search
+                </h4>
                 <div class="search-grid">
                     <div class="form-group">
                         <label for="patientNameFilter">General Search</label>
-                        <input type="text" id="patientNameFilter" placeholder="Patient ID, Name">
+                        <input type="text" id="patientNameFilter" placeholder="Patient ID, Name, Contact Number">
                     </div>
                     <div class="form-group">
                         <label for="patientFirstName">First Name</label>
@@ -792,10 +631,10 @@ require_once $root_path . '/includes/topbar.php';
                     </div>
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1rem;">
-                    <button type="button" class="btn btn-primary" onclick="searchPatientsDirect()">
+                    <button type="button" class="btn btn-primary" onclick="searchPatients()">
                         <i class="fas fa-search"></i> Search
                     </button>
-                    <button type="button" class="btn" onclick="clearDirectSearch()" style="background: #6c757d; color: white;">
+                    <button type="button" class="btn" onclick="clearSearch()" style="background: #6c757d; color: white;">
                         <i class="fas fa-times"></i> Clear
                     </button>
                 </div>
@@ -810,10 +649,11 @@ require_once $root_path . '/includes/topbar.php';
                             <tr>
                                 <th>Select</th>
                                 <th>Patient ID</th>
-                                <th>Name</th>
-                                <th>Username</th>
+                                <th>Full Name</th>
+                                <th>Date of Birth</th>
                                 <th>Age</th>
                                 <th>Sex</th>
+                                <th>Contact Number</th>
                                 <th>Barangay</th>
                             </tr>
                         </thead>
@@ -905,52 +745,43 @@ function searchPatients() {
     console.log('searchPatients function called');
     
     try {
-        // Debug: Check if elements exist
-        const patientIdEl = document.getElementById('patientIdFilter');
-        const appointmentIdEl = document.getElementById('appointmentIdFilter');
-        const visitIdEl = document.getElementById('visitIdFilter');
+        // Get search values from the simplified form
+        const patientNameEl = document.getElementById('patientNameFilter');
+        const patientFirstNameEl = document.getElementById('patientFirstName');
+        const patientLastNameEl = document.getElementById('patientLastName');
+        const barangayEl = document.getElementById('barangayFilter');
         
-        if (!patientIdEl || !appointmentIdEl || !visitIdEl) {
-            console.error('Search input elements not found:', {
-                patientIdEl: !!patientIdEl,
-                appointmentIdEl: !!appointmentIdEl,
-                visitIdEl: !!visitIdEl
-            });
-            alert('Error: Search input elements not found. Please check if the form is properly loaded.');
+        if (!patientNameEl || !patientFirstNameEl || !patientLastNameEl || !barangayEl) {
+            console.error('Search form elements not found');
+            alert('Error: Search form elements not found. Please refresh the page.');
             return;
         }
         
-        const patientId = patientIdEl.value;
-        const appointmentId = appointmentIdEl.value;
-        const visitId = visitIdEl.value;
+        const patientName = patientNameEl.value.trim();
+        const patientFirstName = patientFirstNameEl.value.trim();
+        const patientLastName = patientLastNameEl.value.trim();
+        const barangay = barangayEl.value;
         
-        console.log('Search values:', { patientId, appointmentId, visitId });
+        console.log('Search values:', { patientName, patientFirstName, patientLastName, barangay });
         
-        // Prepare search parameters
-        let searchParams = [];
-        if (patientId) searchParams.push(`patient_id=${encodeURIComponent(patientId)}`);
-        if (appointmentId) searchParams.push(`appointment_id=${encodeURIComponent(appointmentId)}`);
-        if (visitId) searchParams.push(`visit_id=${encodeURIComponent(visitId)}`);
-        
-        if (searchParams.length === 0) {
-            showSearchMessage('Please enter at least one search criteria (Patient ID, Appointment ID, or Visit ID) to search for patients.', 'warning');
-            return;
-        }
-        
-        // Debug: Check if results container exists
-        const resultsContainer = document.getElementById('searchResultsContainer');
-        if (!resultsContainer) {
-            console.error('Results container not found');
-            alert('Error: Results container not found. Please check if the form is properly loaded.');
+        // Check if at least one field has a value
+        if (!patientName && !patientFirstName && !patientLastName && !barangay) {
+            showSearchMessage('Please enter at least one search criteria.', 'warning');
             return;
         }
         
         // Show the results container
+        const resultsContainer = document.getElementById('searchResultsContainer');
+        if (!resultsContainer) {
+            console.error('Results container not found');
+            alert('Error: Results container not found. Please refresh the page.');
+            return;
+        }
         resultsContainer.style.display = 'block';
         
-        // Make AJAX request using the existing search endpoint
-        const searchQuery = patientId || appointmentId || visitId;
-        const requestUrl = `create_lab_order.php?action=search_patients&search=${encodeURIComponent(searchQuery)}`;
+        // Use the primary search term (name, first name, or last name)
+        const searchTerm = patientName || `${patientFirstName} ${patientLastName}`.trim() || '';
+        const requestUrl = `create_lab_order.php?action=search_patients&search=${encodeURIComponent(searchTerm)}&barangay=${encodeURIComponent(barangay)}`;
         
         console.log('Making request to:', requestUrl);
         
@@ -998,36 +829,44 @@ function searchPatients() {
                 
                 if (data && Array.isArray(data) && data.length > 0) {
                     data.forEach(patient => {
+                        // Calculate age from date of birth
+                        let age = 'N/A';
+                        if (patient.date_of_birth) {
+                            const birthDate = new Date(patient.date_of_birth);
+                            const today = new Date();
+                            age = today.getFullYear() - birthDate.getFullYear();
+                            const monthDiff = today.getMonth() - birthDate.getMonth();
+                            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                                age--;
+                            }
+                        }
+                        
+                        const fullName = `${patient.first_name || ''} ${patient.middle_name || ''} ${patient.last_name || ''}`.replace(/\s+/g, ' ').trim();
+                        
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>
                                 <input type="radio" name="selectedPatient" value="${patient.patient_id}" 
                                        data-patient-id="${patient.patient_id}" 
-                                       data-patient-name="${patient.first_name} ${patient.last_name}"
-                                       data-username="${patient.username}"
+                                       data-patient-name="${fullName}"
+                                       data-username="${patient.username || ''}"
                                        onchange="selectPatient(this)">
                             </td>
-                            <td>${patient.first_name} ${patient.middle_name || ''} ${patient.last_name}</td>
-                            <td>${patient.patient_id || 'N/A'}</td>
-                            <td>N/A</td>
-                            <td>N/A</td>
+                            <td>${patient.username || 'N/A'}</td>
+                            <td>${fullName}</td>
                             <td>${patient.date_of_birth || 'N/A'}</td>
+                            <td>${age}</td>
                             <td>${patient.sex || 'N/A'}</td>
+                            <td>${patient.contact_number || 'N/A'}</td>
+                            <td>${patient.barangay_name || 'N/A'}</td>
                         `;
                         tableBody.appendChild(row);
                     });
                     resultsTable.style.display = 'table';
                     console.log('Results populated successfully');
                 } else {
-                    // Show specific message based on search criteria used
-                    let searchedFor = [];
-                    if (patientId) searchedFor.push(`Patient ID "${patientId}"`);
-                    if (appointmentId) searchedFor.push(`Appointment ID "${appointmentId}"`);
-                    if (visitId) searchedFor.push(`Visit ID "${visitId}"`);
-                    
-                    const searchText = searchedFor.join(', ');
-                    showSearchMessage(`No patients found with ${searchText}. Please verify the information and ensure the patient exists in the system.`, 'info');
-                    console.log('No results found for:', searchText);
+                    showSearchMessage('No patients found matching your search criteria. Please verify the information and try different search terms.', 'info');
+                    console.log('No results found for search criteria');
                 }
             })
             .catch(error => {
@@ -1069,7 +908,7 @@ function showSearchMessage(message, type = 'info') {
                      'fas fa-info-circle';
     
     row.innerHTML = `
-        <td colspan="7" style="text-align: center; padding: 20px;" class="${messageClass}">
+        <td colspan="8" style="text-align: center; padding: 20px;" class="${messageClass}">
             <i class="${iconClass}"></i> ${message}
         </td>
     `;
@@ -1091,13 +930,15 @@ function clearSearch() {
     
     try {
         // Clear input fields
-        const patientIdEl = document.getElementById('patientIdFilter');
-        const appointmentIdEl = document.getElementById('appointmentIdFilter');
-        const visitIdEl = document.getElementById('visitIdFilter');
+        const patientNameEl = document.getElementById('patientNameFilter');
+        const patientFirstNameEl = document.getElementById('patientFirstName');
+        const patientLastNameEl = document.getElementById('patientLastName');
+        const barangayEl = document.getElementById('barangayFilter');
         
-        if (patientIdEl) patientIdEl.value = '';
-        if (appointmentIdEl) appointmentIdEl.value = '';
-        if (visitIdEl) visitIdEl.value = '';
+        if (patientNameEl) patientNameEl.value = '';
+        if (patientFirstNameEl) patientFirstNameEl.value = '';
+        if (patientLastNameEl) patientLastNameEl.value = '';
+        if (barangayEl) barangayEl.value = '';
         
         // Clear results table
         const resultsContainer = document.getElementById('searchResultsContainer');
@@ -1500,11 +1341,6 @@ function clearDirectSearch() {
         alert(`Error clearing direct search: ${error.message}`);
     }
 }
-
-// Assign functions to window object for global access
-window.toggleSearchMode = toggleSearchMode;
-window.searchPatientsDirect = searchPatientsDirect;
-window.clearDirectSearch = clearDirectSearch;
 
 // Toggle Others input field
 function toggleOthersInput() {
