@@ -77,7 +77,7 @@ $prescriptionsSql = "SELECT p.prescription_id, p.patient_id,
               LEFT JOIN barangay b ON pt.barangay_id = b.barangay_id
               LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
               LEFT JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id
-              WHERE (
+              WHERE pt.status = 'active' AND (
                   -- Show today's prescriptions (all statuses)
                   DATE(p.prescription_date) = CURDATE() 
                   OR 

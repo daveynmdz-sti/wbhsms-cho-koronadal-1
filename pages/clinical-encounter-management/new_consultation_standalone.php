@@ -313,6 +313,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Please select a valid patient.');
             }
 
+            // Validate patient is active before allowing vitals creation
+            $stmt = $conn->prepare("SELECT status FROM patients WHERE patient_id = ?");
+            $stmt->bind_param('i', $patient_id);
+            $stmt->execute();
+            $patient_result = $stmt->get_result()->fetch_assoc();
+            
+            if (!$patient_result || $patient_result['status'] !== 'active') {
+                throw new Exception('Vitals can only be recorded for active patients.');
+            }
+
             if (!$systolic_bp && !$diastolic_bp && !$heart_rate && !$temperature && !$weight && !$height) {
                 throw new Exception('Please enter at least one vital sign measurement.');
             }
@@ -437,6 +447,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Required field validation
             if (!$patient_id || $patient_id <= 0) {
                 throw new Exception('Please select a valid patient.');
+            }
+
+            // Validate patient is active before allowing consultation creation
+            $stmt = $conn->prepare("SELECT status FROM patients WHERE patient_id = ?");
+            $stmt->bind_param('i', $patient_id);
+            $stmt->execute();
+            $patient_result = $stmt->get_result()->fetch_assoc();
+            
+            if (!$patient_result || $patient_result['status'] !== 'active') {
+                throw new Exception('Consultations can only be created for active patients.');
             }
 
             if (!$service_id || $service_id <= 0) {

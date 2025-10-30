@@ -116,6 +116,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$patient_id) {
                 throw new Exception('Please select a patient from the search results.');
             }
+
+            // Validate patient is active before allowing invoice creation
+            $stmt = $pdo->prepare("SELECT status FROM patients WHERE patient_id = ?");
+            $stmt->execute([$patient_id]);
+            $patient_result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$patient_result || $patient_result['status'] !== 'active') {
+                throw new Exception('Invoices can only be created for active patients.');
+            }
+
             if (!$visit_id) {
                 throw new Exception('Patient visit information is required.');
             }

@@ -33,7 +33,7 @@ if (isset($_GET['action'])) {
                            p.date_of_birth, p.sex, p.contact_number, b.barangay_name
                     FROM patients p 
                     LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
-                    WHERE (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? 
+                    WHERE p.status = 'active' AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.username LIKE ? 
                            OR p.contact_number LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
                            OR b.barangay_name LIKE ?)
                     ORDER BY p.last_name, p.first_name 
@@ -92,7 +92,7 @@ if (isset($_GET['action'])) {
                            p.date_of_birth, p.sex, p.contact_number, b.barangay_name
                     FROM patients p 
                     LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
-                    WHERE 1=1";
+                    WHERE p.status = 'active'";
             
             $params = [];
             $types = "";
@@ -249,6 +249,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$patient_id || (empty($selected_tests) && empty($others_test))) {
         error_log("VALIDATION FAILED: Patient ID=" . ($patient_id ?? 'NULL') . ", Tests count=" . count($selected_tests) . ", Others test=" . ($others_test ?? 'EMPTY'));
         $_SESSION['lab_message'] = 'Please select a patient and at least one lab test.';
+        $_SESSION['lab_message_type'] = 'error';
+        header('Location: lab_management.php');
+        exit();
+    }
+
+    // Validate patient is active before allowing lab order creation
+    $patient_status_stmt = $conn->prepare("SELECT status FROM patients WHERE patient_id = ?");
+    $patient_status_stmt->bind_param("i", $patient_id);
+    $patient_status_stmt->execute();
+    $patient_status_result = $patient_status_stmt->get_result();
+    $patient_status_data = $patient_status_result->fetch_assoc();
+    
+    if (!$patient_status_data || $patient_status_data['status'] !== 'active') {
+        error_log("VALIDATION FAILED: Patient status is not active for patient ID: " . $patient_id);
+        $_SESSION['lab_message'] = 'Lab orders can only be created for active patients.';
         $_SESSION['lab_message_type'] = 'error';
         header('Location: lab_management.php');
         exit();

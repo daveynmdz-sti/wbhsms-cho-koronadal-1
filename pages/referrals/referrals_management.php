@@ -320,7 +320,8 @@ try {
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN employees e ON r.referred_by = e.employee_id
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
-        $where_clause
+        WHERE p.status = 'active'
+        " . (!empty($where_clause) ? str_replace('WHERE', 'AND', $where_clause) : '') . "
     ";
 
     $count_stmt = $conn->prepare($count_sql);
@@ -351,7 +352,8 @@ try {
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN employees e ON r.referred_by = e.employee_id
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
-        $where_clause
+        WHERE p.status = 'active'
+        " . (!empty($where_clause) ? str_replace('WHERE', 'AND', $where_clause) : '') . "
         ORDER BY r.referral_date DESC
         LIMIT ? OFFSET ?
     ";

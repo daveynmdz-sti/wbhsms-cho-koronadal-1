@@ -2137,10 +2137,12 @@ try {
                     <h3>Clinical Encounters</h3>
                     <span class="encounters-count"><?= count($encounters) ?> records</span>
                 </div>
+                <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse'])): ?>
                 <a href="new_consultation_standalone.php" class="btn-new-consultation">
                     <i class="fas fa-plus"></i>
                     <span>New Consultation</span>
                 </a>
+                <?php endif; ?>
             </div>
 
             <div class="encounters-table-container">

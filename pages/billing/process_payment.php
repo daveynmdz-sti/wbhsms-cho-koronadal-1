@@ -162,6 +162,7 @@ if ($show_search_results) {
             INNER JOIN billing b ON p.patient_id = b.patient_id 
             INNER JOIN employees e ON b.created_by = e.employee_id
             WHERE b.payment_status IN ('unpaid', 'partial')
+            AND p.status = 'active'
             $where_clause
             ORDER BY b.billing_date DESC, p.last_name, p.first_name
             LIMIT 20
@@ -242,12 +243,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Get billing details for validation
-            $stmt = $pdo->prepare("SELECT * FROM billing WHERE billing_id = ? AND payment_status IN ('unpaid', 'partial')");
+            $stmt = $pdo->prepare("SELECT b.*, p.status as patient_status FROM billing b 
+                                   JOIN patients p ON b.patient_id = p.patient_id 
+                                   WHERE b.billing_id = ? AND b.payment_status IN ('unpaid', 'partial')");
             $stmt->execute([$billing_id]);
             $billing = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$billing) {
                 throw new Exception('Invoice not found or already paid.');
+            }
+
+            // Validate patient is active before allowing payment processing
+            if ($billing['patient_status'] !== 'active') {
+                throw new Exception('Payments can only be processed for active patients.');
             }
 
             // Calculate remaining balance and change

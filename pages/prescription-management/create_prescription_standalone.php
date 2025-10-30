@@ -49,8 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Please add at least one medication.');
         }
         
-        // Validate patient exists
-        $patient_stmt = $conn->prepare("SELECT patient_id, first_name, last_name FROM patients WHERE patient_id = ?");
+        // Validate patient exists and is active
+        $patient_stmt = $conn->prepare("SELECT patient_id, first_name, last_name, status FROM patients WHERE patient_id = ?");
         $patient_stmt->bind_param("i", $patient_id);
         $patient_stmt->execute();
         $patient_result = $patient_stmt->get_result();
@@ -60,6 +60,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         $patient = $patient_result->fetch_assoc();
+        
+        // Validate patient is active
+        if ($patient['status'] !== 'active') {
+            throw new Exception('Prescriptions can only be created for active patients.');
+        }
         
         // Start transaction
         $conn->begin_transaction();
