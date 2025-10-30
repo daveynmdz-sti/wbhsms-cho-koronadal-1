@@ -24,7 +24,7 @@ if (!is_employee_logged_in()) {
 }
 
 // Check if role is authorized
-$authorized_roles = ['doctor', 'bhw', 'dho', 'records_officer', 'admin'];
+$authorized_roles = ['doctor', 'nurse', 'bhw', 'dho', 'records_officer', 'admin'];
 require_employee_role($authorized_roles);
 
 $employee_id = $_SESSION['employee_id'];
