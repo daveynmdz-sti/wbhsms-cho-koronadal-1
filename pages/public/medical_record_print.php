@@ -1,9 +1,9 @@
 <?php
-// public/medical_record_print.php
+// pages/public/medical_record_print.php
 // Frontend UI for selecting sections and previewing the patient's medical record print.
 // Loads assets/js/medical_print.js and assets/css/medical_print.css
 
-$root_path = dirname(__DIR__);
+$root_path = dirname(dirname(__DIR__)); // This should go from pages/public/ to project root
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 require_once $root_path . '/includes/medical_print_security.php';
@@ -13,14 +13,14 @@ $security = new MedicalPrintSecurity();
 
 // Check authentication
 if (!is_employee_logged_in()) {
-    header('Location: ' . $root_path . '/pages/management/login.php');
+    header('Location: ' . $root_path . '/pages/management/auth/employee_login.php');
     exit;
 }
 
 // Get current user and validate
 $currentUser = $security->currentUser();
 if (!$currentUser) {
-    header('Location: ' . $root_path . '/pages/management/login.php');
+    header('Location: ' . $root_path . '/pages/management/auth/employee_login.php');
     exit;
 }
 

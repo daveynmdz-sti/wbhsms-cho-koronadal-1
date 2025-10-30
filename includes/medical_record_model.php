@@ -22,25 +22,27 @@ class MedicalRecordModel {
         try {
             $stmt = $this->pdo->prepare("
                 SELECT 
-                    patient_id,
-                    first_name,
-                    middle_name,
-                    last_name,
-                    date_of_birth,
-                    gender,
-                    contact_number,
-                    email,
-                    address,
-                    barangay,
-                    municipality,
-                    province,
-                    philhealth_id,
-                    patient_qr_code,
-                    is_active,
-                    created_at,
-                    updated_at
-                FROM patients 
-                WHERE patient_id = ? AND is_active = 1
+                    p.patient_id,
+                    p.first_name,
+                    p.middle_name,
+                    p.last_name,
+                    p.suffix,
+                    p.date_of_birth,
+                    p.sex as gender,
+                    p.contact_number,
+                    p.email,
+                    p.barangay_id,
+                    b.barangay_name as barangay,
+                    'Koronadal' as municipality,
+                    'South Cotabato' as province,
+                    p.philhealth_id_number as philhealth_id,
+                    p.qr_code as patient_qr_code,
+                    p.status as is_active,
+                    p.created_at,
+                    p.updated_at
+                FROM patients p
+                LEFT JOIN barangays b ON p.barangay_id = b.barangay_id
+                WHERE p.patient_id = ? AND p.status = 'active'
             ");
             $stmt->execute([$patientId]);
             return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -64,7 +66,7 @@ class MedicalRecordModel {
                     p.last_name
                 FROM personal_information pi
                 JOIN patients p ON pi.patient_id = p.patient_id
-                WHERE pi.patient_id = ? AND p.is_active = 1
+                WHERE pi.patient_id = ? AND p.status = 'active'
             ");
             $stmt->execute([$patientId]);
             return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -86,7 +88,7 @@ class MedicalRecordModel {
                     ec.*
                 FROM emergency_contact ec
                 JOIN patients p ON ec.patient_id = p.patient_id
-                WHERE ec.patient_id = ? AND p.is_active = 1
+                WHERE ec.patient_id = ? AND p.status = 'active'
                 ORDER BY ec.created_at DESC
             ");
             $stmt->execute([$patientId]);
@@ -109,7 +111,7 @@ class MedicalRecordModel {
                     li.*
                 FROM lifestyle_information li
                 JOIN patients p ON li.patient_id = p.patient_id
-                WHERE li.patient_id = ? AND p.is_active = 1
+                WHERE li.patient_id = ? AND p.status = 'active'
             ");
             $stmt->execute([$patientId]);
             return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -131,7 +133,7 @@ class MedicalRecordModel {
                     pmc.*
                 FROM past_medical_conditions pmc
                 JOIN patients p ON pmc.patient_id = p.patient_id
-                WHERE pmc.patient_id = ? AND p.is_active = 1
+                WHERE pmc.patient_id = ? AND p.status = 'active'
                 ORDER BY pmc.date_diagnosed DESC
             ");
             $stmt->execute([$patientId]);
@@ -154,7 +156,7 @@ class MedicalRecordModel {
                     ci.*
                 FROM chronic_illnesses ci
                 JOIN patients p ON ci.patient_id = p.patient_id
-                WHERE ci.patient_id = ? AND p.is_active = 1
+                WHERE ci.patient_id = ? AND p.status = 'active'
                 ORDER BY ci.date_diagnosed DESC
             ");
             $stmt->execute([$patientId]);
@@ -177,7 +179,7 @@ class MedicalRecordModel {
                     i.*
                 FROM immunizations i
                 JOIN patients p ON i.patient_id = p.patient_id
-                WHERE i.patient_id = ? AND p.is_active = 1
+                WHERE i.patient_id = ? AND p.status = 'active'
                 ORDER BY i.date_administered DESC
             ");
             $stmt->execute([$patientId]);
@@ -200,7 +202,7 @@ class MedicalRecordModel {
                     fh.*
                 FROM family_history fh
                 JOIN patients p ON fh.patient_id = p.patient_id
-                WHERE fh.patient_id = ? AND p.is_active = 1
+                WHERE fh.patient_id = ? AND p.status = 'active'
                 ORDER BY fh.relationship, fh.condition_name
             ");
             $stmt->execute([$patientId]);
@@ -223,7 +225,7 @@ class MedicalRecordModel {
                     sh.*
                 FROM surgical_history sh
                 JOIN patients p ON sh.patient_id = p.patient_id
-                WHERE sh.patient_id = ? AND p.is_active = 1
+                WHERE sh.patient_id = ? AND p.status = 'active'
                 ORDER BY sh.surgery_date DESC
             ");
             $stmt->execute([$patientId]);
@@ -246,7 +248,7 @@ class MedicalRecordModel {
                     a.*
                 FROM allergies a
                 JOIN patients p ON a.patient_id = p.patient_id
-                WHERE a.patient_id = ? AND p.is_active = 1
+                WHERE a.patient_id = ? AND p.status = 'active'
                 ORDER BY a.severity DESC, a.allergen
             ");
             $stmt->execute([$patientId]);
@@ -269,7 +271,7 @@ class MedicalRecordModel {
                     cm.*
                 FROM current_medications cm
                 JOIN patients p ON cm.patient_id = p.patient_id
-                WHERE cm.patient_id = ? AND p.is_active = 1 AND cm.is_active = 1
+                WHERE cm.patient_id = ? AND p.status = 'active' AND cm.is_active = 1
                 ORDER BY cm.medication_name
             ");
             $stmt->execute([$patientId]);

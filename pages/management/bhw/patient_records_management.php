@@ -1428,6 +1428,12 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                                                     title="View Contact">
                                                     <i class="fas fa-address-card"></i>
                                                 </button>
+                                                <!-- MEDICAL RECORD PRINTING - COMMENTED OUT FOR DEPLOYMENT
+                                                <a href="../../public/medical_record_print.php?patient_id=<?php echo $patient['patient_id']; ?>"
+                                                    class="action-btn btn-success" title="Print Medical Records">
+                                                    <i class="fas fa-print"></i>
+                                                </a>
+                                                -->
                                             </div>
                                         </td>
                                     </tr>

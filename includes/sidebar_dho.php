@@ -121,6 +121,12 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'patients' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-users"></i> Patient Records
         </a>
+        <!-- MEDICAL RECORD PRINTING - COMMENTED OUT FOR DEPLOYMENT
+        <a href="<?= $nav_base ?>public/medical_record_print.php"
+            class="<?= $activePage === 'medical_print' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-print"></i> Medical Record Printing
+        </a>
+        -->
         <a href="<?= $nav_base ?>management/dho/appointments_management.php"
             class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-calendar-check"></i> Appointments Management

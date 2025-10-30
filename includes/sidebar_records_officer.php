@@ -121,6 +121,12 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-user-injured"></i> Patient Records
         </a>
+        <!-- MEDICAL RECORD PRINTING - COMMENTED OUT FOR DEPLOYMENT
+        <a href="<?= $nav_base ?>public/medical_record_print.php"
+            class="<?= $activePage === 'medical_print' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-print"></i> Medical Record Printing
+        </a>
+        -->
         <a href="<?= $nav_base ?>referrals/referrals_management.php"
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-share"></i> Referrals Management

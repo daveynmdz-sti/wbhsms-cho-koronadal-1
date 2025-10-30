@@ -1390,6 +1390,12 @@ $dho_district_name = $district_name_result->fetch_assoc()['district_name'];
                                                     title="View Contact">
                                                     <i class="fas fa-address-card"></i>
                                                 </button>
+                                                <!-- MEDICAL RECORD PRINTING - COMMENTED OUT FOR DEPLOYMENT
+                                                <a href="../../public/medical_record_print.php?patient_id=<?php echo $patient['patient_id']; ?>"
+                                                    class="action-btn btn-success" title="Print Medical Records">
+                                                    <i class="fas fa-print"></i>
+                                                </a>
+                                                -->
                                             </div>
                                         </td>
                                     </tr>

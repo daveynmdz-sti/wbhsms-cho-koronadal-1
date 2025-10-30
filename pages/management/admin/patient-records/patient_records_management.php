@@ -1484,6 +1484,12 @@ $barangayResult = $conn->query($barangaySql);
                                                     title="View Contact">
                                                     <i class="fas fa-address-card"></i>
                                                 </button>
+                                                <!-- MEDICAL RECORD PRINTING - COMMENTED OUT FOR DEPLOYMENT
+                                                <a href="../../../public/medical_record_print.php?patient_id=<?php echo $patient['patient_id']; ?>"
+                                                    class="action-btn btn-success" title="Print Medical Records">
+                                                    <i class="fas fa-print"></i>
+                                                </a>
+                                                -->
                                                 <?php if ($canEdit): ?>
                                                 <button type="button" class="action-btn btn-warning deactivate-patient"
                                                     data-patient-id="<?php echo $patient['patient_id']; ?>"

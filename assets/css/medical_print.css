@@ -652,7 +652,266 @@
     color: #666;
 }
 
-/* Responsive Design */
+/* Medical Record Section Styling */
+.medical-record-section {
+    margin-bottom: 25px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    page-break-inside: avoid;
+}
+
+.medical-record-section .section-header {
+    background: linear-gradient(135deg, #2c5aa0 0%, #3d6bb3 100%);
+    color: white;
+    padding: 15px 20px;
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.medical-record-section .section-body {
+    padding: 20px;
+}
+
+/* Info grids for medical data */
+.medical-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.medical-info-item {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.medical-info-item:last-child {
+    border-bottom: none;
+}
+
+.medical-info-label {
+    font-weight: 600;
+    color: #555;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.medical-info-value {
+    color: #333;
+    font-size: 1rem;
+    line-height: 1.4;
+}
+
+/* Medical tables */
+.medical-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    font-size: 0.9rem;
+    background: white;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.medical-table th {
+    background: #f8f9fa;
+    color: #2c5aa0;
+    font-weight: 600;
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 2px solid #e9ecef;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.medical-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: top;
+}
+
+.medical-table tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.medical-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Medical item cards */
+.medical-item-card {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+    background: #fafbfc;
+    transition: all 0.3s ease;
+    page-break-inside: avoid;
+}
+
+.medical-item-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.medical-item-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.medical-item-card .card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c5aa0;
+    margin: 0;
+}
+
+.medical-item-card .card-date {
+    font-size: 0.85rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.medical-item-card .card-body {
+    line-height: 1.6;
+}
+
+.medical-item-card .card-body p {
+    margin: 8px 0;
+}
+
+.medical-item-card .card-body strong {
+    color: #495057;
+    font-weight: 600;
+}
+
+/* Status badges */
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-completed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-cancelled {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-active {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+/* Medication list styling */
+.medication-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.medication-item {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-left: 4px solid #2c5aa0;
+    border-radius: 6px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.medication-item:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.medication-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c5aa0;
+    margin-bottom: 8px;
+}
+
+.medication-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    font-size: 0.9rem;
+}
+
+.medication-detail {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.medication-detail .label {
+    font-weight: 600;
+    color: #6c757d;
+}
+
+.medication-detail .value {
+    color: #495057;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .medical-info-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .medical-table {
+        font-size: 0.8rem;
+    }
+    
+    .medical-table th,
+    .medical-table td {
+        padding: 8px 10px;
+    }
+    
+    .medical-item-card {
+        padding: 15px;
+    }
+    
+    .medical-item-card .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .medication-details {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
 @media (max-width: 768px) {
     .medical-print-container {
         padding: 15px;
@@ -706,27 +965,401 @@
 
 /* Print Styles */
 @media print {
+    /* Hide all UI controls when printing */
+    .selection-panel,
+    .panel-header,
+    .preview-controls,
+    .action-buttons,
+    .btn,
+    .loading-overlay,
+    .alert-container,
+    .no-print {
+        display: none !important;
+    }
+    
+    /* Page setup */
+    @page {
+        size: A4;
+        margin: 2cm 1.5cm;
+        counter-increment: page;
+    }
+    
+    /* Print layout adjustments */
     .medical-print-container {
         background: white;
         padding: 0;
-    }
-    
-    .selection-panel {
-        display: none;
+        max-width: none;
+        margin: 0;
     }
     
     .print-content-grid {
         grid-template-columns: 1fr;
+        gap: 0;
     }
     
     .preview-panel {
         box-shadow: none;
         border-radius: 0;
+        border: none;
+        margin: 0;
+        padding: 0;
     }
     
-    .panel-header {
+    .preview-content {
+        padding: 0;
+        max-height: none;
+        overflow: visible;
+    }
+    
+    /* Typography for print */
+    body,
+    .medical-print-container,
+    .preview-content {
+        font-family: 'Times New Roman', Times, serif;
+        font-size: 11pt;
+        line-height: 1.4;
+        color: #000;
         background: white;
-        color: #333;
-        border-bottom: 2px solid #2c5aa0;
+    }
+    
+    /* Patient header for print */
+    .patient-header {
+        background: white !important;
+        box-shadow: none;
+        border-radius: 0;
+        border: 1pt solid #000;
+        margin-bottom: 15pt;
+        padding: 12pt;
+        page-break-after: avoid;
+    }
+    
+    .patient-info h2 {
+        color: #000 !important;
+        font-size: 14pt;
+        font-weight: bold;
+        margin: 0 0 8pt 0;
+        text-align: center;
+        border-bottom: 1pt solid #000;
+        padding-bottom: 6pt;
+    }
+    
+    .patient-details h3 {
+        color: #000 !important;
+        font-size: 12pt;
+        font-weight: bold;
+        margin: 6pt 0 4pt 0;
+    }
+    
+    .patient-details p {
+        margin: 0;
+        font-size: 10pt;
+        color: #000 !important;
+    }
+    
+    /* Preview sections for print */
+    .preview-section {
+        margin-bottom: 15pt;
+        page-break-inside: avoid;
+        border: 1pt solid #000;
+        break-inside: avoid;
+    }
+    
+    .preview-section h5 {
+        background: #f0f0f0 !important;
+        color: #000 !important;
+        padding: 8pt 12pt;
+        font-size: 11pt;
+        font-weight: bold;
+        margin: 0;
+        border-bottom: 1pt solid #000;
+        page-break-after: avoid;
+    }
+    
+    .section-content {
+        padding: 10pt;
+        color: #000 !important;
+    }
+    
+    .section-content h3 {
+        color: #000 !important;
+        font-size: 10pt;
+        font-weight: bold;
+        margin: 0 0 6pt 0;
+        page-break-after: avoid;
+    }
+    
+    .section-content p {
+        margin: 3pt 0;
+        font-size: 9pt;
+        page-break-inside: avoid;
+    }
+    
+    .section-content strong {
+        color: #000 !important;
+        font-weight: bold;
+    }
+    
+    /* Tables for print */
+    .table,
+    table {
+        font-size: 8pt;
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 10pt;
+        page-break-inside: auto;
+    }
+    
+    .table th,
+    .table td,
+    table th,
+    table td {
+        border: 1pt solid #000;
+        padding: 4pt 6pt;
+        vertical-align: top;
+        text-align: left;
+    }
+    
+    .table th,
+    table th {
+        background: #f0f0f0 !important;
+        font-weight: bold;
+        page-break-after: avoid;
+    }
+    
+    .table tr,
+    table tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+    
+    .table thead,
+    table thead {
+        display: table-header-group;
+    }
+    
+    .table tfoot,
+    table tfoot {
+        display: table-footer-group;
+    }
+    
+    /* Info grids for print */
+    .info-grid {
+        display: block;
+    }
+    
+    .info-item {
+        display: block;
+        margin-bottom: 4pt;
+        border-bottom: 0.5pt dotted #000;
+        padding-bottom: 2pt;
+        page-break-inside: avoid;
+    }
+    
+    .info-item strong {
+        display: inline;
+        font-weight: bold;
+        margin-right: 6pt;
+    }
+    
+    /* Medical record items for print */
+    .medication-item,
+    .consultation-item,
+    .prescription-item,
+    .lab-order-item {
+        border: 1pt solid #000;
+        padding: 8pt;
+        margin-bottom: 6pt;
+        page-break-inside: avoid;
+        background: white !important;
+    }
+    
+    .consultation-item h4,
+    .prescription-item h4,
+    .lab-order-item h4 {
+        font-size: 9pt;
+        font-weight: bold;
+        margin: 0 0 4pt 0;
+        color: #000 !important;
+        border-bottom: 0.5pt solid #000;
+        padding-bottom: 2pt;
+    }
+    
+    /* No data state for print */
+    .no-data {
+        color: #666 !important;
+        font-style: italic;
+        text-align: center;
+        padding: 10pt;
+        border: 1pt dashed #666;
+        background: white !important;
+    }
+    
+    /* Page breaks */
+    .page-break {
+        page-break-before: always;
+    }
+    
+    .page-break-avoid {
+        page-break-inside: avoid;
+    }
+    
+    /* Footer information */
+    .print-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 30pt;
+        font-size: 8pt;
+        color: #666;
+        text-align: center;
+        border-top: 0.5pt solid #ccc;
+        padding-top: 4pt;
+        background: white;
+    }
+    
+    .print-footer:after {
+        content: "Page " counter(page);
+    }
+    
+    /* Ensure black text for critical elements */
+    h1, h2, h3, h4, h5, h6,
+    .patient-info h2,
+    .patient-details h3,
+    .preview-section h5,
+    .section-content h3 {
+        color: #000 !important;
+    }
+    
+    /* Remove all shadows and rounded corners for print */
+    * {
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        text-shadow: none !important;
+    }
+    
+    /* Force white background for readability */
+    .patient-header,
+    .preview-section,
+    .section-content,
+    .medication-item,
+    .consultation-item,
+    .prescription-item,
+    .lab-order-item {
+        background: white !important;
+    }
+}
+
+/* PDF Generation Styles */
+.pdf-optimized {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 11pt;
+    line-height: 1.4;
+    color: #000;
+    background: white;
+    padding: 0;
+    margin: 0;
+}
+
+.pdf-optimized .medical-record-container {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: white;
+}
+
+.pdf-optimized .section {
+    margin-bottom: 12pt;
+    page-break-inside: avoid;
+    border: 1pt solid #ccc;
+    background: white;
+}
+
+.pdf-optimized .section h3 {
+    background: #f5f5f5;
+    color: #000;
+    padding: 6pt 10pt;
+    font-size: 11pt;
+    font-weight: bold;
+    margin: 0;
+    border-bottom: 1pt solid #ccc;
+    page-break-after: avoid;
+}
+
+.pdf-optimized .section-content {
+    padding: 8pt;
+}
+
+.pdf-optimized .table {
+    font-size: 9pt;
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 8pt;
+    page-break-inside: auto;
+}
+
+.pdf-optimized .table th,
+.pdf-optimized .table td {
+    border: 1pt solid #666;
+    padding: 4pt 6pt;
+    text-align: left;
+    vertical-align: top;
+}
+
+.pdf-optimized .table th {
+    background: #f0f0f0;
+    font-weight: bold;
+    page-break-after: avoid;
+}
+
+.pdf-optimized .info-item {
+    margin-bottom: 3pt;
+    border-bottom: 0.5pt dotted #ccc;
+    padding-bottom: 2pt;
+    page-break-inside: avoid;
+}
+
+.pdf-optimized .info-item strong {
+    font-weight: bold;
+    margin-right: 6pt;
+}
+
+.pdf-optimized .no-data {
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 10pt;
+    border: 1pt dashed #ccc;
+    background: #f9f9f9;
+}
+
+/* Utility classes for print control */
+.print-only {
+    display: none;
+}
+
+.screen-only {
+    display: block; /* Will be hidden in print media */
+}
+
+.page-break-before {
+    page-break-before: always;
+}
+
+.page-break-after {
+    page-break-after: always;
+}
+
+.page-break-inside-avoid {
+    page-break-inside: avoid;
+}
+
+@media print {
+    .print-only {
+        display: block !important;
+    }
+    
+    .screen-only {
+        display: none !important;
     }
 }

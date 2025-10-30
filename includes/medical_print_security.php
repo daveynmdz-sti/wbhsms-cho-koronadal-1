@@ -31,16 +31,17 @@ class MedicalPrintSecurity {
         try {
             $stmt = $this->pdo->prepare("
                 SELECT 
-                    employee_id,
-                    first_name,
-                    last_name,
-                    role,
-                    email,
-                    contact_number,
-                    is_active,
-                    created_at
-                FROM employees 
-                WHERE employee_id = ? AND is_active = 1
+                    e.employee_id,
+                    e.first_name,
+                    e.last_name,
+                    r.role_name as role,
+                    e.email,
+                    e.contact_num as contact_number,
+                    e.status as is_active,
+                    e.created_at
+                FROM employees e
+                JOIN roles r ON e.role_id = r.role_id
+                WHERE e.employee_id = ? AND e.status = 'active'
             ");
             $stmt->execute([$employeeId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -70,9 +71,10 @@ class MedicalPrintSecurity {
         try {
             // Get user role and details
             $stmt = $this->pdo->prepare("
-                SELECT role, is_active 
-                FROM employees 
-                WHERE employee_id = ? AND is_active = 1
+                SELECT r.role_name, e.status 
+                FROM employees e
+                JOIN roles r ON e.role_id = r.role_id
+                WHERE e.employee_id = ? AND e.status = 'active'
             ");
             $stmt->execute([$userId]);
             $employee = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -81,7 +83,7 @@ class MedicalPrintSecurity {
                 return false;
             }
             
-            $role = $employee['role'];
+            $role = $employee['role_name'];
             
             // Check if patient exists and is active
             $stmt = $this->pdo->prepare("
@@ -98,18 +100,18 @@ class MedicalPrintSecurity {
             
             // Role-based access control
             switch ($role) {
-                case 'Admin':
-                case 'Doctor':
-                case 'Nurse':
-                case 'Records Officer':
+                case 'admin':
+                case 'doctor':
+                case 'nurse':
+                case 'records_officer':
                     // Full access to all patients
                     return true;
                     
-                case 'DHO':
+                case 'dho':
                     // DHO has access to all patients in their district
                     return true;
                     
-                case 'BHW':
+                case 'bhw':
                     // BHW can only access patients from assigned barangays
                     $stmt = $this->pdo->prepare("
                         SELECT COUNT(*) as can_access
@@ -402,9 +404,10 @@ class MedicalPrintSecurity {
     public function hasPermission($userId, $permission) {
         try {
             $stmt = $this->pdo->prepare("
-                SELECT role 
-                FROM employees 
-                WHERE employee_id = ? AND is_active = 1
+                SELECT r.role_name as role 
+                FROM employees e
+                JOIN roles r ON e.role_id = r.role_id
+                WHERE e.employee_id = ? AND e.status = 'active'
             ");
             $stmt->execute([$userId]);
             $employee = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -417,15 +420,15 @@ class MedicalPrintSecurity {
             
             // Define permissions by role
             $permissions = [
-                'Admin' => ['view', 'print', 'export', 'audit'],
-                'Doctor' => ['view', 'print', 'export'],
-                'Nurse' => ['view', 'print'],
-                'DHO' => ['view', 'print', 'export'],
-                'BHW' => ['view', 'print'],
-                'Records Officer' => ['view', 'print', 'export', 'audit'],
-                'Laboratory Tech' => ['view'],
-                'Pharmacist' => ['view'],
-                'Cashier' => ['view']
+                'admin' => ['view', 'print', 'export', 'audit'],
+                'doctor' => ['view', 'print', 'export'],
+                'nurse' => ['view', 'print'],
+                'dho' => ['view', 'print', 'export'],
+                'bhw' => ['view', 'print'],
+                'records_officer' => ['view', 'print', 'export', 'audit'],
+                'laboratory_tech' => ['view'],
+                'pharmacist' => ['view'],
+                'cashier' => ['view']
             ];
             
             return in_array($permission, $permissions[$role] ?? []);

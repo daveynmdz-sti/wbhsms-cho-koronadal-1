@@ -1171,10 +1171,10 @@ if ($completion_percentage >= 90) {
                     style="background:#2980b9;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(41,128,185,0.08);cursor:pointer;transition:background 0.18s;">
                     <i class="fas fa-file-download"></i> <span class="hide-on-mobile">Export Medical Record</span>
                 </button>
-                <button class="utility-btn" onclick="printPatientFile()" title="Print Patient File"
-                    style="background:#16a085;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(22,160,133,0.08);cursor:pointer;transition:background 0.18s;">
-                    <i class="fas fa-print"></i> <span class="hide-on-mobile">Print Medical Record</span>
-                </button>
+                <a href="../../../public/medical_record_print.php?patient_id=<?= $patient_id ?>" class="utility-btn" title="Print Medical Records"
+                    style="background:#16a085;color:#fff;border:none;padding:0.6em 1.2em;border-radius:6px;font-weight:600;display:flex;align-items:center;gap:0.5em;box-shadow:0 2px 8px rgba(22,160,133,0.08);cursor:pointer;transition:background 0.18s;text-decoration:none;">
+                    <i class="fas fa-print"></i> <span class="hide-on-mobile">Medical Records Print</span>
+                </a>
             </div>
         </div>
 
