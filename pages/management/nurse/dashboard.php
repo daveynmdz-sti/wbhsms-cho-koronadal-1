@@ -1194,7 +1194,8 @@ try {
             </div>
         </section>
 
-        <!-- Quick Actions -->
+        <!-- COMMENTED OUT FOR DEPLOYMENT - Quick Actions Section -->
+        <!--
         <section class="quick-actions-section">
             <h2 class="section-heading"><i class="fas fa-bolt"></i> Quick Actions</h2>
 
@@ -1254,6 +1255,7 @@ try {
                 </a>
             </div>
         </section>
+        -->
 
         <!-- Dashboard Data Layout -->
         <section class="dashboard-content">

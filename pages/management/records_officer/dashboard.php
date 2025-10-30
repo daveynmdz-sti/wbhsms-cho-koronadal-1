@@ -1210,7 +1210,8 @@ try {
             </div>
         </div>
 
-        <!-- Quick Actions -->
+        <!-- COMMENTED OUT FOR DEPLOYMENT - Quick Actions Section -->
+        <!--
         <h2 class="section-title">
             <i class="fas fa-bolt"></i>
             Quick Actions
@@ -1296,6 +1297,7 @@ try {
             </a>
         </div>
         </div>
+        -->
 
         <!-- Info Layout -->
         <div class="info-layout">

@@ -292,9 +292,7 @@ try {
         ['alert_type' => 'info', 'message' => 'No laboratory alerts available', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
     ];
 }
-        ['alert_type' => 'info', 'message' => 'No laboratory alerts available', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
-    ];
-}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1009,7 +1007,8 @@ try {
             </div>
         </div>
 
-        <!-- Quick Actions -->
+        <!-- COMMENTED OUT FOR DEPLOYMENT - Quick Actions Section -->
+        <!--
         <h2 class="section-title">
             <i class="fas fa-bolt"></i>
             Quick Actions
@@ -1095,6 +1094,7 @@ try {
                 </a>
             </div>
         </div>
+        -->
 
         <!-- Info Layout -->
         <div class="info-layout">

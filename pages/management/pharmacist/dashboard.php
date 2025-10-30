@@ -1405,7 +1405,8 @@ try {
             </div>
         </section>
 
-        <!-- Quick Actions -->
+        <!-- COMMENTED OUT FOR DEPLOYMENT - Quick Actions Section -->
+        <!--
         <section class="quick-actions-section">
             <h2 class="section-heading">
                 <i class="fas fa-bolt"></i>
@@ -1467,6 +1468,7 @@ try {
                 </a>
             </div>
         </section>
+        -->
 
         <!-- Info Layout -->
         <div class="info-layout">

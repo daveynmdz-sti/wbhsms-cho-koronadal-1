@@ -927,6 +927,8 @@ try {
 
         <hr class="section-divider">
         
+        <!-- COMMENTED OUT FOR DEPLOYMENT - Quick Actions Section -->
+        <!--
         <section class="quick-actions">
             <h2 class="actions-title">Quick Actions</h2>
             
@@ -962,6 +964,7 @@ try {
                 </a>
             </div>
         </section>
+        -->
 
         <hr class="section-divider">
 
