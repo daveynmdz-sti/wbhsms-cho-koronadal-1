@@ -100,76 +100,176 @@ try {
 
 // Dashboard Statistics
 try {
-    // Pending Records
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM medical_records WHERE status = "pending" AND assigned_officer_id = ?');
-    $stmt->execute([$employee_id]);
+    // Pending Records (Incomplete consultations)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations 
+        WHERE consultation_status = "ongoing"
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['pending_records'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Records officer dashboard error (pending records): " . $e->getMessage());
 }
 
 try {
-    // Records Processed Today
+    // Records Processed Today (Completed consultations today)
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM medical_records WHERE DATE(updated_date) = ? AND assigned_officer_id = ? AND status = "completed"');
-    $stmt->execute([$today, $employee_id]);
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations 
+        WHERE DATE(updated_at) = ? AND consultation_status = "completed"
+    ');
+    $stmt->execute([$today]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['records_processed_today'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Records officer dashboard error (records processed today): " . $e->getMessage());
 }
 
 try {
     // Total Patient Records
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM patients WHERE status = "active"');
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM patients 
+        WHERE status = "active"
+    ');
     $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['total_patient_records'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Records officer dashboard error (total patient records): " . $e->getMessage());
 }
 
 try {
-    // Pending Requests
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM record_requests WHERE status = "pending" AND assigned_officer_id = ?');
-    $stmt->execute([$employee_id]);
+    // Pending Requests (Consultations awaiting follow-up or lab results)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations 
+        WHERE consultation_status IN ("awaiting_lab_results", "awaiting_followup")
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['pending_requests'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Records officer dashboard error (pending requests): " . $e->getMessage());
 }
 
 try {
-    // Archived Records
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM medical_records WHERE status = "archived" AND assigned_officer_id = ?');
-    $stmt->execute([$employee_id]);
+    // Archived Records (Cancelled or old consultations)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations 
+        WHERE consultation_status = "cancelled"
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['archived_records'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Records officer dashboard error (archived records): " . $e->getMessage());
 }
 
 try {
-    // Data Quality Issues
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM data_quality_issues WHERE status = "open" AND assigned_officer_id = ?');
-    $stmt->execute([$employee_id]);
+    // Data Quality Issues (Patients with incomplete information)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM patients 
+        WHERE contact_number IS NULL OR contact_number = "" 
+        OR email IS NULL OR email = ""
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['data_quality_issues'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Records officer dashboard error (data quality issues): " . $e->getMessage());
+}
+
+// Pending Records (Incomplete consultations)
+try {
+    $stmt = $pdo->prepare('
+        SELECT c.consultation_id, c.chief_complaint, c.consultation_date, c.consultation_status,
+               p.first_name, p.last_name, p.patient_id, e.first_name as doctor_first_name, e.last_name as doctor_last_name
+        FROM consultations c
+        INNER JOIN patients p ON c.patient_id = p.patient_id
+        INNER JOIN employees e ON c.attending_employee_id = e.employee_id
+        WHERE c.consultation_status = "ongoing"
+        ORDER BY c.consultation_date DESC
+        LIMIT 8
+    ');
+    $stmt->execute();
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $defaults['pending_records'][] = [
+            'record_id' => $row['consultation_id'],
+            'record_type' => 'Consultation',
+            'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+            'patient_id' => $row['patient_id'],
+            'assigned_staff' => trim($row['doctor_first_name'] . ' ' . $row['doctor_last_name']),
+            'priority' => 'normal',
+            'created_date' => date('M d, Y', strtotime($row['consultation_date'])),
+            'status' => ucfirst($row['consultation_status'])
+        ];
+    }
+    
+    if (empty($defaults['pending_records'])) {
+        $defaults['pending_records'] = [
+            ['record_id' => '-', 'record_type' => 'No pending records', 'patient_name' => '-', 'patient_id' => '-', 'assigned_staff' => '-', 'priority' => 'normal', 'created_date' => '-', 'status' => '-']
+        ];
+    }
+} catch (PDOException $e) {
+    error_log("Records officer dashboard error (pending records list): " . $e->getMessage());
+    $defaults['pending_records'] = [
+        ['record_id' => '-', 'record_type' => 'No records data available', 'patient_name' => '-', 'patient_id' => '-', 'assigned_staff' => '-', 'priority' => 'normal', 'created_date' => '-', 'status' => '-']
+    ];
+}
+
+// Recent Activities (Recent completed consultations)
+try {
+    $stmt = $pdo->prepare('
+        SELECT c.consultation_id, c.diagnosis, c.updated_at, c.consultation_status,
+               p.first_name, p.last_name, p.patient_id, e.first_name as doctor_first_name, e.last_name as doctor_last_name
+        FROM consultations c
+        INNER JOIN patients p ON c.patient_id = p.patient_id
+        INNER JOIN employees e ON c.attending_employee_id = e.employee_id
+        WHERE c.consultation_status = "completed"
+        ORDER BY c.updated_at DESC
+        LIMIT 5
+    ');
+    $stmt->execute();
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $defaults['recent_activities'][] = [
+            'activity_id' => $row['consultation_id'],
+            'activity_type' => 'Record Completed',
+            'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+            'patient_id' => $row['patient_id'],
+            'staff_member' => trim($row['doctor_first_name'] . ' ' . $row['doctor_last_name']),
+            'description' => 'Consultation completed: ' . ($row['diagnosis'] ? substr($row['diagnosis'], 0, 50) . '...' : 'No diagnosis recorded'),
+            'timestamp' => date('M d, Y H:i', strtotime($row['updated_at']))
+        ];
+    }
+    
+    if (empty($defaults['recent_activities'])) {
+        $defaults['recent_activities'] = [
+            ['activity_id' => '-', 'activity_type' => 'No recent activities', 'patient_name' => '-', 'patient_id' => '-', 'staff_member' => '-', 'description' => '-', 'timestamp' => '-']
+        ];
+    }
+} catch (PDOException $e) {
+    error_log("Records officer dashboard error (recent activities): " . $e->getMessage());
+    $defaults['recent_activities'] = [
+        ['activity_id' => '-', 'activity_type' => 'No activity data available', 'patient_name' => '-', 'patient_id' => '-', 'staff_member' => '-', 'description' => '-', 'timestamp' => '-']
+    ];
 }
 
 // Pending Records
 try {
     $stmt = $pdo->prepare('
-        SELECT mr.record_id, mr.record_type, mr.priority, mr.created_date,
-               p.first_name, p.last_name, p.patient_id, mr.description
-        FROM medical_records mr 
-        JOIN patients p ON mr.patient_id = p.patient_id 
-        WHERE mr.status = "pending" AND mr.assigned_officer_id = ? 
-        ORDER BY mr.priority DESC, mr.created_date ASC 
-        LIMIT 8
+        SELECT pr.record_id, pr.record_type, pr.description, pr.priority, pr.created_date,
+               p.first_name, p.last_name, p.patient_id
+        FROM pending_records pr 
+        LEFT JOIN patients p ON pr.patient_id = p.patient_id 
+        WHERE pr.officer_id = ? 
+        ORDER BY pr.priority DESC, pr.created_date ASC 
+        LIMIT 6
     ');
     $stmt->execute([$employee_id]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -183,8 +283,14 @@ try {
             'created_date' => date('M d, Y', strtotime($row['created_date']))
         ];
     }
+    
+    if (empty($defaults['pending_records'])) {
+        $defaults['pending_records'] = [
+            ['record_id' => '-', 'record_type' => 'No pending records', 'patient_name' => '-', 'patient_id' => '-', 'description' => '-', 'priority' => '-', 'created_date' => '-']
+        ];
+    }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Records officer dashboard error (pending records): " . $e->getMessage());
     $defaults['pending_records'] = [
         ['record_id' => 'R001', 'record_type' => 'Medical History', 'patient_name' => 'Sample Patient', 'patient_id' => 'P001', 'description' => 'Complete medical history documentation', 'priority' => 'high', 'created_date' => 'Sep 20, 2025'],
         ['record_id' => 'R002', 'record_type' => 'Lab Results', 'patient_name' => 'Test Patient', 'patient_id' => 'P002', 'description' => 'Laboratory results filing', 'priority' => 'normal', 'created_date' => 'Sep 19, 2025']

@@ -84,110 +84,133 @@ try {
 
 // Dashboard Statistics
 try {
-    if ($pdo) {
-        // Today's Appointments
-        $today = date('Y-m-d');
-        $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM appointments WHERE DATE(appointment_date) = ? AND doctor_id = ?');
-        $stmt->execute([$today, $employee_id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $defaults['stats']['today_appointments'] = $row['count'] ?? 0;
-    }
-} catch (PDOException $e) {
-    // table might not exist yet; ignore
-}
-
-try {
-    if ($pdo) {
-        // Pending Consultations
-        $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM appointments WHERE status = "scheduled" AND doctor_id = ?');
-        $stmt->execute([$employee_id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $defaults['stats']['pending_consultations'] = $row['count'] ?? 0;
-    }
-} catch (PDOException $e) {
-    // table might not exist yet; ignore
-}
-
-try {
-    // Patients Seen Today
+    // Today's Appointments (confirmed appointments for today)
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(DISTINCT patient_id) as count FROM appointments WHERE DATE(appointment_date) = ? AND doctor_id = ? AND status = "completed"');
+    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM appointments WHERE DATE(scheduled_date) = ? AND status = "confirmed"');
+    $stmt->execute([$today]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $defaults['stats']['today_appointments'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("Doctor dashboard stats error (today's appointments): " . $e->getMessage());
+}
+
+try {
+    // Pending Consultations (ongoing consultations)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations 
+        WHERE consultation_status = "ongoing" AND attending_employee_id = ?
+    ');
+    $stmt->execute([$employee_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $defaults['stats']['pending_consultations'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("Doctor dashboard stats error (pending consultations): " . $e->getMessage());
+}
+
+try {
+    // Patients Seen Today (from consultations)
+    $today = date('Y-m-d');
+    $stmt = $pdo->prepare('
+        SELECT COUNT(DISTINCT patient_id) as count 
+        FROM consultations 
+        WHERE DATE(consultation_date) = ? AND attending_employee_id = ?
+    ');
     $stmt->execute([$today, $employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['patients_seen_today'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Doctor dashboard stats error (patients seen today): " . $e->getMessage());
 }
 
 try {
-    // Pending Prescriptions
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM prescriptions WHERE doctor_id = ? AND status = "pending"');
+    // Pending Prescriptions (prescribed by this doctor)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM prescriptions 
+        WHERE prescribed_by_employee_id = ? AND status IN ("active", "issued")
+    ');
     $stmt->execute([$employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['pending_prescriptions'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Doctor dashboard stats error (pending prescriptions): " . $e->getMessage());
 }
 
 try {
-    // Total Patients under care
-    $stmt = $pdo->prepare('SELECT COUNT(DISTINCT patient_id) as count FROM appointments WHERE doctor_id = ?');
+    // Total Patients under care (distinct patients with consultations)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(DISTINCT patient_id) as count 
+        FROM consultations 
+        WHERE attending_employee_id = ?
+    ');
     $stmt->execute([$employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['total_patients'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Doctor dashboard stats error (total patients): " . $e->getMessage());
 }
 
 try {
-    // Follow-ups Due
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND follow_up_date <= ? AND status = "follow_up_scheduled"');
+    // Follow-ups Due (consultations with follow-up dates)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations 
+        WHERE attending_employee_id = ? AND follow_up_date <= ? AND consultation_status = "completed"
+    ');
     $stmt->execute([$employee_id, date('Y-m-d')]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['follow_ups_due'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Doctor dashboard stats error (follow-ups due): " . $e->getMessage());
 }
 
-// Today's Schedule (next 5 appointments)
+// Today's Schedule (confirmed appointments for today)
 try {
     $today = date('Y-m-d');
     $stmt = $pdo->prepare('
-        SELECT a.appointment_time, a.appointment_type, a.status, 
-               p.first_name, p.last_name, p.patient_id, a.chief_complaint
+        SELECT a.scheduled_time, a.status, 
+               p.first_name, p.last_name, p.patient_id, s.service_name
         FROM appointments a 
-        JOIN patients p ON a.patient_id = p.patient_id 
-        WHERE DATE(a.appointment_date) = ? AND a.doctor_id = ? 
-        ORDER BY a.appointment_time ASC 
+        INNER JOIN patients p ON a.patient_id = p.patient_id 
+        LEFT JOIN service_items s ON a.service_id = s.service_id
+        WHERE DATE(a.scheduled_date) = ? AND a.status = "confirmed"
+        ORDER BY a.scheduled_time ASC 
         LIMIT 5
     ');
-    $stmt->execute([$today, $employee_id]);
+    $stmt->execute([$today]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['todays_schedule'][] = [
-            'time' => date('H:i', strtotime($row['appointment_time'])),
+            'time' => date('H:i', strtotime($row['scheduled_time'])),
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'type' => $row['appointment_type'] ?? 'Consultation',
-            'status' => $row['status'] ?? 'scheduled',
-            'chief_complaint' => $row['chief_complaint'] ?? '-'
+            'type' => $row['service_name'] ?? 'General Consultation',
+            'status' => $row['status'],
+            'chief_complaint' => '-'
+        ];
+    }
+    
+    if (empty($defaults['todays_schedule'])) {
+        $defaults['todays_schedule'] = [
+            ['time' => '-', 'patient_name' => 'No appointments today', 'patient_id' => '-', 'type' => '-', 'status' => '-', 'chief_complaint' => '-']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default schedule
+    error_log("Doctor dashboard error (today's schedule): " . $e->getMessage());
     $defaults['todays_schedule'] = [
-        ['time' => '08:00', 'patient_name' => 'No appointments', 'patient_id' => '-', 'type' => '-', 'status' => 'scheduled', 'chief_complaint' => '-']
+        ['time' => '-', 'patient_name' => 'No schedule available', 'patient_id' => '-', 'type' => '-', 'status' => '-', 'chief_complaint' => '-']
     ];
 }
 
-// Recent Patients (latest 5)
+// Recent Patients (latest consultations by this doctor)
 try {
     $stmt = $pdo->prepare('
-        SELECT DISTINCT p.first_name, p.last_name, p.patient_id, 
-               a.appointment_date, a.diagnosis, a.status
-        FROM patients p 
-        JOIN appointments a ON p.patient_id = a.patient_id 
-        WHERE a.doctor_id = ? 
-        ORDER BY a.appointment_date DESC 
+        SELECT p.first_name, p.last_name, p.patient_id, 
+               c.consultation_date, c.diagnosis, c.consultation_status
+        FROM consultations c
+        INNER JOIN patients p ON c.patient_id = p.patient_id 
+        WHERE c.attending_employee_id = ? 
+        ORDER BY c.consultation_date DESC 
         LIMIT 5
     ');
     $stmt->execute([$employee_id]);
@@ -195,42 +218,102 @@ try {
         $defaults['recent_patients'][] = [
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'last_visit' => date('M d, Y', strtotime($row['appointment_date'])),
-            'diagnosis' => $row['diagnosis'] ?? 'Consultation',
-            'status' => $row['status'] ?? 'completed'
+            'last_visit' => date('M d, Y', strtotime($row['consultation_date'])),
+            'diagnosis' => $row['diagnosis'] ?? 'General consultation',
+            'status' => $row['consultation_status']
+        ];
+    }
+    
+    if (empty($defaults['recent_patients'])) {
+        $defaults['recent_patients'] = [
+            ['patient_name' => 'No recent consultations', 'patient_id' => '-', 'last_visit' => '-', 'diagnosis' => '-', 'status' => '-']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Doctor dashboard error (recent patients): " . $e->getMessage());
     $defaults['recent_patients'] = [
-        ['patient_name' => 'No recent patients', 'patient_id' => '-', 'last_visit' => '-', 'diagnosis' => '-', 'status' => '-']
+        ['patient_name' => 'No patient data available', 'patient_id' => '-', 'last_visit' => '-', 'diagnosis' => '-', 'status' => '-']
     ];
 }
 
-// Medical Alerts
+// Medical Alerts (system alerts based on consultations and prescriptions)
 try {
+    $alerts = [];
+    
+    // Check for consultations requiring follow-up
     $stmt = $pdo->prepare('
-        SELECT p.first_name, p.last_name, p.patient_id, ma.alert_type, ma.message, ma.created_at
-        FROM medical_alerts ma 
-        JOIN patients p ON ma.patient_id = p.patient_id 
-        WHERE ma.doctor_id = ? AND ma.status = "active" 
-        ORDER BY ma.created_at DESC 
-        LIMIT 3
+        SELECT COUNT(*) as count
+        FROM consultations 
+        WHERE attending_employee_id = ? AND follow_up_date <= CURDATE() AND consultation_status = "completed"
     ');
     $stmt->execute([$employee_id]);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $defaults['medical_alerts'][] = [
-            'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
-            'patient_id' => $row['patient_id'],
-            'alert_type' => $row['alert_type'] ?? 'general',
-            'message' => $row['message'] ?? '',
-            'date' => date('m/d/Y H:i', strtotime($row['created_at']))
+    $follow_ups_due = $stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0;
+    
+    if ($follow_ups_due > 0) {
+        $alerts[] = [
+            'patient_name' => 'System',
+            'patient_id' => '-',
+            'alert_type' => 'warning',
+            'message' => $follow_ups_due . ' patient(s) due for follow-up',
+            'date' => date('m/d/Y H:i')
         ];
     }
+    
+    // Check for pending prescriptions
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count
+        FROM prescriptions 
+        WHERE prescribed_by_employee_id = ? AND status = "issued"
+    ');
+    $stmt->execute([$employee_id]);
+    $pending_prescriptions = $stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0;
+    
+    if ($pending_prescriptions > 0) {
+        $alerts[] = [
+            'patient_name' => 'System',
+            'patient_id' => '-',
+            'alert_type' => 'info',
+            'message' => $pending_prescriptions . ' prescription(s) awaiting pharmacy',
+            'date' => date('m/d/Y H:i')
+        ];
+    }
+    
+    // Check for ongoing consultations
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count
+        FROM consultations 
+        WHERE attending_employee_id = ? AND consultation_status = "ongoing"
+    ');
+    $stmt->execute([$employee_id]);
+    $ongoing_consultations = $stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0;
+    
+    if ($ongoing_consultations > 0) {
+        $alerts[] = [
+            'patient_name' => 'System',
+            'patient_id' => '-',
+            'alert_type' => 'info',
+            'message' => $ongoing_consultations . ' consultation(s) in progress',
+            'date' => date('m/d/Y H:i')
+        ];
+    }
+    
+    // If no specific alerts, add general message
+    if (empty($alerts)) {
+        $alerts[] = [
+            'patient_name' => 'System',
+            'patient_id' => '-',
+            'alert_type' => 'info',
+            'message' => 'All consultations up to date',
+            'date' => date('m/d/Y H:i')
+        ];
+    }
+    
+    $defaults['medical_alerts'] = $alerts;
+    
 } catch (PDOException $e) {
-    // table might not exist yet; add some default alerts
+    error_log("Doctor dashboard error (medical alerts): " . $e->getMessage());
     $defaults['medical_alerts'] = [
-        ['patient_name' => 'System', 'patient_id' => '-', 'alert_type' => 'info', 'message' => 'No medical alerts at this time', 'date' => date('m/d/Y H:i')]
+        ['patient_name' => 'System', 'patient_id' => '-', 'alert_type' => 'info', 'message' => 'Alert system ready', 'date' => date('m/d/Y H:i')]
     ];
 }
 ?>

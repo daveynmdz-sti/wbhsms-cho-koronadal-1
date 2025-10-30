@@ -100,93 +100,120 @@ try {
 
 // Dashboard Statistics
 try {
-    // Pending Prescriptions
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM prescriptions WHERE status = "pending" AND pharmacist_id = ?');
-    $stmt->execute([$employee_id]);
+    // Pending Prescriptions (active status with pending medications)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(DISTINCT p.prescription_id) as count 
+        FROM prescriptions p 
+        INNER JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id 
+        WHERE pm.status = "pending" AND p.status IN ("active", "issued")
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['pending_prescriptions'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Dashboard stats error (pending prescriptions): " . $e->getMessage());
 }
 
 try {
-    // Dispensed Today
+    // Dispensed Today (medications dispensed today)
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM prescriptions WHERE DATE(dispensed_date) = ? AND pharmacist_id = ? AND status = "dispensed"');
-    $stmt->execute([$today, $employee_id]);
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM prescribed_medications pm
+        INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id
+        WHERE pm.status = "dispensed" AND DATE(pm.updated_at) = ?
+    ');
+    $stmt->execute([$today]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['dispensed_today'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Dashboard stats error (dispensed today): " . $e->getMessage());
 }
 
 try {
-    // Low Stock Items
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM pharmacy_inventory WHERE quantity <= reorder_level');
+    // Medications Needing Review (pending medications that need pharmacist action)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM prescribed_medications pm
+        INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id
+        WHERE pm.status = "pending" AND p.status = "issued"
+    ');
     $stmt->execute();
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    $defaults['stats']['low_stock_items'] = $row['count'] ?? 0;
-} catch (PDOException $e) {
-    // table might not exist yet; ignore
-}
-
-try {
-    // Prescriptions Needing Review
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM prescriptions WHERE status = "needs_review" AND pharmacist_id = ?');
-    $stmt->execute([$employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['prescription_reviews'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Dashboard stats error (prescription reviews): " . $e->getMessage());
 }
 
 try {
-    // Total Medications in Inventory
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM pharmacy_inventory WHERE quantity > 0');
+    // Total Active Prescriptions
+    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM prescriptions WHERE status IN ("active", "issued")');
     $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['total_medications'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Dashboard stats error (total medications): " . $e->getMessage());
 }
 
 try {
-    // Revenue Today
+    // Unavailable Medications Today
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT SUM(total_amount) as total FROM prescription_billing WHERE DATE(billing_date) = ? AND pharmacist_id = ?');
-    $stmt->execute([$today, $employee_id]);
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM prescribed_medications pm
+        WHERE pm.status = "unavailable" AND DATE(pm.updated_at) = ?
+    ');
+    $stmt->execute([$today]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    $defaults['stats']['revenue_today'] = $row['total'] ?? 0;
+    $defaults['stats']['low_stock_items'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Dashboard stats error (unavailable medications): " . $e->getMessage());
+}
+
+try {
+    // Total Prescriptions This Month
+    $month_start = date('Y-m-01');
+    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM prescriptions WHERE prescription_date >= ?');
+    $stmt->execute([$month_start]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $defaults['stats']['revenue_today'] = $row['count'] ?? 0; // Using this field for monthly prescription count
+} catch (PDOException $e) {
+    error_log("Dashboard stats error (monthly prescriptions): " . $e->getMessage());
 }
 
 // Pending Prescriptions
 try {
     $stmt = $pdo->prepare('
-        SELECT p.prescription_id, p.medication_name, p.dosage, p.quantity, p.prescribed_date,
-               pt.first_name, pt.last_name, pt.patient_id, p.priority
+        SELECT p.prescription_id, pm.medication_name, pm.dosage, pm.frequency, pm.duration, 
+               p.prescription_date, pt.first_name, pt.last_name, pt.patient_id,
+               COUNT(pm2.prescribed_medication_id) as total_medications,
+               SUM(CASE WHEN pm2.status = "pending" THEN 1 ELSE 0 END) as pending_medications
         FROM prescriptions p 
-        JOIN patients pt ON p.patient_id = pt.patient_id 
-        WHERE p.status = "pending" AND p.pharmacist_id = ? 
-        ORDER BY p.priority DESC, p.prescribed_date ASC 
+        INNER JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id 
+        INNER JOIN patients pt ON p.patient_id = pt.patient_id 
+        INNER JOIN prescribed_medications pm2 ON p.prescription_id = pm2.prescription_id
+        WHERE pm.status = "pending" AND p.status IN ("active", "issued")
+        GROUP BY p.prescription_id, pm.prescribed_medication_id
+        ORDER BY p.prescription_date ASC 
         LIMIT 8
     ');
-    $stmt->execute([$employee_id]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $priority = ($row['pending_medications'] > 1) ? 'high' : 'normal';
         $defaults['pending_prescriptions'][] = [
             'prescription_id' => $row['prescription_id'],
-            'medication_name' => $row['medication_name'] ?? 'Medication',
+            'medication_name' => $row['medication_name'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'dosage' => $row['dosage'] ?? '1 tablet',
-            'quantity' => $row['quantity'] ?? 30,
-            'priority' => $row['priority'] ?? 'normal',
-            'prescribed_date' => date('M d, Y', strtotime($row['prescribed_date']))
+            'dosage' => $row['dosage'] ?? 'As prescribed',
+            'quantity' => $row['frequency'] ?? 'As needed',
+            'priority' => $priority,
+            'prescribed_date' => date('M d, Y', strtotime($row['prescription_date']))
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Dashboard error (pending prescriptions): " . $e->getMessage());
+    // Add default empty state
     $defaults['pending_prescriptions'] = [
         ['prescription_id' => '-', 'medication_name' => 'No pending prescriptions', 'patient_name' => '-', 'patient_id' => '-', 'dosage' => '-', 'quantity' => 0, 'priority' => 'normal', 'prescribed_date' => '-']
     ];
@@ -195,94 +222,161 @@ try {
 // Recent Dispensed
 try {
     $stmt = $pdo->prepare('
-        SELECT p.prescription_id, p.medication_name, p.quantity, p.dispensed_date,
+        SELECT p.prescription_id, pm.medication_name, pm.dosage, pm.updated_at,
                pt.first_name, pt.last_name, pt.patient_id
         FROM prescriptions p 
-        JOIN patients pt ON p.patient_id = pt.patient_id 
-        WHERE p.pharmacist_id = ? AND p.status = "dispensed" 
-        ORDER BY p.dispensed_date DESC 
+        INNER JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id 
+        INNER JOIN patients pt ON p.patient_id = pt.patient_id 
+        WHERE pm.status = "dispensed" 
+        ORDER BY pm.updated_at DESC 
         LIMIT 5
     ');
-    $stmt->execute([$employee_id]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['recent_dispensed'][] = [
             'prescription_id' => $row['prescription_id'],
-            'medication_name' => $row['medication_name'] ?? 'Medication',
+            'medication_name' => $row['medication_name'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'quantity' => $row['quantity'] ?? 30,
-            'dispensed_date' => date('M d, Y H:i', strtotime($row['dispensed_date']))
+            'quantity' => $row['dosage'] ?? 'As prescribed',
+            'dispensed_date' => date('M d, Y H:i', strtotime($row['updated_at']))
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Dashboard error (recent dispensed): " . $e->getMessage());
+    // Add default empty state
     $defaults['recent_dispensed'] = [
         ['prescription_id' => '-', 'medication_name' => 'No recent dispensing', 'patient_name' => '-', 'patient_id' => '-', 'quantity' => 0, 'dispensed_date' => '-']
     ];
 }
 
-// Inventory Alerts
+// Inventory Alerts (Unavailable Medications)
 try {
     $stmt = $pdo->prepare('
-        SELECT medication_name, quantity, reorder_level, expiry_date, batch_number
-        FROM pharmacy_inventory 
-        WHERE quantity <= reorder_level OR expiry_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-        ORDER BY quantity ASC, expiry_date ASC 
+        SELECT pm.medication_name, COUNT(*) as unavailable_count, 
+               MIN(pm.updated_at) as first_unavailable_date,
+               GROUP_CONCAT(DISTINCT CONCAT(pt.first_name, " ", pt.last_name) SEPARATOR ", ") as affected_patients
+        FROM prescribed_medications pm
+        INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id
+        INNER JOIN patients pt ON p.patient_id = pt.patient_id
+        WHERE pm.status = "unavailable" 
+        GROUP BY pm.medication_name
+        ORDER BY unavailable_count DESC, first_unavailable_date ASC
         LIMIT 5
     ');
     $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $alert_type = 'low_stock';
-        $message = 'Low stock: ' . $row['quantity'] . ' units remaining';
-        
-        if ($row['expiry_date'] && strtotime($row['expiry_date']) <= strtotime('+30 days')) {
-            $alert_type = 'expiring';
-            $message = 'Expiring on ' . date('M d, Y', strtotime($row['expiry_date']));
-        }
-        
         $defaults['inventory_alerts'][] = [
-            'medication_name' => $row['medication_name'] ?? 'Medication',
-            'alert_type' => $alert_type,
-            'message' => $message,
-            'quantity' => $row['quantity'] ?? 0,
-            'batch_number' => $row['batch_number'] ?? '-'
+            'medication_name' => $row['medication_name'],
+            'alert_type' => 'unavailable',
+            'message' => $row['unavailable_count'] . ' patients affected',
+            'quantity' => $row['unavailable_count'],
+            'batch_number' => 'Multiple patients'
         ];
     }
+    
+    // If no unavailable medications, check for pending medications that need attention
+    if (empty($defaults['inventory_alerts'])) {
+        $stmt = $pdo->prepare('
+            SELECT pm.medication_name, COUNT(*) as pending_count
+            FROM prescribed_medications pm
+            INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id
+            WHERE pm.status = "pending" AND p.status IN ("active", "issued")
+            GROUP BY pm.medication_name
+            ORDER BY pending_count DESC
+            LIMIT 3
+        ');
+        $stmt->execute();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $defaults['inventory_alerts'][] = [
+                'medication_name' => $row['medication_name'],
+                'alert_type' => 'pending',
+                'message' => $row['pending_count'] . ' pending dispensing',
+                'quantity' => $row['pending_count'],
+                'batch_number' => 'Action needed'
+            ];
+        }
+    }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default alerts
+    error_log("Dashboard error (inventory alerts): " . $e->getMessage());
+    // Add default empty state
     $defaults['inventory_alerts'] = [
-        ['medication_name' => 'Paracetamol 500mg', 'alert_type' => 'low_stock', 'message' => 'Low stock: 25 units remaining', 'quantity' => 25, 'batch_number' => 'B2025001'],
-        ['medication_name' => 'Amoxicillin 250mg', 'alert_type' => 'expiring', 'message' => 'Expiring on Oct 15, 2025', 'quantity' => 50, 'batch_number' => 'B2025002']
+        ['medication_name' => 'System', 'alert_type' => 'info', 'message' => 'No inventory alerts', 'quantity' => 0, 'batch_number' => '-']
     ];
 }
 
-// Pharmacy Alerts
+// Pharmacy Alerts (System notifications and urgent items)
 try {
+    $alerts = [];
+    
+    // Check for medications that have been pending for too long
     $stmt = $pdo->prepare('
-        SELECT pa.alert_type, pa.message, pa.created_at, pa.priority,
-               p.first_name, p.last_name, p.patient_id
-        FROM pharmacy_alerts pa 
-        LEFT JOIN patients p ON pa.patient_id = p.patient_id 
-        WHERE pa.pharmacist_id = ? AND pa.status = "active" 
-        ORDER BY pa.priority DESC, pa.created_at DESC 
-        LIMIT 4
+        SELECT pm.medication_name, COUNT(*) as count, 
+               MIN(p.prescription_date) as oldest_date,
+               GROUP_CONCAT(DISTINCT CONCAT(pt.first_name, " ", pt.last_name) LIMIT 3) as patient_names
+        FROM prescribed_medications pm
+        INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id
+        INNER JOIN patients pt ON p.patient_id = pt.patient_id
+        WHERE pm.status = "pending" 
+        AND p.prescription_date < DATE_SUB(NOW(), INTERVAL 2 DAY)
+        GROUP BY pm.medication_name
+        ORDER BY oldest_date ASC
+        LIMIT 2
     ');
-    $stmt->execute([$employee_id]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $defaults['pharmacy_alerts'][] = [
-            'alert_type' => $row['alert_type'] ?? 'general',
-            'message' => $row['message'] ?? '',
-            'patient_name' => $row['patient_id'] ? trim($row['first_name'] . ' ' . $row['last_name']) : 'System',
-            'patient_id' => $row['patient_id'] ?? '-',
-            'priority' => $row['priority'] ?? 'normal',
-            'date' => date('m/d/Y H:i', strtotime($row['created_at']))
+        $days_old = floor((time() - strtotime($row['oldest_date'])) / (60 * 60 * 24));
+        $alerts[] = [
+            'alert_type' => 'warning',
+            'message' => $row['medication_name'] . ' pending for ' . $days_old . ' days',
+            'patient_name' => $row['patient_names'],
+            'patient_id' => 'Multiple',
+            'priority' => 'high',
+            'date' => date('m/d/Y H:i', strtotime($row['oldest_date']))
         ];
     }
+    
+    // Check for high-priority prescriptions today
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count
+        FROM prescribed_medications pm
+        INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id
+        WHERE pm.status = "pending" 
+        AND DATE(p.prescription_date) = CURDATE()
+    ');
+    $stmt->execute();
+    $today_pending = $stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0;
+    
+    if ($today_pending > 0) {
+        $alerts[] = [
+            'alert_type' => 'info',
+            'message' => $today_pending . ' new medications to dispense today',
+            'patient_name' => 'System',
+            'patient_id' => '-',
+            'priority' => 'normal',
+            'date' => date('m/d/Y H:i')
+        ];
+    }
+    
+    // If no specific alerts, add general info
+    if (empty($alerts)) {
+        $alerts[] = [
+            'alert_type' => 'info',
+            'message' => 'All pharmacy operations running smoothly',
+            'patient_name' => 'System',
+            'patient_id' => '-',
+            'priority' => 'normal',
+            'date' => date('m/d/Y H:i')
+        ];
+    }
+    
+    $defaults['pharmacy_alerts'] = $alerts;
+    
 } catch (PDOException $e) {
-    // table might not exist yet; add some default alerts
+    error_log("Dashboard error (pharmacy alerts): " . $e->getMessage());
+    // Add default alert
     $defaults['pharmacy_alerts'] = [
-        ['alert_type' => 'warning', 'message' => 'Drug interaction alert: Check patient medication history', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'high', 'date' => date('m/d/Y H:i')],
-        ['alert_type' => 'info', 'message' => 'Monthly inventory reconciliation due', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
+        ['alert_type' => 'info', 'message' => 'System ready for pharmacy operations', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
     ];
 }
 ?>
@@ -1074,6 +1168,16 @@ try {
             color: #856404;
         }
 
+        .alert-unavailable {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .alert-pending {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
         .alert-warning {
             background: #fff3cd;
             color: #856404;
@@ -1268,10 +1372,10 @@ try {
                 </div>
                 
                 <div class="stat-card stock animate-on-scroll" data-animation="fade-up" data-delay="300">
-                    <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="stat-icon"><i class="fas fa-times-circle"></i></div>
                     <div class="stat-details">
                         <div class="stat-number"><?php echo number_format($defaults['stats']['low_stock_items']); ?></div>
-                        <div class="stat-label">Low Stock Items</div>
+                        <div class="stat-label">Unavailable Today</div>
                     </div>
                 </div>
                 
@@ -1284,18 +1388,18 @@ try {
                 </div>
                 
                 <div class="stat-card medications animate-on-scroll" data-animation="fade-up" data-delay="500">
-                    <div class="stat-icon"><i class="fas fa-pills"></i></div>
+                    <div class="stat-icon"><i class="fas fa-prescription"></i></div>
                     <div class="stat-details">
                         <div class="stat-number"><?php echo number_format($defaults['stats']['total_medications']); ?></div>
-                        <div class="stat-label">Total Medications</div>
+                        <div class="stat-label">Active Prescriptions</div>
                     </div>
                 </div>
                 
                 <div class="stat-card revenue animate-on-scroll" data-animation="fade-up" data-delay="600">
-                    <div class="stat-icon"><i class="fas fa-peso-sign"></i></div>
+                    <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
                     <div class="stat-details">
-                        <div class="stat-number">₱<?php echo number_format($defaults['stats']['revenue_today'], 2); ?></div>
-                        <div class="stat-label">Revenue Today</div>
+                        <div class="stat-number"><?php echo number_format($defaults['stats']['revenue_today']); ?></div>
+                        <div class="stat-label">Monthly Prescriptions</div>
                     </div>
                 </div>
             </div>
@@ -1450,7 +1554,7 @@ try {
                 <!-- Inventory Alerts -->
                 <div class="card-section">
                     <div class="section-header">
-                        <h3><i class="fas fa-exclamation-triangle"></i> Inventory Alerts</h3>
+                        <h3><i class="fas fa-exclamation-triangle"></i> Medication Alerts</h3>
                         <a href="../prescription/inventory_alerts.php" class="view-more-btn">
                             <i class="fas fa-chevron-right"></i> View All
                         </a>

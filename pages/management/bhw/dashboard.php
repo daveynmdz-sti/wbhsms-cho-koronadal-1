@@ -52,19 +52,113 @@ try {
     // Staff assignment function failed, log error but continue
     error_log('BHW Dashboard: Staff assignment check failed: ' . $e->getMessage());
     $assignment_warning = 'Unable to verify station assignment. Some features may be limited.';
-}$employee_name = $_SESSION['employee_name'] ?? ($_SESSION['employee_first_name'] . ' ' . $_SESSION['employee_last_name']);
+}
+
+// DB - Use the absolute path like other dashboards
+require_once $root_path . '/config/db.php';
+
+$employee_name = $_SESSION['employee_name'] ?? ($_SESSION['employee_first_name'] . ' ' . $_SESSION['employee_last_name']);
 $employee_number = $_SESSION['employee_number'] ?? 'N/A';
 $role = $_SESSION['role'] ?? 'BHW';
 
-// Default stats for display
+// Dashboard Statistics with real database queries
 $stats = [
-    'assigned_households' => 15,
-    'visits_today' => 3,
-    'health_programs' => 2,
-    'immunizations_due' => 5,
-    'community_events' => 1,
-    'maternal_cases' => 4
+    'assigned_households' => 0,
+    'visits_today' => 0,
+    'health_programs' => 0,
+    'immunizations_due' => 0,
+    'community_events' => 0,
+    'maternal_cases' => 0
 ];
+
+try {
+    // Assigned Households (Count of active patients in the system as community coverage)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(DISTINCT p.patient_id) as count 
+        FROM patients p 
+        INNER JOIN barangay b ON p.barangay_id = b.barangay_id
+        WHERE p.status = "active"
+    ');
+    $stmt->execute();
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['assigned_households'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("BHW dashboard error (assigned households): " . $e->getMessage());
+}
+
+try {
+    // Visits Today (Consultations today)
+    $today = date('Y-m-d');
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations 
+        WHERE DATE(consultation_date) = ?
+    ');
+    $stmt->execute([$today]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['visits_today'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("BHW dashboard error (visits today): " . $e->getMessage());
+}
+
+try {
+    // Health Programs (Active health facilities as program coverage)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM facilities 
+        WHERE status = "active" AND type LIKE "%Health%"
+    ');
+    $stmt->execute();
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['health_programs'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("BHW dashboard error (health programs): " . $e->getMessage());
+}
+
+try {
+    // Immunizations Due (Active referrals as health service needs)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM referrals 
+        WHERE status = "active"
+    ');
+    $stmt->execute();
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['immunizations_due'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("BHW dashboard error (immunizations due): " . $e->getMessage());
+}
+
+try {
+    // Community Events (Recent appointments this week as community engagement)
+    $week_start = date('Y-m-d', strtotime('monday this week'));
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM appointments 
+        WHERE appointment_date >= ? AND status IN ("confirmed", "completed")
+    ');
+    $stmt->execute([$week_start]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['community_events'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("BHW dashboard error (community events): " . $e->getMessage());
+}
+
+try {
+    // Maternal Cases (Female patients in reproductive age range as potential maternal cases)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM patients 
+        WHERE sex = "Female" 
+        AND YEAR(CURDATE()) - YEAR(date_of_birth) BETWEEN 15 AND 45
+        AND status = "active"
+    ');
+    $stmt->execute();
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['maternal_cases'] = $row['count'] ?? 0;
+} catch (PDOException $e) {
+    error_log("BHW dashboard error (maternal cases): " . $e->getMessage());
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

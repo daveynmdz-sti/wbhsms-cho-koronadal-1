@@ -100,182 +100,199 @@ try {
 
 // Dashboard Statistics
 try {
-    // Pending Tests
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM lab_tests WHERE status = "pending" AND assigned_tech_id = ?');
-    $stmt->execute([$employee_id]);
+    // Pending Tests (lab order items that need to be completed)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM lab_order_items loi
+        INNER JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
+        WHERE loi.status IN ("pending", "in_progress")
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['pending_tests'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Lab tech dashboard error (pending tests): " . $e->getMessage());
 }
 
 try {
     // Tests Completed Today
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM lab_tests WHERE DATE(completed_date) = ? AND assigned_tech_id = ? AND status = "completed"');
-    $stmt->execute([$today, $employee_id]);
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM lab_order_items loi
+        WHERE DATE(loi.completed_at) = ? AND loi.status = "completed"
+    ');
+    $stmt->execute([$today]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['completed_today'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Lab tech dashboard error (completed today): " . $e->getMessage());
 }
 
 try {
-    // Active Equipment
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM lab_equipment WHERE status = "active" AND assigned_tech_id = ?');
-    $stmt->execute([$employee_id]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    $defaults['stats']['equipment_active'] = $row['count'] ?? 0;
-} catch (PDOException $e) {
-    // table might not exist yet; ignore
-}
-
-try {
-    // Samples Collected Today
-    $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM lab_samples WHERE DATE(collection_date) = ? AND collected_by = ?');
-    $stmt->execute([$today, $employee_id]);
+    // Sample Collection (in progress tests)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM lab_order_items loi
+        WHERE loi.status = "in_progress"
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['samples_collected'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Lab tech dashboard error (samples collected): " . $e->getMessage());
 }
 
+
 try {
-    // Results Pending Review
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM lab_tests WHERE status = "results_ready" AND assigned_tech_id = ?');
-    $stmt->execute([$employee_id]);
+    // Results Pending Review (completed tests that need result files)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM lab_order_items loi
+        WHERE loi.status = "completed" AND loi.result_file IS NULL
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['results_pending_review'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Lab tech dashboard error (results pending): " . $e->getMessage());
 }
 
 try {
     // Total Tests This Month
     $month_start = date('Y-m-01');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM lab_tests WHERE created_date >= ? AND assigned_tech_id = ?');
-    $stmt->execute([$month_start, $employee_id]);
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM lab_order_items loi
+        WHERE loi.created_at >= ?
+    ');
+    $stmt->execute([$month_start]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['total_tests_month'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Lab tech dashboard error (total tests month): " . $e->getMessage());
 }
 
 // Pending Tests
 try {
     $stmt = $pdo->prepare('
-        SELECT lt.test_id, lt.test_type, lt.priority, lt.order_date, 
-               p.first_name, p.last_name, p.patient_id, lt.specimen_type
-        FROM lab_tests lt 
-        JOIN patients p ON lt.patient_id = p.patient_id 
-        WHERE lt.status = "pending" AND lt.assigned_tech_id = ? 
-        ORDER BY lt.priority DESC, lt.order_date ASC 
+        SELECT loi.item_id, loi.test_type, lo.order_date, 
+               p.first_name, p.last_name, p.patient_id, 
+               loi.status, lo.lab_order_id
+        FROM lab_order_items loi
+        INNER JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
+        INNER JOIN patients p ON lo.patient_id = p.patient_id 
+        WHERE loi.status IN ("pending", "in_progress")
+        ORDER BY lo.order_date DESC
         LIMIT 8
     ');
-    $stmt->execute([$employee_id]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['pending_tests'][] = [
-            'test_id' => $row['test_id'],
-            'test_type' => $row['test_type'] ?? 'Lab Test',
+            'test_id' => $row['item_id'],
+            'test_type' => $row['test_type'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'priority' => $row['priority'] ?? 'normal',
+            'priority' => $row['status'] === 'in_progress' ? 'In Progress' : 'Pending',
             'order_date' => date('M d, Y', strtotime($row['order_date'])),
-            'specimen_type' => $row['specimen_type'] ?? 'Blood'
+            'specimen_type' => 'Laboratory Sample'
+        ];
+    }
+    
+    if (empty($defaults['pending_tests'])) {
+        $defaults['pending_tests'] = [
+            ['test_id' => '-', 'test_type' => 'No pending tests', 'patient_name' => '-', 'patient_id' => '-', 'priority' => '-', 'order_date' => '-', 'specimen_type' => '-']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Lab tech dashboard error (pending tests list): " . $e->getMessage());
     $defaults['pending_tests'] = [
-        ['test_id' => '-', 'test_type' => 'No pending tests', 'patient_name' => '-', 'patient_id' => '-', 'priority' => 'normal', 'order_date' => '-', 'specimen_type' => '-']
+        ['test_id' => '-', 'test_type' => 'No test data available', 'patient_name' => '-', 'patient_id' => '-', 'priority' => '-', 'order_date' => '-', 'specimen_type' => '-']
     ];
 }
 
 // Recent Results
 try {
     $stmt = $pdo->prepare('
-        SELECT lt.test_id, lt.test_type, lt.completed_date, 
-               p.first_name, p.last_name, p.patient_id, lt.status
-        FROM lab_tests lt 
-        JOIN patients p ON lt.patient_id = p.patient_id 
-        WHERE lt.assigned_tech_id = ? AND lt.status IN ("completed", "results_ready") 
-        ORDER BY lt.completed_date DESC 
+        SELECT loi.item_id, loi.test_type, loi.completed_at, 
+               p.first_name, p.last_name, p.patient_id, loi.status,
+               CASE WHEN loi.result_file IS NOT NULL THEN "results_uploaded" 
+                    ELSE "completed" END as result_status
+        FROM lab_order_items loi
+        INNER JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
+        INNER JOIN patients p ON lo.patient_id = p.patient_id 
+        WHERE loi.status = "completed"
+        ORDER BY loi.completed_at DESC 
         LIMIT 5
     ');
-    $stmt->execute([$employee_id]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['recent_results'][] = [
-            'test_id' => $row['test_id'],
-            'test_type' => $row['test_type'] ?? 'Lab Test',
+            'test_id' => $row['item_id'],
+            'test_type' => $row['test_type'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'completed_date' => date('M d, Y H:i', strtotime($row['completed_date'])),
-            'status' => $row['status'] ?? 'completed'
+            'completed_date' => $row['completed_at'] ? date('M d, Y H:i', strtotime($row['completed_at'])) : 'Not completed',
+            'status' => $row['result_status']
+        ];
+    }
+    
+    if (empty($defaults['recent_results'])) {
+        $defaults['recent_results'] = [
+            ['test_id' => '-', 'test_type' => 'No recent results', 'patient_name' => '-', 'patient_id' => '-', 'completed_date' => '-', 'status' => 'completed']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Lab tech dashboard error (recent results): " . $e->getMessage());
     $defaults['recent_results'] = [
-        ['test_id' => '-', 'test_type' => 'No recent results', 'patient_name' => '-', 'patient_id' => '-', 'completed_date' => '-', 'status' => 'completed']
+        ['test_id' => '-', 'test_type' => 'No results data available', 'patient_name' => '-', 'patient_id' => '-', 'completed_date' => '-', 'status' => 'completed']
     ];
 }
 
-// Equipment Status
-try {
-    $stmt = $pdo->prepare('
-        SELECT equipment_id, equipment_name, status, last_maintenance, next_maintenance
-        FROM lab_equipment 
-        WHERE assigned_tech_id = ? OR assigned_tech_id IS NULL
-        ORDER BY status DESC, next_maintenance ASC 
-        LIMIT 5
-    ');
-    $stmt->execute([$employee_id]);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $defaults['equipment_status'][] = [
-            'equipment_id' => $row['equipment_id'],
-            'equipment_name' => $row['equipment_name'] ?? 'Lab Equipment',
-            'status' => $row['status'] ?? 'active',
-            'last_maintenance' => $row['last_maintenance'] ? date('M d, Y', strtotime($row['last_maintenance'])) : 'N/A',
-            'next_maintenance' => $row['next_maintenance'] ? date('M d, Y', strtotime($row['next_maintenance'])) : 'N/A'
-        ];
-    }
-} catch (PDOException $e) {
-    // table might not exist yet; add some default data
-    $defaults['equipment_status'] = [
-        ['equipment_id' => 'EQ001', 'equipment_name' => 'Microscope', 'status' => 'active', 'last_maintenance' => 'Sep 01, 2025', 'next_maintenance' => 'Dec 01, 2025'],
-        ['equipment_id' => 'EQ002', 'equipment_name' => 'Centrifuge', 'status' => 'active', 'last_maintenance' => 'Aug 15, 2025', 'next_maintenance' => 'Nov 15, 2025'],
-        ['equipment_id' => 'EQ003', 'equipment_name' => 'Analyzer', 'status' => 'maintenance', 'last_maintenance' => 'Jul 20, 2025', 'next_maintenance' => 'Oct 20, 2025']
-    ];
-}
+// Equipment Status (Simplified - no equipment table exists)
+$defaults['equipment_status'] = [
+    ['equipment_id' => 'LAB001', 'equipment_name' => 'Microscope', 'status' => 'active', 'last_maintenance' => 'Sep 01, 2025', 'next_maintenance' => 'Dec 01, 2025'],
+    ['equipment_id' => 'LAB002', 'equipment_name' => 'Centrifuge', 'status' => 'active', 'last_maintenance' => 'Aug 15, 2025', 'next_maintenance' => 'Nov 15, 2025'],
+    ['equipment_id' => 'LAB003', 'equipment_name' => 'Chemistry Analyzer', 'status' => 'active', 'last_maintenance' => 'Jul 20, 2025', 'next_maintenance' => 'Oct 20, 2025']
+];
 
-// Lab Alerts
+// Lab Alerts (Based on overdue test results and urgent tests)
 try {
     $stmt = $pdo->prepare('
-        SELECT la.alert_type, la.message, la.created_at, la.priority,
+        SELECT loi.item_id, loi.test_type, lo.order_date, 
                p.first_name, p.last_name, p.patient_id
-        FROM lab_alerts la 
-        LEFT JOIN patients p ON la.patient_id = p.patient_id 
-        WHERE la.tech_id = ? AND la.status = "active" 
-        ORDER BY la.priority DESC, la.created_at DESC 
-        LIMIT 4
+        FROM lab_order_items loi
+        INNER JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
+        INNER JOIN patients p ON lo.patient_id = p.patient_id 
+        WHERE loi.status = "pending" AND DATEDIFF(CURRENT_DATE(), DATE(lo.order_date)) >= 2
+        ORDER BY lo.order_date ASC
+        LIMIT 3
     ');
-    $stmt->execute([$employee_id]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $days_overdue = (new DateTime())->diff(new DateTime($row['order_date']))->days;
         $defaults['lab_alerts'][] = [
-            'alert_type' => $row['alert_type'] ?? 'general',
-            'message' => $row['message'] ?? '',
-            'patient_name' => $row['patient_id'] ? trim($row['first_name'] . ' ' . $row['last_name']) : 'System',
-            'patient_id' => $row['patient_id'] ?? '-',
-            'priority' => $row['priority'] ?? 'normal',
-            'date' => date('m/d/Y H:i', strtotime($row['created_at']))
+            'alert_type' => 'warning',
+            'message' => "Overdue test: {$row['test_type']} ({$days_overdue} days overdue)",
+            'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+            'patient_id' => $row['patient_id'],
+            'priority' => 'high',
+            'date' => date('m/d/Y H:i', strtotime($row['order_date']))
+        ];
+    }
+    
+    if (empty($defaults['lab_alerts'])) {
+        $defaults['lab_alerts'] = [
+            ['alert_type' => 'info', 'message' => 'All laboratory tests are up to date', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default alerts
+    error_log("Lab tech dashboard error (lab alerts): " . $e->getMessage());
     $defaults['lab_alerts'] = [
-        ['alert_type' => 'info', 'message' => 'Equipment maintenance reminder: Centrifuge due for calibration', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')],
-        ['alert_type' => 'warning', 'message' => 'Quality control test needed for Chemistry Analyzer', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'high', 'date' => date('m/d/Y H:i')]
+        ['alert_type' => 'info', 'message' => 'No laboratory alerts available', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
+    ];
+}
+        ['alert_type' => 'info', 'message' => 'No laboratory alerts available', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
     ];
 }
 ?>

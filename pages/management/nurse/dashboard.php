@@ -80,66 +80,89 @@ try {
 
 // Dashboard Statistics
 try {
-    // Patients Assigned to this nurse
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM patient_assignments WHERE nurse_id = ? AND status = "active"');
-    $stmt->execute([$employee_id]);
+    // Patients in triage today (if nurse is assigned to triage station)
+    $today = date('Y-m-d');
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM queue_entries qe
+        INNER JOIN stations s ON qe.station_id = s.station_id
+        WHERE DATE(qe.created_at) = ? AND s.station_type = "triage"
+    ');
+    $stmt->execute([$today]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['patients_assigned'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Nurse dashboard stats error (patients assigned): " . $e->getMessage());
 }
 
 try {
-    // Vitals recorded today
+    // Vitals recorded today by this nurse
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM vital_signs WHERE DATE(recorded_date) = ? AND recorded_by = ?');
+    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM vitals WHERE DATE(recorded_at) = ? AND recorded_by = ?');
     $stmt->execute([$today, $employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['vitals_recorded_today'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Nurse dashboard stats error (vitals recorded): " . $e->getMessage());
 }
 
 try {
-    // Medications administered today
+    // Consultations assisted today (where nurse may have been involved)
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM medication_administration WHERE DATE(administered_date) = ? AND nurse_id = ?');
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM consultations c
+        INNER JOIN vitals v ON c.vitals_id = v.vitals_id
+        WHERE DATE(c.consultation_date) = ? AND v.recorded_by = ?
+    ');
     $stmt->execute([$today, $employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['medications_administered'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Nurse dashboard stats error (consultations assisted): " . $e->getMessage());
 }
 
 try {
-    // Nursing notes written today
-    $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM nursing_notes WHERE DATE(note_date) = ? AND nurse_id = ?');
-    $stmt->execute([$today, $employee_id]);
+    // Total vitals recorded by this nurse (all time)
+    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM vitals WHERE recorded_by = ?');
+    $stmt->execute([$employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['nursing_notes_written'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Nurse dashboard stats error (total vitals): " . $e->getMessage());
 }
 
 try {
-    // Pending nursing tasks
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM nursing_tasks WHERE nurse_id = ? AND status = "pending"');
-    $stmt->execute([$employee_id]);
+    // Patients waiting in triage queue
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM queue_entries qe
+        INNER JOIN stations s ON qe.station_id = s.station_id
+        WHERE qe.status = "waiting" AND s.station_type = "triage"
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['pending_tasks'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Nurse dashboard stats error (triage queue): " . $e->getMessage());
 }
 
-// Assigned Patients
+try {
+    // Working hours/shift hours (simplified - just show 8 hours default)
+    $defaults['stats']['shift_hours'] = 8;
+} catch (PDOException $e) {
+    error_log("Nurse dashboard stats error (shift hours): " . $e->getMessage());
+}
+
+// Assigned Patients (Recent patients with vitals taken by this nurse)
 try {
     $stmt = $pdo->prepare('
-        SELECT pa.patient_id, p.first_name, p.last_name, p.room_number, pa.admission_date, pa.condition_severity
-        FROM patient_assignments pa 
-        JOIN patients p ON pa.patient_id = p.patient_id 
-        WHERE pa.nurse_id = ? AND pa.status = "active" 
-        ORDER BY pa.condition_severity DESC, pa.admission_date ASC 
+        SELECT DISTINCT p.patient_id, p.first_name, p.last_name, 
+               v.recorded_at, v.temperature, v.systolic_bp, v.diastolic_bp
+        FROM vitals v
+        INNER JOIN patients p ON v.patient_id = p.patient_id 
+        WHERE v.recorded_by = ? 
+        ORDER BY v.recorded_at DESC 
         LIMIT 8
     ');
     $stmt->execute([$employee_id]);
@@ -147,97 +170,140 @@ try {
         $defaults['assigned_patients'][] = [
             'patient_id' => $row['patient_id'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
-            'room_number' => $row['room_number'] ?? 'N/A',
-            'admission_date' => date('M d, Y', strtotime($row['admission_date'])),
-            'condition_severity' => $row['condition_severity'] ?? 'stable'
+            'room_number' => 'Outpatient',
+            'admission_date' => date('M d, Y', strtotime($row['recorded_at'])),
+            'condition_severity' => ($row['temperature'] > 37.5 || $row['systolic_bp'] > 140) ? 'monitor' : 'stable'
+        ];
+    }
+
+    if (empty($defaults['assigned_patients'])) {
+        $defaults['assigned_patients'] = [
+            ['patient_id' => '-', 'patient_name' => 'No patients with vitals recorded', 'room_number' => '-', 'admission_date' => '-', 'condition_severity' => 'stable']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Nurse dashboard error (assigned patients): " . $e->getMessage());
     $defaults['assigned_patients'] = [
-        ['patient_id' => '-', 'patient_name' => 'No patients assigned', 'room_number' => '-', 'admission_date' => '-', 'condition_severity' => 'stable']
+        ['patient_id' => '-', 'patient_name' => 'No patient data available', 'room_number' => '-', 'admission_date' => '-', 'condition_severity' => 'stable']
     ];
 }
 
-// Vitals Due
+// Vitals Due (Patients in queue who may need vitals)
 try {
     $stmt = $pdo->prepare('
-        SELECT vr.patient_id, p.first_name, p.last_name, p.room_number, vr.vital_type, vr.scheduled_time
-        FROM vital_schedules vr 
-        JOIN patients p ON vr.patient_id = p.patient_id 
-        WHERE vr.nurse_id = ? AND DATE(vr.scheduled_date) = ? AND vr.status = "pending" 
-        ORDER BY vr.scheduled_time ASC 
+        SELECT qe.patient_id, p.first_name, p.last_name, qe.queue_code, qe.priority_level, qe.time_in
+        FROM queue_entries qe
+        INNER JOIN patients p ON qe.patient_id = p.patient_id
+        INNER JOIN stations s ON qe.station_id = s.station_id
+        WHERE qe.status = "waiting" AND s.station_type = "triage"
+        ORDER BY qe.priority_level DESC, qe.time_in ASC
         LIMIT 5
     ');
-    $stmt->execute([$employee_id, date('Y-m-d')]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['vitals_due'][] = [
             'patient_id' => $row['patient_id'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
-            'room_number' => $row['room_number'] ?? 'N/A',
-            'vital_type' => $row['vital_type'] ?? 'Basic Vitals',
-            'scheduled_time' => date('H:i', strtotime($row['scheduled_time']))
+            'queue_code' => $row['queue_code'],
+            'priority' => $row['priority_level'] ?? 'normal',
+            'waiting_time' => date('H:i', strtotime($row['time_in']))
+        ];
+    }
+
+    if (empty($defaults['vitals_due'])) {
+        $defaults['vitals_due'] = [
+            ['patient_id' => '-', 'patient_name' => 'No patients waiting for triage', 'queue_code' => '-', 'priority' => 'normal', 'waiting_time' => '-']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Nurse dashboard error (vitals due): " . $e->getMessage());
     $defaults['vitals_due'] = [
-        ['patient_id' => '-', 'patient_name' => 'No vitals due', 'room_number' => '-', 'vital_type' => '-', 'scheduled_time' => '-']
+        ['patient_id' => '-', 'patient_name' => 'No triage data available', 'queue_code' => '-', 'priority' => 'normal', 'waiting_time' => '-']
     ];
 }
+// table might not exist yet; add some default data
+$defaults['vitals_due'] = [
+    ['patient_id' => '-', 'patient_name' => 'No vitals due', 'room_number' => '-', 'vital_type' => '-', 'scheduled_time' => '-']
+];
 
-// Medication Schedule
+
+// Medication Schedule (Prescriptions for patients recently seen by this nurse)
 try {
     $stmt = $pdo->prepare('
-        SELECT ms.patient_id, p.first_name, p.last_name, p.room_number, ms.medication_name, ms.scheduled_time, ms.dosage
-        FROM medication_schedules ms 
-        JOIN patients p ON ms.patient_id = p.patient_id 
-        WHERE ms.nurse_id = ? AND DATE(ms.scheduled_date) = ? AND ms.status = "pending" 
-        ORDER BY ms.scheduled_time ASC 
+        SELECT DISTINCT p.patient_id, p.first_name, p.last_name, 
+               pm.medication_name, pm.dosage, pm.frequency,
+               pr.created_at as prescription_date
+        FROM vitals v
+        INNER JOIN patients p ON v.patient_id = p.patient_id
+        INNER JOIN prescriptions pr ON p.patient_id = pr.patient_id
+        INNER JOIN prescribed_medications pm ON pr.prescription_id = pm.prescription_id
+        WHERE v.recorded_by = ? AND DATE(pr.created_at) = CURRENT_DATE()
+        ORDER BY pr.created_at DESC
         LIMIT 5
     ');
-    $stmt->execute([$employee_id, date('Y-m-d')]);
+    $stmt->execute([$employee_id]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['medication_schedule'][] = [
             'patient_id' => $row['patient_id'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
-            'room_number' => $row['room_number'] ?? 'N/A',
-            'medication_name' => $row['medication_name'] ?? 'Medication',
-            'dosage' => $row['dosage'] ?? 'As prescribed',
-            'scheduled_time' => date('H:i', strtotime($row['scheduled_time']))
+            'room_number' => 'Outpatient',
+            'medication_name' => $row['medication_name'],
+            'dosage' => $row['dosage'] . ' - ' . $row['frequency'],
+            'scheduled_time' => date('H:i', strtotime($row['prescription_date']))
+        ];
+    }
+
+    if (empty($defaults['medication_schedule'])) {
+        $defaults['medication_schedule'] = [
+            ['patient_id' => '-', 'patient_name' => 'No medication schedules today', 'room_number' => '-', 'medication_name' => '-', 'dosage' => '-', 'scheduled_time' => '-']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Nurse dashboard error (medication schedule): " . $e->getMessage());
     $defaults['medication_schedule'] = [
-        ['patient_id' => '-', 'patient_name' => 'No medications due', 'room_number' => '-', 'medication_name' => '-', 'dosage' => '-', 'scheduled_time' => '-']
+        ['patient_id' => '-', 'patient_name' => 'No medication data available', 'room_number' => '-', 'medication_name' => '-', 'dosage' => '-', 'scheduled_time' => '-']
     ];
 }
 
-// Nursing Alerts
+// Nursing Alerts (High priority patients and critical vitals)
 try {
     $stmt = $pdo->prepare('
-        SELECT na.patient_id, p.first_name, p.last_name, na.alert_type, na.message, na.created_at
-        FROM nursing_alerts na 
-        JOIN patients p ON na.patient_id = p.patient_id 
-        WHERE na.nurse_id = ? AND na.status = "active" 
-        ORDER BY na.created_at DESC 
+        SELECT p.patient_id, p.first_name, p.last_name, v.temperature, v.systolic_bp, v.diastolic_bp, v.recorded_at
+        FROM vitals v
+        INNER JOIN patients p ON v.patient_id = p.patient_id
+        WHERE v.recorded_by = ? 
+        AND (v.temperature > 38.0 OR v.systolic_bp > 140 OR v.systolic_bp < 90 OR v.diastolic_bp > 90)
+        ORDER BY v.recorded_at DESC
         LIMIT 3
     ');
     $stmt->execute([$employee_id]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $alert_type = 'warning';
+        $message = 'Abnormal vitals: ';
+        $alerts = [];
+
+        if ($row['temperature'] > 38.0) $alerts[] = "Fever ({$row['temperature']}°C)";
+        if ($row['systolic_bp'] > 140) $alerts[] = "High BP ({$row['systolic_bp']}/{$row['diastolic_bp']})";
+        if ($row['systolic_bp'] < 90) $alerts[] = "Low BP ({$row['systolic_bp']}/{$row['diastolic_bp']})";
+
         $defaults['nursing_alerts'][] = [
             'patient_id' => $row['patient_id'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
-            'alert_type' => $row['alert_type'] ?? 'general',
-            'message' => $row['message'] ?? '',
-            'date' => date('m/d/Y H:i', strtotime($row['created_at']))
+            'alert_type' => $alert_type,
+            'message' => $message . implode(', ', $alerts),
+            'date' => date('m/d/Y H:i', strtotime($row['recorded_at']))
+        ];
+    }
+
+    if (empty($defaults['nursing_alerts'])) {
+        $defaults['nursing_alerts'] = [
+            ['patient_id' => '-', 'patient_name' => 'System', 'alert_type' => 'info', 'message' => 'No critical alerts at this time', 'date' => date('m/d/Y H:i')]
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default alerts
+    error_log("Nurse dashboard error (nursing alerts): " . $e->getMessage());
     $defaults['nursing_alerts'] = [
-        ['patient_id' => '-', 'patient_name' => 'System', 'alert_type' => 'info', 'message' => 'No nursing alerts at this time', 'date' => date('m/d/Y H:i')]
+        ['patient_id' => '-', 'patient_name' => 'System', 'alert_type' => 'info', 'message' => 'No alert data available', 'date' => date('m/d/Y H:i')]
     ];
 }
 ?>
@@ -246,7 +312,7 @@ try {
 
 <head>
     <meta charset="UTF-8" />
-        <!-- Favicon -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
@@ -274,9 +340,9 @@ try {
             --white: #ffffff;
             --border: #dee2e6;
             --border-light: #f1f1f1;
-            --shadow-sm: 0 .125rem .25rem rgba(0,0,0,.075);
-            --shadow: 0 .5rem 1rem rgba(0,0,0,.08);
-            --shadow-lg: 0 1rem 3rem rgba(0,0,0,.1);
+            --shadow-sm: 0 .125rem .25rem rgba(0, 0, 0, .075);
+            --shadow: 0 .5rem 1rem rgba(0, 0, 0, .08);
+            --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, .1);
             --border-radius: 0.5rem;
             --border-radius-lg: 1rem;
             --transition: all 0.3s ease;
@@ -537,12 +603,35 @@ try {
             letter-spacing: 0.5px;
         }
 
-        .stat-card.patients { --card-color: #8e44ad; --card-color-rgb: 142, 68, 173; }
-        .stat-card.vitals { --card-color: #e74c3c; --card-color-rgb: 231, 76, 60; }
-        .stat-card.medications { --card-color: #3498db; --card-color-rgb: 52, 152, 219; }
-        .stat-card.notes { --card-color: #f39c12; --card-color-rgb: 243, 156, 18; }
-        .stat-card.tasks { --card-color: #2ecc71; --card-color-rgb: 46, 204, 113; }
-        .stat-card.shift { --card-color: #95a5a6; --card-color-rgb: 149, 165, 166; }
+        .stat-card.patients {
+            --card-color: #8e44ad;
+            --card-color-rgb: 142, 68, 173;
+        }
+
+        .stat-card.vitals {
+            --card-color: #e74c3c;
+            --card-color-rgb: 231, 76, 60;
+        }
+
+        .stat-card.medications {
+            --card-color: #3498db;
+            --card-color-rgb: 52, 152, 219;
+        }
+
+        .stat-card.notes {
+            --card-color: #f39c12;
+            --card-color-rgb: 243, 156, 18;
+        }
+
+        .stat-card.tasks {
+            --card-color: #2ecc71;
+            --card-color-rgb: 46, 204, 113;
+        }
+
+        .stat-card.shift {
+            --card-color: #95a5a6;
+            --card-color-rgb: 149, 165, 166;
+        }
 
         /* Quick Actions */
         .quick-actions-section {
@@ -632,12 +721,35 @@ try {
             opacity: 1;
         }
 
-        .action-card.red { --card-color: #e74c3c; --card-color-rgb: 231, 76, 60; }
-        .action-card.blue { --card-color: #3498db; --card-color-rgb: 52, 152, 219; }
-        .action-card.green { --card-color: #2ecc71; --card-color-rgb: 46, 204, 113; }
-        .action-card.orange { --card-color: #f39c12; --card-color-rgb: 243, 156, 18; }
-        .action-card.purple { --card-color: #8e44ad; --card-color-rgb: 142, 68, 173; }
-        .action-card.teal { --card-color: #1abc9c; --card-color-rgb: 26, 188, 156; }
+        .action-card.red {
+            --card-color: #e74c3c;
+            --card-color-rgb: 231, 76, 60;
+        }
+
+        .action-card.blue {
+            --card-color: #3498db;
+            --card-color-rgb: 52, 152, 219;
+        }
+
+        .action-card.green {
+            --card-color: #2ecc71;
+            --card-color-rgb: 46, 204, 113;
+        }
+
+        .action-card.orange {
+            --card-color: #f39c12;
+            --card-color-rgb: 243, 156, 18;
+        }
+
+        .action-card.purple {
+            --card-color: #8e44ad;
+            --card-color-rgb: 142, 68, 173;
+        }
+
+        .action-card.teal {
+            --card-color: #1abc9c;
+            --card-color-rgb: 26, 188, 156;
+        }
 
         /* Dashboard Content */
         .dashboard-content {
@@ -891,23 +1003,49 @@ try {
 
         /* Animations */
         @keyframes fade-in {
-            from { opacity: 0; }
-            to { opacity: 1; }
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
         }
 
         @keyframes fade-up {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         @keyframes fade-right {
-            from { opacity: 0; transform: translateX(-20px); }
-            to { opacity: 1; transform: translateX(0); }
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
         }
 
         @keyframes fade-left {
-            from { opacity: 0; transform: translateX(20px); }
-            to { opacity: 1; transform: translateX(0); }
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
         }
 
         .animated {
@@ -915,10 +1053,21 @@ try {
             animation-fill-mode: both;
         }
 
-        .fade-in { animation-name: fade-in; }
-        .fade-up { animation-name: fade-up; }
-        .fade-right { animation-name: fade-right; }
-        .fade-left { animation-name: fade-left; }
+        .fade-in {
+            animation-name: fade-in;
+        }
+
+        .fade-up {
+            animation-name: fade-up;
+        }
+
+        .fade-right {
+            animation-name: fade-right;
+        }
+
+        .fade-left {
+            animation-name: fade-left;
+        }
 
         /* Responsive adjustments */
         @media (max-width: 768px) {
@@ -930,7 +1079,7 @@ try {
             .stats-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .action-grid {
                 grid-template-columns: 1fr;
             }
@@ -962,7 +1111,7 @@ try {
                 <h1 class="dashboard-title">Good day, Nurse <?php echo htmlspecialchars($defaults['name']); ?>!</h1>
                 <p>Nursing Dashboard • <?php echo htmlspecialchars($defaults['role']); ?> • ID: <?php echo htmlspecialchars($defaults['employee_number']); ?></p>
             </div>
-            
+
             <div class="dashboard-actions">
                 <a href="../clinical/vital_signs.php" class="btn btn-primary">
                     <i class="fas fa-heartbeat"></i> Record Vitals
@@ -975,15 +1124,15 @@ try {
                 </a>
             </div>
         </section>
-        
+
         <!-- Assignment Warning (if applicable) -->
         <?php if (!empty($assignment_warning)): ?>
-        <section class="info-card" style="border-left-color: #ffc107; background: #fff3cd;">
-            <h2 style="color: #856404;"><i class="fas fa-exclamation-triangle"></i> Station Assignment Notice</h2>
-            <p style="color: #856404;"><?php echo htmlspecialchars($assignment_warning); ?></p>
-        </section>
+            <section class="info-card" style="border-left-color: #ffc107; background: #fff3cd;">
+                <h2 style="color: #856404;"><i class="fas fa-exclamation-triangle"></i> Station Assignment Notice</h2>
+                <p style="color: #856404;"><?php echo htmlspecialchars($assignment_warning); ?></p>
+            </section>
         <?php endif; ?>
-        
+
         <!-- System Overview Card -->
         <section class="info-card">
             <h2><i class="fas fa-clipboard-check"></i> Nursing Care Overview</h2>
@@ -993,7 +1142,7 @@ try {
         <!-- Statistics Cards -->
         <section class="stats-section">
             <h2 class="section-heading"><i class="fas fa-chart-line"></i> Today's Overview</h2>
-            
+
             <div class="stats-grid">
                 <div class="stat-card patients animate-on-scroll" data-animation="fade-up" data-delay="100">
                     <div class="stat-icon"><i class="fas fa-users"></i></div>
@@ -1002,7 +1151,7 @@ try {
                         <div class="stat-label">Patients Assigned</div>
                     </div>
                 </div>
-                
+
                 <div class="stat-card vitals animate-on-scroll" data-animation="fade-up" data-delay="200">
                     <div class="stat-icon"><i class="fas fa-heartbeat"></i></div>
                     <div class="stat-details">
@@ -1010,7 +1159,7 @@ try {
                         <div class="stat-label">Vitals Recorded Today</div>
                     </div>
                 </div>
-                
+
                 <div class="stat-card medications animate-on-scroll" data-animation="fade-up" data-delay="300">
                     <div class="stat-icon"><i class="fas fa-pills"></i></div>
                     <div class="stat-details">
@@ -1018,7 +1167,7 @@ try {
                         <div class="stat-label">Medications Given</div>
                     </div>
                 </div>
-                
+
                 <div class="stat-card notes animate-on-scroll" data-animation="fade-up" data-delay="400">
                     <div class="stat-icon"><i class="fas fa-notes-medical"></i></div>
                     <div class="stat-details">
@@ -1026,7 +1175,7 @@ try {
                         <div class="stat-label">Nursing Notes</div>
                     </div>
                 </div>
-                
+
                 <div class="stat-card tasks animate-on-scroll" data-animation="fade-up" data-delay="500">
                     <div class="stat-icon"><i class="fas fa-tasks"></i></div>
                     <div class="stat-details">
@@ -1034,7 +1183,7 @@ try {
                         <div class="stat-label">Pending Tasks</div>
                     </div>
                 </div>
-                
+
                 <div class="stat-card shift animate-on-scroll" data-animation="fade-up" data-delay="600">
                     <div class="stat-icon"><i class="fas fa-clock"></i></div>
                     <div class="stat-details">
@@ -1048,7 +1197,7 @@ try {
         <!-- Quick Actions -->
         <section class="quick-actions-section">
             <h2 class="section-heading"><i class="fas fa-bolt"></i> Quick Actions</h2>
-            
+
             <div class="action-grid">
                 <a href="../clinical/vital_signs.php" class="action-card red animate-on-scroll" data-animation="fade-up" data-delay="100">
                     <div class="action-icon"><i class="fas fa-heartbeat"></i></div>
@@ -1058,7 +1207,7 @@ try {
                     </div>
                     <div class="action-arrow"><i class="fas fa-chevron-right"></i></div>
                 </a>
-                
+
                 <a href="../clinical/medication_administration.php" class="action-card blue animate-on-scroll" data-animation="fade-up" data-delay="200">
                     <div class="action-icon"><i class="fas fa-pills"></i></div>
                     <div class="action-content">
@@ -1067,7 +1216,7 @@ try {
                     </div>
                     <div class="action-arrow"><i class="fas fa-chevron-right"></i></div>
                 </a>
-                
+
                 <a href="../clinical/nursing_notes.php" class="action-card orange animate-on-scroll" data-animation="fade-up" data-delay="300">
                     <div class="action-icon"><i class="fas fa-notes-medical"></i></div>
                     <div class="action-content">
@@ -1076,7 +1225,7 @@ try {
                     </div>
                     <div class="action-arrow"><i class="fas fa-chevron-right"></i></div>
                 </a>
-                
+
                 <a href="../patient/patient_assessment.php" class="action-card purple animate-on-scroll" data-animation="fade-up" data-delay="400">
                     <div class="action-icon"><i class="fas fa-clipboard-check"></i></div>
                     <div class="action-content">
@@ -1085,7 +1234,7 @@ try {
                     </div>
                     <div class="action-arrow"><i class="fas fa-chevron-right"></i></div>
                 </a>
-                
+
                 <a href="../clinical/care_plans.php" class="action-card green animate-on-scroll" data-animation="fade-up" data-delay="500">
                     <div class="action-icon"><i class="fas fa-file-medical"></i></div>
                     <div class="action-content">
@@ -1094,7 +1243,7 @@ try {
                     </div>
                     <div class="action-arrow"><i class="fas fa-chevron-right"></i></div>
                 </a>
-                
+
                 <a href="../clinical/wound_care.php" class="action-card teal animate-on-scroll" data-animation="fade-up" data-delay="600">
                     <div class="action-icon"><i class="fas fa-band-aid"></i></div>
                     <div class="action-content">
@@ -1119,7 +1268,7 @@ try {
                                 View All <i class="fas fa-chevron-right"></i>
                             </a>
                         </div>
-                        
+
                         <div class="content-card-body">
                             <?php if (!empty($defaults['assigned_patients']) && $defaults['assigned_patients'][0]['patient_name'] !== 'No patients assigned'): ?>
                                 <div class="data-list">
@@ -1158,7 +1307,7 @@ try {
                                 View Schedule <i class="fas fa-chevron-right"></i>
                             </a>
                         </div>
-                        
+
                         <div class="content-card-body">
                             <?php if (!empty($defaults['vitals_due']) && $defaults['vitals_due'][0]['patient_name'] !== 'No vitals due'): ?>
                                 <div class="responsive-table">
@@ -1203,7 +1352,7 @@ try {
                                 View All <i class="fas fa-chevron-right"></i>
                             </a>
                         </div>
-                        
+
                         <div class="content-card-body">
                             <?php if (!empty($defaults['medication_schedule']) && $defaults['medication_schedule'][0]['patient_name'] !== 'No medications due'): ?>
                                 <div class="data-list">
@@ -1242,7 +1391,7 @@ try {
                                 View All <i class="fas fa-chevron-right"></i>
                             </a>
                         </div>
-                        
+
                         <div class="content-card-body">
                             <?php if (!empty($defaults['nursing_alerts'])): ?>
                                 <div class="data-list">
@@ -1283,24 +1432,26 @@ try {
         document.addEventListener('DOMContentLoaded', function() {
             // Animate elements when they come into view
             const animateElements = document.querySelectorAll('.animate-on-scroll');
-            
+
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const element = entry.target;
                         const animation = element.dataset.animation || 'fade-in';
                         const delay = element.dataset.delay || 0;
-                        
+
                         setTimeout(() => {
                             element.classList.add('animated', animation);
                             element.style.visibility = 'visible';
                         }, delay);
-                        
+
                         observer.unobserve(element);
                     }
                 });
-            }, { threshold: 0.1 });
-            
+            }, {
+                threshold: 0.1
+            });
+
             animateElements.forEach(element => {
                 element.style.visibility = 'hidden';
                 observer.observe(element);

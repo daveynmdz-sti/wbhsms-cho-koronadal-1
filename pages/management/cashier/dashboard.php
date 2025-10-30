@@ -105,173 +105,242 @@ try {
 
 // Dashboard Statistics
 try {
-    // Pending Payments
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM billing WHERE status = "pending" AND cashier_id = ?');
-    $stmt->execute([$employee_id]);
+    // Pending Payments (billing records with unpaid or partial status)
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM billing 
+        WHERE payment_status IN ("unpaid", "partial")
+    ');
+    $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['pending_payments'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Cashier dashboard error (pending payments): " . $e->getMessage());
 }
 
 try {
     // Payments Processed Today
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM payments WHERE DATE(payment_date) = ? AND cashier_id = ?');
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM payments 
+        WHERE DATE(paid_at) = ? AND cashier_id = ?
+    ');
     $stmt->execute([$today, $employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['payments_today'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Cashier dashboard error (payments today): " . $e->getMessage());
 }
 
 try {
     // Revenue Today
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT SUM(amount) as total FROM payments WHERE DATE(payment_date) = ? AND cashier_id = ?');
+    $stmt = $pdo->prepare('
+        SELECT SUM(amount_paid) as total 
+        FROM payments 
+        WHERE DATE(paid_at) = ? AND cashier_id = ?
+    ');
     $stmt->execute([$today, $employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['revenue_today'] = $row['total'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Cashier dashboard error (revenue today): " . $e->getMessage());
 }
 
 try {
     // Outstanding Balances
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM billing WHERE status = "outstanding" AND total_amount > 0');
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM billing 
+        WHERE payment_status IN ("unpaid", "partial") AND net_amount > 0
+    ');
     $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['outstanding_balances'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Cashier dashboard error (outstanding balances): " . $e->getMessage());
 }
 
 try {
-    // Transactions Today
+    // Transactions Today (billing records created today)
     $today = date('Y-m-d');
-    $stmt = $pdo->prepare('SELECT COUNT(*) as count FROM billing WHERE DATE(billing_date) = ? AND cashier_id = ?');
-    $stmt->execute([$today, $employee_id]);
+    $stmt = $pdo->prepare('
+        SELECT COUNT(*) as count 
+        FROM billing 
+        WHERE DATE(billing_date) = ?
+    ');
+    $stmt->execute([$today]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['transactions_today'] = $row['count'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Cashier dashboard error (transactions today): " . $e->getMessage());
 }
 
 try {
     // Revenue This Month
     $month_start = date('Y-m-01');
-    $stmt = $pdo->prepare('SELECT SUM(amount) as total FROM payments WHERE payment_date >= ? AND cashier_id = ?');
+    $stmt = $pdo->prepare('
+        SELECT SUM(amount_paid) as total 
+        FROM payments 
+        WHERE paid_at >= ? AND cashier_id = ?
+    ');
     $stmt->execute([$month_start, $employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     $defaults['stats']['revenue_month'] = $row['total'] ?? 0;
 } catch (PDOException $e) {
-    // table might not exist yet; ignore
+    error_log("Cashier dashboard error (revenue month): " . $e->getMessage());
 }
 
 // Pending Payments
 try {
     $stmt = $pdo->prepare('
-        SELECT b.billing_id, b.service_type, b.total_amount, b.billing_date,
-               p.first_name, p.last_name, p.patient_id, b.priority
+        SELECT b.billing_id, b.total_amount, b.net_amount, b.billing_date,
+               p.first_name, p.last_name, p.patient_id, b.payment_status
         FROM billing b 
-        JOIN patients p ON b.patient_id = p.patient_id 
-        WHERE b.status = "pending" AND b.cashier_id = ? 
-        ORDER BY b.priority DESC, b.billing_date ASC 
+        INNER JOIN patients p ON b.patient_id = p.patient_id 
+        WHERE b.payment_status IN ("unpaid", "partial")
+        ORDER BY b.billing_date ASC 
         LIMIT 8
     ');
-    $stmt->execute([$employee_id]);
+    $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['pending_payments'][] = [
             'billing_id' => $row['billing_id'],
-            'service_type' => $row['service_type'] ?? 'Medical Service',
+            'service_type' => 'Medical Services',
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'total_amount' => $row['total_amount'] ?? 0,
-            'priority' => $row['priority'] ?? 'normal',
-            'billing_date' => date('M d, Y', strtotime($row['billing_date']))
+            'total_amount' => $row['net_amount'] ?? 0,
+            'billing_date' => date('M d, Y', strtotime($row['billing_date'])),
+            'priority' => $row['payment_status'] === 'partial' ? 'high' : 'normal'
+        ];
+    }
+    
+    if (empty($defaults['pending_payments'])) {
+        $defaults['pending_payments'] = [
+            ['billing_id' => '-', 'service_type' => 'No pending payments', 'patient_name' => '-', 'patient_id' => '-', 'total_amount' => 0, 'billing_date' => '-', 'priority' => 'normal']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Cashier dashboard error (pending payments list): " . $e->getMessage());
     $defaults['pending_payments'] = [
-        ['billing_id' => '-', 'service_type' => 'No pending payments', 'patient_name' => '-', 'patient_id' => '-', 'total_amount' => 0, 'priority' => 'normal', 'billing_date' => '-']
+        ['billing_id' => '-', 'service_type' => 'No payment data available', 'patient_name' => '-', 'patient_id' => '-', 'total_amount' => 0, 'billing_date' => '-', 'priority' => 'normal']
     ];
 }
 
 // Recent Transactions
 try {
     $stmt = $pdo->prepare('
-        SELECT py.payment_id, py.payment_method, py.amount, py.payment_date,
-               p.first_name, p.last_name, p.patient_id, b.service_type
+        SELECT py.payment_id, py.payment_method, py.amount_paid, py.paid_at,
+               p.first_name, p.last_name, p.patient_id, py.receipt_number
         FROM payments py 
-        JOIN billing b ON py.billing_id = b.billing_id
-        JOIN patients p ON b.patient_id = p.patient_id 
+        INNER JOIN billing b ON py.billing_id = b.billing_id
+        INNER JOIN patients p ON b.patient_id = p.patient_id 
         WHERE py.cashier_id = ? 
-        ORDER BY py.payment_date DESC 
-        LIMIT 6
+        ORDER BY py.paid_at DESC 
+        LIMIT 5
     ');
     $stmt->execute([$employee_id]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['recent_transactions'][] = [
             'payment_id' => $row['payment_id'],
+            'payment_method' => $row['payment_method'],
+            'amount' => $row['amount_paid'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'service_type' => $row['service_type'] ?? 'Medical Service',
-            'amount' => $row['amount'] ?? 0,
-            'payment_method' => $row['payment_method'] ?? 'Cash',
-            'payment_date' => date('M d, Y H:i', strtotime($row['payment_date']))
+            'payment_date' => date('M d, Y H:i', strtotime($row['paid_at'])),
+            'receipt_number' => $row['receipt_number'] ?? '-'
+        ];
+    }
+    
+    if (empty($defaults['recent_transactions'])) {
+        $defaults['recent_transactions'] = [
+            ['payment_id' => '-', 'payment_method' => '-', 'amount' => 0, 'patient_name' => 'No recent transactions', 'patient_id' => '-', 'payment_date' => '-', 'receipt_number' => '-']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Cashier dashboard error (recent transactions): " . $e->getMessage());
     $defaults['recent_transactions'] = [
-        ['payment_id' => '-', 'patient_name' => 'No recent transactions', 'patient_id' => '-', 'service_type' => '-', 'amount' => 0, 'payment_method' => '-', 'payment_date' => '-']
+        ['payment_id' => '-', 'payment_method' => '-', 'amount' => 0, 'patient_name' => 'No transaction data available', 'patient_id' => '-', 'payment_date' => '-', 'receipt_number' => '-']
     ];
 }
 
 // Outstanding Bills
 try {
     $stmt = $pdo->prepare('
-        SELECT b.billing_id, b.service_type, b.total_amount, b.billing_date,
-               p.first_name, p.last_name, p.patient_id, 
-               DATEDIFF(CURDATE(), b.billing_date) as days_overdue
+        SELECT b.billing_id, b.total_amount, b.paid_amount, b.net_amount, b.billing_date,
+               p.first_name, p.last_name, p.patient_id, b.payment_status
         FROM billing b 
-        JOIN patients p ON b.patient_id = p.patient_id 
-        WHERE b.status = "outstanding" AND b.total_amount > 0
-        ORDER BY days_overdue DESC, b.total_amount DESC 
+        INNER JOIN patients p ON b.patient_id = p.patient_id 
+        WHERE b.payment_status IN ("unpaid", "partial") AND b.net_amount > 0
+        ORDER BY b.billing_date ASC 
         LIMIT 5
     ');
     $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $outstanding_amount = $row['net_amount'] - $row['paid_amount'];
         $defaults['outstanding_bills'][] = [
             'billing_id' => $row['billing_id'],
             'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
             'patient_id' => $row['patient_id'],
-            'service_type' => $row['service_type'] ?? 'Medical Service',
-            'total_amount' => $row['total_amount'] ?? 0,
+            'total_amount' => $row['net_amount'],
+            'outstanding_amount' => $outstanding_amount,
             'billing_date' => date('M d, Y', strtotime($row['billing_date'])),
-            'days_overdue' => $row['days_overdue'] ?? 0
+            'status' => ucfirst($row['payment_status'])
+        ];
+    }
+    
+    if (empty($defaults['outstanding_bills'])) {
+        $defaults['outstanding_bills'] = [
+            ['billing_id' => '-', 'patient_name' => 'No outstanding bills', 'patient_id' => '-', 'total_amount' => 0, 'outstanding_amount' => 0, 'billing_date' => '-', 'status' => '-']
         ];
     }
 } catch (PDOException $e) {
-    // table might not exist yet; add some default data
+    error_log("Cashier dashboard error (outstanding bills): " . $e->getMessage());
     $defaults['outstanding_bills'] = [
-        ['billing_id' => 'B001', 'patient_name' => 'Sample Patient', 'patient_id' => 'P001', 'service_type' => 'Consultation', 'total_amount' => 500, 'billing_date' => 'Sep 15, 2025', 'days_overdue' => 6],
-        ['billing_id' => 'B002', 'patient_name' => 'Another Patient', 'patient_id' => 'P002', 'service_type' => 'Laboratory Test', 'total_amount' => 750, 'billing_date' => 'Sep 10, 2025', 'days_overdue' => 11]
+        ['billing_id' => '-', 'patient_name' => 'No billing data available', 'patient_id' => '-', 'total_amount' => 0, 'outstanding_amount' => 0, 'billing_date' => '-', 'status' => '-']
     ];
 }
 
-// Billing Alerts
+// Billing Alerts (Based on overdue payments and high amounts)
 try {
     $stmt = $pdo->prepare('
-        SELECT ba.alert_type, ba.message, ba.created_at, ba.priority,
-               p.first_name, p.last_name, p.patient_id
-        FROM billing_alerts ba 
-        LEFT JOIN patients p ON ba.patient_id = p.patient_id 
-        WHERE ba.cashier_id = ? AND ba.status = "active" 
-        ORDER BY ba.priority DESC, ba.created_at DESC 
-        LIMIT 4
+        SELECT b.billing_id, b.net_amount, b.billing_date,
+               p.first_name, p.last_name, p.patient_id,
+               DATEDIFF(CURRENT_DATE(), DATE(b.billing_date)) as days_overdue
+        FROM billing b 
+        INNER JOIN patients p ON b.patient_id = p.patient_id 
+        WHERE b.payment_status = "unpaid" AND DATEDIFF(CURRENT_DATE(), DATE(b.billing_date)) >= 7
+        ORDER BY days_overdue DESC, b.net_amount DESC 
+        LIMIT 3
     ');
+    $stmt->execute();
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $alert_type = $row['days_overdue'] >= 30 ? 'danger' : 'warning';
+        $message = "Overdue payment: ₱" . number_format($row['net_amount'], 2) . " ({$row['days_overdue']} days overdue)";
+        
+        $defaults['billing_alerts'][] = [
+            'alert_type' => $alert_type,
+            'message' => $message,
+            'patient_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+            'patient_id' => $row['patient_id'],
+            'priority' => $alert_type === 'danger' ? 'high' : 'medium',
+            'date' => date('m/d/Y', strtotime($row['billing_date']))
+        ];
+    }
+    
+    if (empty($defaults['billing_alerts'])) {
+        $defaults['billing_alerts'] = [
+            ['alert_type' => 'info', 'message' => 'All payments are up to date', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y')]
+        ];
+    }
+} catch (PDOException $e) {
+    error_log("Cashier dashboard error (billing alerts): " . $e->getMessage());
+    $defaults['billing_alerts'] = [
+        ['alert_type' => 'info', 'message' => 'No billing alerts available', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y')]
+    ];
+}
+?>
     $stmt->execute([$employee_id]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $defaults['billing_alerts'][] = [
