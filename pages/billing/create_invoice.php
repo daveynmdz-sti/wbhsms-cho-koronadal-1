@@ -1044,11 +1044,50 @@ try {
             const containerDiv = document.getElementById('service-items-container');
             const errorDiv = document.getElementById('service-error');
 
-            fetch('<?= $api_path ?>/get_service_catalog.php')
-                .then(response => response.json())
+            // Use both test and original API for debugging
+            const apiUrls = [
+                '../../api/test_service_catalog.php',
+                '../../api/get_service_catalog.php'
+            ];
+            
+            console.log('Loading services from APIs:', apiUrls);
+
+            // Try test API first
+            tryAPI(0);
+            
+            function tryAPI(index) {
+                if (index >= apiUrls.length) {
+                    console.error('All API endpoints failed');
+                    loadingDiv.style.display = 'none';
+                    containerDiv.style.display = 'none';
+                    errorDiv.style.display = 'block';
+                    errorDiv.innerHTML = `
+                        <i class="fas fa-exclamation-circle"></i> 
+                        All API endpoints failed. Please check:
+                        <br>• XAMPP is running
+                        <br>• Database connection is working
+                        <br>• service_items table exists
+                        <br><small>Check browser console for detailed errors</small>
+                    `;
+                    return;
+                }
+                
+                const apiUrl = apiUrls[index];
+                console.log(`Trying API ${index + 1}:`, apiUrl);
+                
+                fetch(apiUrl)
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('Service data received:', data);
                     if (data.success) {
                         serviceItems = data.services || [];
+                        console.log('Service items loaded:', serviceItems.length);
                         displayServiceItems();
                         loadingDiv.style.display = 'none';
                         containerDiv.style.display = 'block';
@@ -1058,11 +1097,11 @@ try {
                     }
                 })
                 .catch(error => {
-                    console.error('Error loading services:', error);
-                    loadingDiv.style.display = 'none';
-                    containerDiv.style.display = 'none';
-                    errorDiv.style.display = 'block';
+                    console.error(`API ${index + 1} failed:`, error);
+                    // Try next API endpoint
+                    tryAPI(index + 1);
                 });
+            }
         }
 
         // Display service items in the table

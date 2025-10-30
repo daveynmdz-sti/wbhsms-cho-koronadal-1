@@ -36,12 +36,6 @@ try {
     
     $services_stmt = $pdo->prepare($services_sql);
     $services_stmt->execute();
-    $services = $services_stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Get service items with pricing
-    
-    $services_stmt = $pdo->prepare($services_sql);
-    $services_stmt->execute();
     $service_items = $services_stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Format the response for frontend compatibility
@@ -85,18 +79,28 @@ try {
     ]);
     
 } catch (PDOException $e) {
-    error_log("Service Catalog Error: " . $e->getMessage());
+    error_log("Service Catalog PDO Error: " . $e->getMessage());
+    error_log("SQL Query: " . $services_sql);
     http_response_code(500);
     echo json_encode([
         'success' => false, 
-        'message' => 'Database error occurred while retrieving service catalog'
+        'message' => 'Database error occurred while retrieving service catalog',
+        'debug' => [
+            'error' => $e->getMessage(),
+            'code' => $e->getCode(),
+            'query' => $services_sql
+        ]
     ]);
 } catch (Exception $e) {
-    error_log("Service Catalog Error: " . $e->getMessage());
+    error_log("Service Catalog General Error: " . $e->getMessage());
     http_response_code(500);
     echo json_encode([
         'success' => false, 
-        'message' => 'An unexpected error occurred'
+        'message' => 'An unexpected error occurred',
+        'debug' => [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]
     ]);
 }
 ?>

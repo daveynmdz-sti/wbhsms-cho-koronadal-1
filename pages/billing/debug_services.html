@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Service Loading Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { background: #f0f0f0; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffe6e6; border: 1px solid #ff0000; }
+        .success { background: #e6ffe6; border: 1px solid #00ff00; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <h1>Service Loading Debug</h1>
+    
+    <h2>1. Test Relative API Path</h2>
+    <div id="relative-result" class="result">
+        <p>Testing: ../../api/get_service_catalog.php</p>
+        <div id="relative-status">Loading...</div>
+        <pre id="relative-data"></pre>
+    </div>
+    
+    <h2>2. Test Direct API Path</h2>
+    <div id="direct-result" class="result">
+        <p>Testing: /wbhsms-cho-koronadal-1/api/get_service_catalog.php</p>
+        <div id="direct-status">Loading...</div>
+        <pre id="direct-data"></pre>
+    </div>
+    
+    <h2>3. Test Absolute URL</h2>
+    <div id="absolute-result" class="result">
+        <p id="absolute-url">Testing: (will detect automatically)</p>
+        <div id="absolute-status">Loading...</div>
+        <pre id="absolute-data"></pre>
+    </div>
+
+    <script>
+        function testAPI(url, statusId, dataId, resultId) {
+            const statusEl = document.getElementById(statusId);
+            const dataEl = document.getElementById(dataId);
+            const resultEl = document.getElementById(resultId);
+            
+            console.log('Testing API URL:', url);
+            statusEl.textContent = 'Fetching...';
+            
+            fetch(url)
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    statusEl.textContent = `Status: ${response.status} ${response.statusText}`;
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('API Response:', data);
+                    statusEl.textContent = 'Success!';
+                    dataEl.textContent = JSON.stringify(data, null, 2);
+                    resultEl.className = 'result success';
+                })
+                .catch(error => {
+                    console.error('API Error:', error);
+                    statusEl.textContent = 'Error: ' + error.message;
+                    dataEl.textContent = 'Error details: ' + error.toString();
+                    resultEl.className = 'result error';
+                });
+        }
+        
+        // Test different URL approaches
+        document.addEventListener('DOMContentLoaded', function() {
+            // Test 1: Relative path
+            testAPI('../../api/get_service_catalog.php', 'relative-status', 'relative-data', 'relative-result');
+            
+            // Test 2: Direct path
+            testAPI('/wbhsms-cho-koronadal-1/api/get_service_catalog.php', 'direct-status', 'direct-data', 'direct-result');
+            
+            // Test 3: Absolute URL
+            const baseUrl = window.location.protocol + '//' + window.location.host;
+            const absoluteUrl = baseUrl + '/wbhsms-cho-koronadal-1/api/get_service_catalog.php';
+            document.getElementById('absolute-url').textContent = 'Testing: ' + absoluteUrl;
+            testAPI(absoluteUrl, 'absolute-status', 'absolute-data', 'absolute-result');
+        });
+    </script>
+</body>
+</html>
