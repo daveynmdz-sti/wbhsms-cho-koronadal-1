@@ -1384,7 +1384,7 @@ if ($selected_patient_id) {
             </div>
 
             <!-- Consultation Form Section -->
-            <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
+            <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist', 'nurse'])): ?>
                 <div class="form-section <?= $selected_patient_data ? 'enabled' : '' ?>" id="consultationSection">
                     <form class="profile-card" id="consultationForm" method="post">
                         <input type="hidden" name="action" value="save_consultation">
@@ -1648,7 +1648,7 @@ if ($selected_patient_id) {
             document.getElementById('vitalsSection').classList.add('enabled');
             document.getElementById('vitalsPatientId').value = patientId;
 
-            <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
+            <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist', 'nurse'])): ?>
                 document.getElementById('consultationSection').classList.add('enabled');
                 document.getElementById('consultationPatientId').value = patientId;
                 // Auto-link today's vitals if available
@@ -1677,7 +1677,7 @@ if ($selected_patient_id) {
                 // Disable forms
                 document.getElementById('vitalsSection').classList.remove('enabled');
 
-                <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
+                <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist', 'nurse'])): ?>
                     document.getElementById('consultationSection').classList.remove('enabled');
 
                     // Remove vitals info
@@ -1795,7 +1795,7 @@ if ($selected_patient_id) {
                 }
 
                 // Update consultation form vitals ID
-                <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist'])): ?>
+                <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist', 'nurse'])): ?>
                     if (vitalsData && vitalsData.vitals_id) {
                         document.getElementById('consultationVitalsId').value = vitalsData.vitals_id;
                         showVitalsInfo('Vitals from today will be automatically linked to this consultation.');

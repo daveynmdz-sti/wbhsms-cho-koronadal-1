@@ -23,14 +23,14 @@ if (!isset($conn) || $conn->connect_error) {
 
 // If user is not logged in, bounce to login
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
-    header('Location: ../auth/employee_login.php');
+    header('Location: ../management/auth/employee_login.php');
     exit();
 }
 
 // Check if role is authorized for clinical encounters
 $authorized_roles = ['doctor', 'nurse', 'admin', 'records_officer', 'bhw', 'dho', 'pharmacist'];
 if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
-    header('Location: ../dashboard.php');
+    header('Location: ../management/' . strtolower($_SESSION['role']) . '/dashboard.php');
     exit();
 }
 
@@ -102,8 +102,7 @@ $param_types = '';
 // Role-based filtering with proper access control
 switch ($employee_role) {
     case 'doctor':
-    case 'nurse':
-        // Doctor/Nurse: Show consultations assigned to them or where they were involved
+        // Doctor: Show consultations assigned to them or where they were involved
         if (empty($patient_id_filter) && empty($first_name_filter) && empty($last_name_filter) && empty($doctor_filter)) {
             $where_conditions[] = "(c.consulted_by = ? OR c.attending_employee_id = ? OR EXISTS (
                 SELECT 1 FROM vitals vt WHERE vt.vitals_id = c.vitals_id AND vt.recorded_by = ?
@@ -113,6 +112,11 @@ switch ($employee_role) {
             $params[] = $employee_id;
             $param_types .= 'iii';
         }
+        break;
+        
+    case 'nurse':
+        // Nurse: Can view all consultations (broader access for patient care coordination)
+        // No additional filtering - nurses need to see all patient consultations for care coordination
         break;
 
     case 'bhw':
