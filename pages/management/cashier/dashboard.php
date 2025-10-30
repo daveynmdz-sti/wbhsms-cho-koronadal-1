@@ -341,25 +341,6 @@ try {
     ];
 }
 ?>
-    $stmt->execute([$employee_id]);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $defaults['billing_alerts'][] = [
-            'alert_type' => $row['alert_type'] ?? 'general',
-            'message' => $row['message'] ?? '',
-            'patient_name' => $row['patient_id'] ? trim($row['first_name'] . ' ' . $row['last_name']) : 'System',
-            'patient_id' => $row['patient_id'] ?? '-',
-            'priority' => $row['priority'] ?? 'normal',
-            'date' => date('m/d/Y H:i', strtotime($row['created_at']))
-        ];
-    }
-} catch (PDOException $e) {
-    // table might not exist yet; add some default alerts
-    $defaults['billing_alerts'] = [
-        ['alert_type' => 'warning', 'message' => 'Payment overdue: Patient has outstanding balance over 30 days', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'high', 'date' => date('m/d/Y H:i')],
-        ['alert_type' => 'info', 'message' => 'Daily cash reconciliation pending', 'patient_name' => 'System', 'patient_id' => '-', 'priority' => 'normal', 'date' => date('m/d/Y H:i')]
-    ];
-}
-?>
 <!DOCTYPE html>
 <html lang="en">
 
