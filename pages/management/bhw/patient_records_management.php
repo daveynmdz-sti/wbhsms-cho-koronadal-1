@@ -1320,10 +1320,15 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                         </select>
                     </div>
                     <div class="col-md-4 d-flex button-container">
+                        <button id="searchBtn" class="action-btn btn-primary equal-width">
+                            <i class="fas fa-search"></i> Search
+                        </button>
                         <button id="clearFilters" class="action-btn btn-secondary equal-width">
                             <i class="fas fa-times-circle"></i> Clear Filters
                         </button>
-                        <div class="dropdown">
+                    </div>
+                    <!--<div class="col-md-4 d-flex button-container">
+                        <div class="dropdown" style="width: 100%;">
                             <button class="action-btn btn-success dropdown-toggle equal-width" type="button" id="exportDropdown">
                                 <i class="fas fa-file-export"></i> Export Data
                             </button>
@@ -1333,7 +1338,7 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                                 <li><a class="dropdown-item" href="#" id="exportPDF"><i class="fas fa-file-pdf"></i> Export to PDF</a></li>
                             </ul>
                         </div>
-                    </div>
+                    </div>-->
                 </div>
             </div>
 
@@ -1524,196 +1529,82 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
 
     <script>
         $(document).ready(function() {
-            let currentPage = 1;
-            let searchTimeout;
+            // Function to update URL with filters and reload
+            function updateFilters() {
+                $('#loader').show();
+                let searchValue = $('#searchInput').val();
+                let patientIdValue = $('#patientIdInput').val();
+                let firstNameValue = $('#firstNameInput').val();
+                let lastNameValue = $('#lastNameInput').val();
+                let middleNameValue = $('#middleNameInput').val();
+                let birthdayValue = $('#birthdayInput').val();
+                let statusValue = $('#statusFilter').val();
+                let pageValue = 1; // Reset to first page when filters change
 
-            function performSearch(page = 1) {
-                const searchQuery = $('#searchInput').val();
-                const patientId = $('#patientIdInput').val();
-                const firstName = $('#firstNameInput').val();
-                const lastName = $('#lastNameInput').val();
-                const middleName = $('#middleNameInput').val();
-                const birthday = $('#birthdayInput').val();
-                const status = $('#statusFilter').val();
+                let url = window.location.pathname + '?';
+                let params = [];
 
-                const params = new URLSearchParams({
-                    search: searchQuery,
-                    patient_id: patientId,
-                    first_name: firstName,
-                    last_name: lastName,
-                    middle_name: middleName,
-                    birthday: birthday,
-                    status: status,
-                    page: page
-                });
+                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
+                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
+                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
+                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
+                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
+                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
+                if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
+                if (pageValue) params.push('page=' + encodeURIComponent(pageValue));
 
+                url += params.join('&');
+                window.location.href = url;
+            }
+
+            // Search button click handler
+            $('#searchBtn').on('click', function() {
+                updateFilters();
+            });
+
+            // Allow Enter key to trigger search
+            $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput, #birthdayInput').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    updateFilters();
+                }
+            });
+
+            // Dropdown changes still trigger immediate search for better UX
+            $('#statusFilter').on('change', updateFilters);
+
+            // Clear filters button
+            $('#clearFilters').on('click', function() {
+                window.location.href = window.location.pathname;
+            });
+
+            // Pagination handling
+            $('.pagination a').on('click', function(e) {
+                e.preventDefault();
                 $('#loader').show();
 
-                fetch(`patient_records_management.php?${params}`)
-                    .then(response => response.text())
-                    .then(html => {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        const newTableBody = doc.querySelector('#patientTable tbody');
-                        const newPagination = doc.querySelector('.pagination');
+                let page = $(this).data('page');
+                let searchValue = $('#searchInput').val();
+                let patientIdValue = $('#patientIdInput').val();
+                let firstNameValue = $('#firstNameInput').val();
+                let lastNameValue = $('#lastNameInput').val();
+                let middleNameValue = $('#middleNameInput').val();
+                let birthdayValue = $('#birthdayInput').val();
+                let statusValue = $('#statusFilter').val();
 
-                        if (newTableBody) {
-                            $('#patientTable tbody').html(newTableBody.innerHTML);
-                        }
+                let url = window.location.pathname + '?';
+                let params = [];
 
-                        if (newPagination) {
-                            $('.pagination').parent().html(newPagination.parentElement.innerHTML);
-                        } else {
-                            $('.pagination').parent().empty();
-                        }
+                if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
+                if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
+                if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
+                if (lastNameValue) params.push('last_name=' + encodeURIComponent(lastNameValue));
+                if (middleNameValue) params.push('middle_name=' + encodeURIComponent(middleNameValue));
+                if (birthdayValue) params.push('birthday=' + encodeURIComponent(birthdayValue));
+                if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
+                params.push('page=' + encodeURIComponent(page));
 
-                        // Update badge counts
-                        const badges = doc.querySelectorAll('.total-count .badge');
-                        if (badges.length >= 3) {
-                            $('.total-count .badge').eq(0).text(badges[0].textContent);
-                            $('.total-count .badge').eq(1).text(badges[1].textContent);
-                            $('.total-count .badge').eq(2).text(badges[2].textContent);
-                        }
-
-                        currentPage = page;
-                        $('#loader').hide();
-
-                        // Re-bind event handlers for new elements
-                        bindEventHandlers();
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        $('#loader').hide();
-                    });
-            }
-
-            function bindEventHandlers() {
-                // View contact modal
-                $('.view-contact').off('click').on('click', function() {
-                    const data = $(this).data();
-                    showContactModal(data);
-                });
-
-                // Pagination clicks
-                $('.pagination a').off('click').on('click', function(e) {
-                    e.preventDefault();
-                    const page = $(this).data('page');
-                    if (page && !$(this).parent().hasClass('disabled') && !$(this).parent().hasClass('active')) {
-                        performSearch(page);
-                    }
-                });
-            }
-
-            function showContactModal(data) {
-                $('#patientPhoto').attr('src', data.photo || '<?php echo $assets_path; ?>/images/user-default.png');
-                $('#patientName').text(data.name || 'N/A');
-                $('#patientId').text(data.username || 'N/A');
-                $('#patientDob').text(data.dob || 'N/A');
-                $('#patientSex').text(data.sex || 'N/A');
-                $('#patientContact').text(data.contact || 'N/A');
-                $('#patientBarangay').text(data.barangay || 'N/A');
-                $('#emergencyName').text(data.emergencyName || 'N/A');
-                $('#emergencyContact').text(data.emergencyContact || 'N/A');
-
-                $('#contactModal').addClass('show');
-            }
-
-            function closeModal() {
-                $('#contactModal').removeClass('show');
-            }
-
-            // Debounced search
-            function debouncedSearch() {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => performSearch(1), 300);
-            }
-
-            // Search input events
-            $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput, #birthdayInput').on('input', debouncedSearch);
-            $('#statusFilter').on('change', debouncedSearch);
-
-            // Clear filters
-            $('#clearFilters').on('click', function() {
-                $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput, #birthdayInput').val('');
-                $('#statusFilter').val('');
-                performSearch(1);
-            });
-
-            // Export dropdown
-            $('#exportDropdown').on('click', function(e) {
-                e.preventDefault();
-                $('#exportMenu').toggle();
-            });
-
-            // Close modal events
-            $('#closeContactModal, #closeModalBtn').on('click', closeModal);
-            $('#contactModal').on('click', function(e) {
-                if (e.target === this) closeModal();
-            });
-
-            $(document).on('keydown', function(e) {
-                if (e.key === 'Escape') closeModal();
-            });
-
-            // Print ID Card functionality
-            $('#printIdCard').on('click', function() {
-                const patientName = $('#patientName').text();
-                const patientId = $('#patientId').text();
-                const patientDob = $('#patientDob').text();
-                const patientSex = $('#patientSex').text();
-                const patientContact = $('#patientContact').text();
-                const patientBarangay = $('#patientBarangay').text();
-                const emergencyName = $('#emergencyName').text();
-                const emergencyContact = $('#emergencyContact').text();
-                const photoSrc = $('#patientPhoto').attr('src');
-
-                // Create print window
-                const printWindow = window.open('', '_blank');
-                printWindow.document.write(`
-                    <html>
-                    <head>
-                        <title>Patient ID Card - ${patientName}</title>
-                        <style>
-                            body { font-family: Arial, sans-serif; margin: 20px; }
-                            .id-card { border: 2px solid #0077b6; border-radius: 10px; padding: 20px; max-width: 400px; margin: 0 auto; }
-                            .header { background: #0077b6; color: white; text-align: center; padding: 10px; margin: -20px -20px 20px -20px; border-radius: 8px 8px 0 0; }
-                            .photo { text-align: center; margin-bottom: 15px; }
-                            .photo img { width: 120px; height: 120px; border-radius: 50%; border: 3px solid #0077b6; }
-                            .info p { margin: 8px 0; display: flex; justify-content: space-between; }
-                            .info strong { color: #0077b6; }
-                            .section-header { background: #0077b6; color: white; padding: 8px; margin: 15px -20px 10px -20px; text-align: center; font-weight: bold; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="id-card">
-                            <div class="header">
-                                <h3>CITY HEALTH OFFICE - KORONADAL</h3>
-                            </div>
-                            <div class="photo">
-                                <img src="${photoSrc}" alt="Patient Photo">
-                                <h4>${patientName}</h4>
-                                <p><strong>Patient ID: ${patientId}</strong></p>
-                            </div>
-                            <div class="info">
-                                <p><strong>Date of Birth:</strong> <span>${patientDob}</span></p>
-                                <p><strong>Sex:</strong> <span>${patientSex}</span></p>
-                                <p><strong>Barangay:</strong> <span>${patientBarangay}</span></p>
-                                <p><strong>Contact:</strong> <span>${patientContact}</span></p>
-                            </div>
-                            <div class="section-header">Emergency Contact</div>
-                            <div class="info">
-                                <p><strong>Name:</strong> <span>${emergencyName}</span></p>
-                                <p><strong>Contact:</strong> <span>${emergencyContact}</span></p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                `);
-                printWindow.document.close();
-
-                setTimeout(() => {
-                    printWindow.print();
-                }, 250);
+                url += params.join('&');
+                window.location.href = url;
             });
 
             // Table column sorting - Server-side implementation
@@ -1759,8 +1650,47 @@ $bhw_barangay_name = $barangay_name_result->fetch_assoc()['barangay_name'];
                 window.location.href = url;
             });
 
-            // Initialize event handlers
-            bindEventHandlers();
+            // Contact modal handling - using event delegation for dynamically added elements
+            $(document).on('click', '.view-contact', function() {
+                const patientId = $(this).data('id');
+                const patientName = $(this).data('name');
+                const patientUsername = $(this).data('username');
+                const dob = $(this).data('dob');
+                const sex = $(this).data('sex');
+                const contact = $(this).data('contact');
+                const barangay = $(this).data('barangay');
+                const emergencyName = $(this).data('emergency-name');
+                const emergencyContact = $(this).data('emergency-contact');
+                const photoSrc = $(this).data('photo');
+
+                console.log("View contact clicked for:", patientName); // Debug log
+
+                // Update modal with patient data
+                $('#patientName').text(patientName);
+                $('#patientId').text(patientUsername);
+                $('#patientDob').text(dob);
+                $('#patientSex').text(sex);
+                $('#patientContact').text(contact);
+                $('#patientBarangay').text(barangay);
+                $('#emergencyName').text(emergencyName);
+                $('#emergencyContact').text(emergencyContact);
+                $('#patientPhoto').attr('src', photoSrc);
+
+                // Show modal with custom handling
+                $('#contactModal').addClass('show');
+                // Ensure z-index is set correctly for the modal
+                $('#contactModal').css('z-index', '1050');
+            });
+
+            // Close modal handlers - using event delegation
+            $(document).on('click', '#closeContactModal, #closeModalBtn', function() {
+                console.log("Close contact modal clicked"); // Debug log
+                // Hide modal with custom handling
+                $('#contactModal').removeClass('show');
+
+                // Ensure any modal backdrop is removed
+                $('.modal-backdrop').remove();
+            });
         });
     </script>
 </body>

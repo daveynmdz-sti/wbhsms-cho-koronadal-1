@@ -1258,10 +1258,15 @@ $barangayResult = $conn->query($barangaySql);
                         </select>
                     </div>
                     <div class="col-md-4 d-flex button-container">
+                        <button id="searchBtn" class="action-btn btn-primary equal-width">
+                            <i class="fas fa-search"></i> Search
+                        </button>
                         <button id="clearFilters" class="action-btn btn-secondary equal-width">
                             <i class="fas fa-times-circle"></i> Clear Filters
                         </button>
-                        <div class="dropdown">
+                    </div>
+                    <div class="col-md-4 d-flex button-container">
+                        <div class="dropdown" style="width: 100%;">
                             <button class="action-btn btn-success dropdown-toggle equal-width" type="button" id="exportDropdown">
                                 <i class="fas fa-file-export"></i> Export Data
                             </button>
@@ -1460,17 +1465,6 @@ $barangayResult = $conn->query($barangaySql);
 
     <script>
         $(document).ready(function() {
-            // Debounce function for search input
-            function debounce(func, delay) {
-                let timeout;
-                return function() {
-                    const context = this;
-                    const args = arguments;
-                    clearTimeout(timeout);
-                    timeout = setTimeout(() => func.apply(context, args), delay);
-                };
-            }
-
             // Function to update URL with filters and reload
             function updateFilters() {
                 $('#loader').show();
@@ -1501,13 +1495,19 @@ $barangayResult = $conn->query($barangaySql);
                 window.location.href = url;
             }
 
-            // Event listeners for filters
-            $('#searchInput').on('input', debounce(updateFilters, 300));
-            $('#patientIdInput').on('input', debounce(updateFilters, 300));
-            $('#firstNameInput').on('input', debounce(updateFilters, 300));
-            $('#lastNameInput').on('input', debounce(updateFilters, 300));
-            $('#middleNameInput').on('input', debounce(updateFilters, 300));
-            $('#birthdayInput').on('change', updateFilters);
+            // Search button click handler
+            $('#searchBtn').on('click', function() {
+                updateFilters();
+            });
+
+            // Allow Enter key to trigger search
+            $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput, #birthdayInput').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    updateFilters();
+                }
+            });
+
+            // Dropdown changes still trigger immediate search for better UX
             $('#barangayFilter, #statusFilter').on('change', updateFilters);
 
             // Clear filters button

@@ -1255,10 +1255,15 @@ error_log("Inactive patients: " . $inactivePatients);
                         </select>
                     </div>
                     <div class="col-md-4 d-flex button-container">
+                        <button id="searchBtn" class="action-btn btn-primary equal-width">
+                            <i class="fas fa-search"></i> Search
+                        </button>
                         <button id="clearFilters" class="action-btn btn-secondary equal-width">
                             <i class="fas fa-times-circle"></i> Clear Filters
                         </button>
-                        <div class="dropdown">
+                    </div>
+                    <!--<div class="col-md-4 d-flex button-container">
+                        <div class="dropdown" style="width: 100%;">
                             <button class="action-btn btn-success dropdown-toggle equal-width" type="button" id="exportDropdown">
                                 <i class="fas fa-file-export"></i> Export Data
                             </button>
@@ -1268,7 +1273,7 @@ error_log("Inactive patients: " . $inactivePatients);
                                 <li><a class="dropdown-item" href="#" id="exportPDF"><i class="fas fa-file-pdf"></i> Export to PDF</a></li>
                             </ul>
                         </div>
-                    </div>
+                    </div>-->
                 </div>
             </div>
             
@@ -1459,17 +1464,6 @@ error_log("Inactive patients: " . $inactivePatients);
 
     <script>
         $(document).ready(function() {
-            // Debounce function for search input
-            function debounce(func, delay) {
-                let timeout;
-                return function() {
-                    const context = this;
-                    const args = arguments;
-                    clearTimeout(timeout);
-                    timeout = setTimeout(() => func.apply(context, args), delay);
-                };
-            }
-            
             // Function to update URL with filters and reload
             function updateFilters() {
                 $('#loader').show();
@@ -1482,10 +1476,10 @@ error_log("Inactive patients: " . $inactivePatients);
                 let barangayValue = $('#barangayFilter').val();
                 let statusValue = $('#statusFilter').val();
                 let pageValue = 1; // Reset to first page when filters change
-                
+
                 let url = window.location.pathname + '?';
                 let params = [];
-                
+
                 if (searchValue) params.push('search=' + encodeURIComponent(searchValue));
                 if (patientIdValue) params.push('patient_id=' + encodeURIComponent(patientIdValue));
                 if (firstNameValue) params.push('first_name=' + encodeURIComponent(firstNameValue));
@@ -1495,21 +1489,25 @@ error_log("Inactive patients: " . $inactivePatients);
                 if (barangayValue) params.push('barangay=' + encodeURIComponent(barangayValue));
                 if (statusValue) params.push('status=' + encodeURIComponent(statusValue));
                 if (pageValue) params.push('page=' + encodeURIComponent(pageValue));
-                
+
                 url += params.join('&');
                 window.location.href = url;
             }
-            
-            // Event listeners for filters
-            $('#searchInput').on('input', debounce(updateFilters, 300));
-            $('#patientIdInput').on('input', debounce(updateFilters, 300));
-            $('#firstNameInput').on('input', debounce(updateFilters, 300));
-            $('#lastNameInput').on('input', debounce(updateFilters, 300));
-            $('#middleNameInput').on('input', debounce(updateFilters, 300));
-            $('#birthdayInput').on('change', updateFilters);
-            $('#barangayFilter, #statusFilter').on('change', updateFilters);
-            
-            // Clear filters button
+
+            // Search button click handler
+            $('#searchBtn').on('click', function() {
+                updateFilters();
+            });
+
+            // Allow Enter key to trigger search
+            $('#searchInput, #patientIdInput, #firstNameInput, #lastNameInput, #middleNameInput, #birthdayInput').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    updateFilters();
+                }
+            });
+
+            // Dropdown changes still trigger immediate search for better UX
+            $('#barangayFilter, #statusFilter').on('change', updateFilters);            // Clear filters button
             $('#clearFilters').on('click', function() {
                 window.location.href = window.location.pathname;
             });

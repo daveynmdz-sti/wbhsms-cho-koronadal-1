@@ -1383,7 +1383,7 @@ $barangayResult = $conn->query($barangaySql);
                         <a href="archived_records_management.php" class="action-btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; max-width: 350px; gap:10px;">
                             <i class="fas fa-archive"></i> View Archived Records
                         </a>
-                        <div class="dropdown">
+                        <!--<div class="dropdown">
                             <button class="action-btn btn-success dropdown-toggle action-btn-uniform" type="button" id="exportDropdown">
                                 <i class="fas fa-file-export"></i> Export Data
                                 <i class="fas fa-chevron-down dropdown-arrow"></i>
@@ -1405,7 +1405,7 @@ $barangayResult = $conn->query($barangaySql);
                                         <small>Portable document format</small>
                                     </a></li>
                             </ul>
-                        </div>
+                        </div>-->
                     </div>
                 </div>
                 <div class="table-responsive">

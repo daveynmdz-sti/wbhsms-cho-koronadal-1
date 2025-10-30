@@ -25,11 +25,11 @@ if (!headers_sent()) {
     // Content Security Policy (enhanced for healthcare system) - Allow external CDNs and resources
     if (!$disable_csp) {
         $csp = "default-src 'self'; " .
-               "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " .
+               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; " .
                "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " .
                "img-src 'self' data: https://ik.imagekit.io blob:; " .
                "font-src 'self' https://cdnjs.cloudflare.com data:; " .
-               "connect-src 'self'";
+               "connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com";
         header("Content-Security-Policy: " . $csp);
     }
     

@@ -1226,7 +1226,7 @@ if (!isset($defaults)) {
             <h2 class="actions-title">Quick Actions</h2>
 
             <div class="actions-grid">
-                <a href="appointment/appointments.php" class="action-card">
+                <a href="appointment/book_appointment.php" class="action-card">
                     <i class="fas fa-calendar-plus action-icon"></i>
                     <h3 class="action-title">Book Appointment</h3>
                     <p class="action-description">Schedule a visit with a healthcare provider</p>

@@ -2434,9 +2434,6 @@ try {
                     <button type="button" id="printConsultationBtn" class="btn btn-secondary" onclick="printConsultationDetails()" style="display: none;">
                         <i class="fas fa-print"></i> Print
                     </button>
-                    <button type="button" id="downloadConsultationBtn" class="btn btn-secondary" onclick="downloadConsultationPDF()" style="display: none;">
-                        <i class="fas fa-download"></i> Download PDF
-                    </button>
                 </div>
                 <div class="modal-footer-right">
                     <button type="button" class="btn btn-secondary" onclick="closeConsultationModal()">

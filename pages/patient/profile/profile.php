@@ -2810,57 +2810,8 @@ if (isset($_GET['logout'])) {
         }
 
         function openUserSettings() {
-            // Create and show user settings modal
-            showUserSettingsModal();
-        }
-
-        function showUserSettingsModal() {
-            const modal = document.createElement('div');
-            modal.className = 'custom-modal active';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5em;">
-                        <h3><i class="fas fa-cog"></i> User Settings</h3>
-                        <button onclick="closeModal(this)" style="background: none; border: none; font-size: 1.5em; cursor: pointer;">&times;</button>
-                    </div>
-                    <div style="display: grid; gap: 1em;">
-                        <button onclick="changePassword()" class="utility-btn" style="width: 100%; justify-content: center;">
-                            <i class="fas fa-key"></i> Change Password
-                        </button>
-                        <button onclick="updateProfile()" class="utility-btn" style="width: 100%; justify-content: center;">
-                            <i class="fas fa-user-edit"></i> Update Profile
-                        </button>
-                        <button onclick="manageNotifications()" class="utility-btn" style="width: 100%; justify-content: center;">
-                            <i class="fas fa-bell"></i> Notification Settings
-                        </button>
-                        <button onclick="viewActivityLog()" class="utility-btn" style="width: 100%; justify-content: center;">
-                            <i class="fas fa-history"></i> Activity Log
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        function closeModal(element) {
-            const modal = element.closest('.custom-modal');
-            modal.remove();
-        }
-
-        function changePassword() {
-            alert('Change password functionality coming soon.');
-        }
-
-        function updateProfile() {
-            window.location.href = 'profile_edit.php';
-        }
-
-        function manageNotifications() {
-            alert('Notification settings coming soon.');
-        }
-
-        function viewActivityLog() {
-            alert('Activity log functionality coming soon.');
+            // Navigate to the user settings page
+            window.location.href = '../user/user_settings.php';
         }
 
         // Enhanced logout functionality

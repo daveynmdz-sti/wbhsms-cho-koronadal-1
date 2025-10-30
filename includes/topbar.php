@@ -95,7 +95,8 @@ function renderTopbar($options = []) {
     
     // Determine photo controller and path based on user type
     if ($config['user_type'] === 'patient') {
-        $photo_src = $config['vendor_path'] . 'photo_controller.php?' . $photo_param . '=' . $user_id;
+        // For patients, use default avatar since they don't have profile photos
+        $photo_src = 'https://ik.imagekit.io/wbhsmslogo/user.png?updatedAt=1750423429172';
     } else {
         // For employee photos, use production-friendly absolute path
         $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
