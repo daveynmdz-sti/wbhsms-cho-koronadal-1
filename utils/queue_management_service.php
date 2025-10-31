@@ -62,64 +62,129 @@ class QueueManagementService {
     /**
      * Assign an employee to a station
      */
-    public function assignEmployeeToStation($station_id, $employee_id, $assignment_date, $assigned_by) {
+    public function assignEmployeeToStation($employee_id, $station_id, $start_date, $assignment_type = 'permanent', $shift_start = '08:00:00', $shift_end = '17:00:00', $assigned_by = null, $end_date = null) {
         try {
-            // Check if assignment already exists for this date
-            $check_stmt = $this->pdo->prepare("
-                SELECT assignment_id FROM station_assignments 
-                WHERE station_id = ? AND assignment_date = ? AND status = 'active'
-            ");
-            $check_stmt->execute([$station_id, $assignment_date]);
+            // Check if employee is already assigned to any station for overlapping dates
+            $overlap_check = "
+                SELECT asch.*, s.station_name 
+                FROM assignment_schedules asch
+                JOIN stations s ON asch.station_id = s.station_id
+                WHERE asch.employee_id = ? 
+                AND asch.is_active = 1
+                AND asch.start_date <= ?
+                AND (asch.end_date IS NULL OR asch.end_date >= ?)
+            ";
             
-            if ($check_stmt->fetch()) {
-                return ['success' => false, 'message' => 'Station already has an active assignment for this date'];
+            $check_end_date = $end_date ?: $start_date;
+            $check_stmt = $this->pdo->prepare($overlap_check);
+            $check_stmt->execute([$employee_id, $check_end_date, $start_date]);
+            $existing_assignment = $check_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($existing_assignment) {
+                return [
+                    'success' => false, 
+                    'error' => "Employee is already assigned to {$existing_assignment['station_name']} from {$existing_assignment['start_date']} to " . ($existing_assignment['end_date'] ?: 'ongoing') . ". Please remove or end the existing assignment first."
+                ];
             }
             
+            // Check if station is already assigned to another employee for overlapping dates
+            $station_check = "
+                SELECT asch.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name
+                FROM assignment_schedules asch
+                JOIN employees e ON asch.employee_id = e.employee_id
+                WHERE asch.station_id = ? 
+                AND asch.is_active = 1
+                AND asch.start_date <= ?
+                AND (asch.end_date IS NULL OR asch.end_date >= ?)
+            ";
+            
+            $station_stmt = $this->pdo->prepare($station_check);
+            $station_stmt->execute([$station_id, $check_end_date, $start_date]);
+            $existing_station_assignment = $station_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($existing_station_assignment) {
+                return [
+                    'success' => false, 
+                    'error' => "Station is already assigned to {$existing_station_assignment['employee_name']} from {$existing_station_assignment['start_date']} to " . ($existing_station_assignment['end_date'] ?: 'ongoing') . ". Please remove the existing assignment first."
+                ];
+            }
+            
+            // Insert new assignment
             $stmt = $this->pdo->prepare("
-                INSERT INTO station_assignments (
-                    station_id, employee_id, assignment_date, assigned_by, status, created_at
-                ) VALUES (?, ?, ?, ?, 'active', NOW())
+                INSERT INTO assignment_schedules (
+                    employee_id, station_id, start_date, end_date, assignment_type,
+                    shift_start_time, shift_end_time, assigned_by, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
             ");
             
-            $result = $stmt->execute([$station_id, $employee_id, $assignment_date, $assigned_by]);
+            $result = $stmt->execute([
+                $employee_id, $station_id, $start_date, $end_date, $assignment_type,
+                $shift_start, $shift_end, $assigned_by
+            ]);
             
             if ($result) {
-                return ['success' => true, 'assignment_id' => $this->pdo->lastInsertId()];
+                return [
+                    'success' => true, 
+                    'message' => 'Employee assigned to station successfully.',
+                    'schedule_id' => $this->pdo->lastInsertId()
+                ];
             }
             
-            return ['success' => false, 'message' => 'Failed to create station assignment'];
+            return ['success' => false, 'error' => 'Failed to create assignment'];
             
         } catch (Exception $e) {
             error_log('QueueManagementService::assignEmployeeToStation Error: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Database error occurred'];
+            return ['success' => false, 'error' => 'Database error occurred: ' . $e->getMessage()];
         }
     }
     
     /**
      * Remove an employee assignment from a station
      */
-    public function removeEmployeeAssignment($station_id, $removal_date, $removal_type = 'manual', $performed_by = null) {
+    public function removeEmployeeAssignment($station_id, $removal_date, $removal_type = 'end_assignment', $performed_by = null) {
         try {
-            $stmt = $this->pdo->prepare("
-                UPDATE station_assignments 
-                SET status = 'inactive', 
-                    removed_at = NOW(),
-                    removal_type = ?,
-                    removed_by = ?
-                WHERE station_id = ? AND assignment_date = ? AND status = 'active'
+            // Find active assignment for this station
+            $find_stmt = $this->pdo->prepare("
+                SELECT * FROM assignment_schedules 
+                WHERE station_id = ? 
+                AND is_active = 1 
+                AND start_date <= ? 
+                AND (end_date IS NULL OR end_date >= ?)
             ");
+            $find_stmt->execute([$station_id, $removal_date, $removal_date]);
+            $assignment = $find_stmt->fetch(PDO::FETCH_ASSOC);
             
-            $result = $stmt->execute([$removal_type, $performed_by, $station_id, $removal_date]);
+            if (!$assignment) {
+                return ['success' => false, 'error' => 'No active assignment found for this station'];
+            }
             
-            if ($result && $stmt->rowCount() > 0) {
+            if ($removal_type === 'end_assignment') {
+                // Set end date to the day before removal date
+                $end_date = date('Y-m-d', strtotime($removal_date . ' -1 day'));
+                $stmt = $this->pdo->prepare("
+                    UPDATE assignment_schedules 
+                    SET end_date = ?, notes = CONCAT(IFNULL(notes, ''), ' [Ended on ', ?, ']')
+                    WHERE schedule_id = ?
+                ");
+                $result = $stmt->execute([$end_date, $removal_date, $assignment['schedule_id']]);
+            } else { // deactivate
+                $stmt = $this->pdo->prepare("
+                    UPDATE assignment_schedules 
+                    SET is_active = 0, notes = CONCAT(IFNULL(notes, ''), ' [Deactivated on ', ?, ']')
+                    WHERE schedule_id = ?
+                ");
+                $result = $stmt->execute([$removal_date, $assignment['schedule_id']]);
+            }
+            
+            if ($result) {
                 return ['success' => true, 'message' => 'Assignment removed successfully'];
             }
             
-            return ['success' => false, 'message' => 'No active assignment found to remove'];
+            return ['success' => false, 'error' => 'Failed to remove assignment'];
             
         } catch (Exception $e) {
             error_log('QueueManagementService::removeEmployeeAssignment Error: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Database error occurred'];
+            return ['success' => false, 'error' => 'Database error occurred: ' . $e->getMessage()];
         }
     }
     
@@ -130,26 +195,32 @@ class QueueManagementService {
         try {
             $this->pdo->beginTransaction();
             
-            // Remove current assignment
-            $remove_result = $this->removeEmployeeAssignment($station_id, $reassign_date, 'reassignment', $assigned_by);
+            // Remove current assignment (end it the day before reassign date)
+            $remove_result = $this->removeEmployeeAssignment($station_id, $reassign_date, 'end_assignment', $assigned_by);
             
             if ($remove_result['success']) {
-                // Create new assignment
-                $assign_result = $this->assignEmployeeToStation($station_id, $new_employee_id, $reassign_date, $assigned_by);
+                // Create new assignment starting from reassign date
+                $assign_result = $this->assignEmployeeToStation(
+                    $new_employee_id, $station_id, $reassign_date, 'permanent', 
+                    '08:00:00', '17:00:00', $assigned_by, null
+                );
                 
                 if ($assign_result['success']) {
                     $this->pdo->commit();
                     return ['success' => true, 'message' => 'Station reassigned successfully'];
+                } else {
+                    $this->pdo->rollBack();
+                    return ['success' => false, 'error' => $assign_result['error'] ?? 'Failed to assign new employee'];
                 }
+            } else {
+                $this->pdo->rollBack();
+                return ['success' => false, 'error' => $remove_result['error'] ?? 'Failed to remove current assignment'];
             }
-            
-            $this->pdo->rollBack();
-            return ['success' => false, 'message' => 'Failed to reassign station'];
             
         } catch (Exception $e) {
             $this->pdo->rollBack();
             error_log('QueueManagementService::reassignStation Error: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Database error occurred'];
+            return ['success' => false, 'error' => 'Database error occurred: ' . $e->getMessage()];
         }
     }
     
@@ -158,15 +229,13 @@ class QueueManagementService {
      */
     public function toggleStationStatus($station_id, $is_active) {
         try {
-            $status = $is_active ? 'active' : 'inactive';
-            
             $stmt = $this->pdo->prepare("
                 UPDATE stations 
-                SET status = ?, updated_at = NOW() 
+                SET is_active = ?, updated_at = NOW() 
                 WHERE station_id = ?
             ");
             
-            $result = $stmt->execute([$status, $station_id]);
+            $result = $stmt->execute([$is_active, $station_id]);
             
             return $result && $stmt->rowCount() > 0;
             
@@ -190,24 +259,34 @@ class QueueManagementService {
                     s.station_id,
                     s.station_name,
                     s.station_type,
-                    s.status as station_status,
-                    s.description,
-                    sa.assignment_id,
-                    sa.employee_id,
-                    sa.assignment_date,
-                    sa.status as assignment_status,
+                    s.station_number,
+                    s.is_active,
+                    s.is_open,
+                    srv.name as service_name,
+                    srv.service_id,
+                    asch.schedule_id,
+                    asch.employee_id,
+                    asch.start_date,
+                    asch.end_date,
+                    asch.assignment_type,
+                    asch.shift_start_time,
+                    asch.shift_end_time,
+                    asch.is_active as assignment_status,
                     e.first_name,
                     e.last_name,
-                    e.employee_id as emp_id
+                    CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+                    r.role_name as employee_role
                 FROM stations s
-                LEFT JOIN station_assignments sa ON s.station_id = sa.station_id 
-                    AND sa.assignment_date = ? 
-                    AND sa.status = 'active'
-                LEFT JOIN employees e ON sa.employee_id = e.employee_id
-                ORDER BY s.station_name
+                LEFT JOIN services srv ON s.service_id = srv.service_id
+                LEFT JOIN assignment_schedules asch ON s.station_id = asch.station_id 
+                    AND asch.is_active = 1
+                    AND (asch.start_date <= ? AND (asch.end_date IS NULL OR asch.end_date >= ?))
+                LEFT JOIN employees e ON asch.employee_id = e.employee_id AND e.status = 'active'
+                LEFT JOIN roles r ON e.role_id = r.role_id
+                ORDER BY s.station_type, s.station_name, s.station_number
             ");
             
-            $stmt->execute([$date]);
+            $stmt->execute([$date, $date]);
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
             
         } catch (Exception $e) {
@@ -223,22 +302,25 @@ class QueueManagementService {
         try {
             $sql = "
                 SELECT 
-                    employee_id,
-                    first_name,
-                    last_name,
-                    position,
-                    role
-                FROM employees 
-                WHERE status = 'active'
+                    e.employee_id,
+                    e.first_name,
+                    e.last_name,
+                    CONCAT(e.first_name, ' ', e.last_name) as full_name,
+                    e.position,
+                    r.role_name,
+                    LOWER(r.role_name) as role
+                FROM employees e
+                LEFT JOIN roles r ON e.role_id = r.role_id
+                WHERE e.status = 'active'
             ";
             
             $params = [];
             if ($facility_id) {
-                $sql .= " AND facility_id = ?";
+                $sql .= " AND e.facility_id = ?";
                 $params[] = $facility_id;
             }
             
-            $sql .= " ORDER BY first_name, last_name";
+            $sql .= " ORDER BY e.first_name, e.last_name";
             
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
