@@ -23,7 +23,7 @@ $activePage = 'prescription_management';
 $canViewPrescriptions = in_array($_SESSION['role_id'], [1, 2, 3, 4, 7]); // admin, doctor, nurse, pharmacist, records_officer
 $canDispensePrescriptions = in_array($_SESSION['role_id'], [1, 4]); // admin, pharmacist
 $canCreatePrescriptions = in_array($_SESSION['role_id'], [1, 2]); // admin, doctor ONLY - pharmacists cannot create prescriptions
-$canUpdateMedications = in_array($_SESSION['role_id'], [1, 4]); // admin, pharmacist
+$canUpdateMedications = in_array($_SESSION['role_id'], [4]); // pharmacist only
 
 if (!$canViewPrescriptions) {
     $role_id = $_SESSION['role_id'];
@@ -44,14 +44,21 @@ if (!$canViewPrescriptions) {
     exit();
 }
 
-// Handle AJAX requests for search and filter
+// Handle AJAX requests for search and filter - Left Panel (All Prescriptions)
 $searchQuery = isset($_GET['search']) ? $_GET['search'] : '';
 $barangayFilter = isset($_GET['barangay']) ? $_GET['barangay'] : '';
 $statusFilter = isset($_GET['status']) ? $_GET['status'] : 'issued';  // Default to issued prescriptions
 $dateFilter = isset($_GET['date']) ? $_GET['date'] : '';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-$recordsPerPage = 15;
+$recordsPerPage = 5; // Reduced to 5 entries per page
 $offset = ($page - 1) * $recordsPerPage;
+
+// Handle AJAX requests for search and filter - Right Panel (Recently Dispensed)
+$recentSearchQuery = isset($_GET['recent_search']) ? $_GET['recent_search'] : '';
+$recentDateFilter = isset($_GET['recent_date']) ? $_GET['recent_date'] : '';
+$recentPage = isset($_GET['recent_page']) ? intval($_GET['recent_page']) : 1;
+$recentRecordsPerPage = 5; // 5 entries per page
+$recentOffset = ($recentPage - 1) * $recentRecordsPerPage;
 
 // Check if overall_status column exists, if not use regular status
 $checkColumnSql = "SHOW COLUMNS FROM prescriptions LIKE 'overall_status'";
@@ -99,10 +106,18 @@ $params = [];
 $types = "";
 
 if (!empty($searchQuery)) {
-    $prescriptionsSql .= " AND (pt.first_name LIKE ? OR pt.last_name LIKE ? OR pt.username LIKE ?)";
+    $prescriptionsSql .= " AND (
+        pt.first_name LIKE ? OR 
+        pt.last_name LIKE ? OR 
+        pt.middle_name LIKE ? OR 
+        pt.username LIKE ? OR 
+        pt.patient_id LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.last_name) LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.middle_name, ' ', pt.last_name) LIKE ?
+    )";
     $searchParam = "%{$searchQuery}%";
-    array_push($params, $searchParam, $searchParam, $searchParam);
-    $types .= "sss";
+    array_push($params, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
+    $types .= "sssssss";
 }
 
 if (!empty($barangayFilter)) {
@@ -129,9 +144,85 @@ $prescriptionsSql .= " GROUP BY p.prescription_id
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
 
+// Get total count for pagination
+$countSql = "SELECT COUNT(DISTINCT p.prescription_id) as total
+              FROM prescriptions p
+              LEFT JOIN patients pt ON p.patient_id = pt.patient_id
+              LEFT JOIN barangay b ON pt.barangay_id = b.barangay_id
+              LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
+              LEFT JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id
+              WHERE pt.status = 'active' AND (
+                  -- Show today's prescriptions (all statuses)
+                  DATE(p.prescription_date) = CURDATE() 
+                  OR 
+                  -- Show past prescriptions only if they have pending medications
+                  (DATE(p.prescription_date) < CURDATE() AND EXISTS (
+                      SELECT 1 FROM prescribed_medications pm_check 
+                      WHERE pm_check.prescription_id = p.prescription_id 
+                      AND pm_check.status = 'pending'
+                  ))
+                  OR
+                  -- Always show issued prescriptions regardless of date (fallback for status filter)
+                  $statusColumn = 'issued'
+                  OR
+                  -- Keep showing active prescriptions for backward compatibility
+                  $statusColumn = 'active'
+              )";
+
+$countParams = [];
+$countTypes = "";
+
+if (!empty($searchQuery)) {
+    $countSql .= " AND (
+        pt.first_name LIKE ? OR 
+        pt.last_name LIKE ? OR 
+        pt.middle_name LIKE ? OR 
+        pt.username LIKE ? OR 
+        pt.patient_id LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.last_name) LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.middle_name, ' ', pt.last_name) LIKE ?
+    )";
+    $searchParam = "%{$searchQuery}%";
+    array_push($countParams, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
+    $countTypes .= "sssssss";
+}
+
+if (!empty($barangayFilter)) {
+    $countSql .= " AND b.barangay_name = ?";
+    array_push($countParams, $barangayFilter);
+    $countTypes .= "s";
+}
+
+if (!empty($statusFilter)) {
+    $countSql .= " AND $statusColumn = ?";
+    array_push($countParams, $statusFilter);
+    $countTypes .= "s";
+}
+
+if (!empty($dateFilter)) {
+    $countSql .= " AND DATE(p.prescription_date) = ?";
+    array_push($countParams, $dateFilter);
+    $countTypes .= "s";
+}
+
 // Handle case where prescriptions table might not exist yet
 $prescriptionsResult = null;
+$totalPrescriptions = 0;
 try {
+    // Get total count first
+    $countStmt = $conn->prepare($countSql);
+    if ($countStmt !== false) {
+        if (!empty($countTypes)) {
+            $countStmt->bind_param($countTypes, ...$countParams);
+        }
+        $countStmt->execute();
+        $countResult = $countStmt->get_result();
+        if ($countRow = $countResult->fetch_assoc()) {
+            $totalPrescriptions = intval($countRow['total']);
+        }
+    }
+
+    // Get prescriptions
     $prescriptionsStmt = $conn->prepare($prescriptionsSql);
     if ($prescriptionsStmt === false) {
         // Query preparation failed - likely table doesn't exist
@@ -147,6 +238,7 @@ try {
     // Table doesn't exist yet or query failed - we'll show empty results
     error_log("Prescription Management Error: " . $e->getMessage());
     $prescriptionsResult = null;
+    $totalPrescriptions = 0;
 }
 
 // Recently dispensed prescriptions query - shows prescriptions with status 'issued' or 'dispensed'
@@ -161,24 +253,100 @@ $recentDispensedSql = "SELECT p.prescription_id,
                        FROM prescriptions p 
                        LEFT JOIN patients pt ON p.patient_id = pt.patient_id
                        LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
-                       WHERE p.status IN ('issued', 'dispensed')
-                       ORDER BY p.updated_at DESC
-                       LIMIT 20";
+                       WHERE p.status IN ('issued', 'dispensed')";
+
+$recentParams = [];
+$recentTypes = "";
+
+if (!empty($recentSearchQuery)) {
+    $recentDispensedSql .= " AND (
+        pt.first_name LIKE ? OR 
+        pt.last_name LIKE ? OR 
+        pt.middle_name LIKE ? OR 
+        pt.username LIKE ? OR 
+        pt.patient_id LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.last_name) LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.middle_name, ' ', pt.last_name) LIKE ?
+    )";
+    $recentSearchParam = "%{$recentSearchQuery}%";
+    array_push($recentParams, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam);
+    $recentTypes .= "sssssss";
+}
+
+if (!empty($recentDateFilter)) {
+    $recentDispensedSql .= " AND DATE(p.updated_at) = ?";
+    array_push($recentParams, $recentDateFilter);
+    $recentTypes .= "s";
+}
+
+$recentDispensedSql .= " ORDER BY p.updated_at DESC LIMIT ? OFFSET ?";
+array_push($recentParams, $recentRecordsPerPage, $recentOffset);
+$recentTypes .= "ii";
+
+// Get total count for recently dispensed pagination
+$recentCountSql = "SELECT COUNT(*) as total
+                   FROM prescriptions p 
+                   LEFT JOIN patients pt ON p.patient_id = pt.patient_id
+                   LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
+                   WHERE p.status IN ('issued', 'dispensed')";
+
+$recentCountParams = [];
+$recentCountTypes = "";
+
+if (!empty($recentSearchQuery)) {
+    $recentCountSql .= " AND (
+        pt.first_name LIKE ? OR 
+        pt.last_name LIKE ? OR 
+        pt.middle_name LIKE ? OR 
+        pt.username LIKE ? OR 
+        pt.patient_id LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.last_name) LIKE ? OR 
+        CONCAT(pt.first_name, ' ', pt.middle_name, ' ', pt.last_name) LIKE ?
+    )";
+    $recentSearchParam = "%{$recentSearchQuery}%";
+    array_push($recentCountParams, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam, $recentSearchParam);
+    $recentCountTypes .= "sssssss";
+}
+
+if (!empty($recentDateFilter)) {
+    $recentCountSql .= " AND DATE(p.updated_at) = ?";
+    array_push($recentCountParams, $recentDateFilter);
+    $recentCountTypes .= "s";
+}
 
 $recentDispensedResult = null;
+$totalRecentDispensed = 0;
 try {
+    // Get total count first
+    $recentCountStmt = $conn->prepare($recentCountSql);
+    if ($recentCountStmt !== false) {
+        if (!empty($recentCountTypes)) {
+            $recentCountStmt->bind_param($recentCountTypes, ...$recentCountParams);
+        }
+        $recentCountStmt->execute();
+        $recentCountResult = $recentCountStmt->get_result();
+        if ($recentCountRow = $recentCountResult->fetch_assoc()) {
+            $totalRecentDispensed = intval($recentCountRow['total']);
+        }
+    }
+
+    // Get recently dispensed prescriptions
     $recentDispensedStmt = $conn->prepare($recentDispensedSql);
     if ($recentDispensedStmt === false) {
         // Query preparation failed - likely table doesn't exist
         throw new Exception("Failed to prepare recent dispensed query: " . $conn->error);
     }
 
+    if (!empty($recentTypes)) {
+        $recentDispensedStmt->bind_param($recentTypes, ...$recentParams);
+    }
     $recentDispensedStmt->execute();
     $recentDispensedResult = $recentDispensedStmt->get_result();
 } catch (Exception $e) {
     // Table doesn't exist yet or query failed - we'll show empty results
     error_log("Recent Dispensed Query Error: " . $e->getMessage());
     $recentDispensedResult = null;
+    $totalRecentDispensed = 0;
 }
 ?>
 
@@ -458,6 +626,23 @@ try {
             font-size: 0.9em;
             flex: 1;
             min-width: 150px;
+        }
+
+        /* Enhanced search input styling */
+        .filter-input[id="searchPrescriptions"], 
+        .filter-input[id="recentSearchPrescriptions"] {
+            border: 2px solid #0077b6;
+            background: #f8f9fa;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .filter-input[id="searchPrescriptions"]:focus, 
+        .filter-input[id="recentSearchPrescriptions"]:focus {
+            outline: none;
+            border-color: #005577;
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.1);
+            background: white;
         }
 
         .filter-btn {
@@ -792,56 +977,76 @@ try {
         <!-- Prescription Statistics -->
         <div class="stats-grid">
             <?php
-            // Get prescription statistics - using default values since table may not exist yet
+            // Get prescription and medication statistics - using default values since table may not exist yet
             $prescription_stats = [
-                'total' => 0,
-                'pending' => 0,
-                'dispensed' => 0,
-                'cancelled' => 0
+                'total_prescriptions' => 0,
+                'total_issued' => 0,
+                'total_medications_dispensed' => 0,
+                'total_medications_unavailable' => 0
             ];
 
             try {
-                $statsColumn = $hasOverallStatus ? 'overall_status' : 'status';
-                $stats_sql = "SELECT 
-                                    COUNT(*) as total,
-                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'active' THEN 1 ELSE 0 END) as pending,
-                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'issued' THEN 1 ELSE 0 END) as issued,
-                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'dispensed' THEN 1 ELSE 0 END) as dispensed,
-                                    SUM(CASE WHEN COALESCE($statsColumn, 'active') = 'cancelled' THEN 1 ELSE 0 END) as cancelled
-                              FROM prescriptions WHERE DATE(prescription_date) >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)";
-                $stats_result = $conn->query($stats_sql);
-                if ($stats_result && $row = $stats_result->fetch_assoc()) {
-                    $prescription_stats = [
-                        'total' => intval($row['total'] ?? 0),
-                        'pending' => intval($row['pending'] ?? 0),
-                        'issued' => intval($row['issued'] ?? 0),
-                        'dispensed' => intval($row['dispensed'] ?? 0),
-                        'cancelled' => intval($row['cancelled'] ?? 0)
-                    ];
+                // Get total number of prescriptions ordered (30 days)
+                $total_prescriptions_sql = "SELECT COUNT(*) as total FROM prescriptions WHERE DATE(prescription_date) >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)";
+                $total_prescriptions_result = $conn->query($total_prescriptions_sql);
+                if ($total_prescriptions_result && $row = $total_prescriptions_result->fetch_assoc()) {
+                    $prescription_stats['total_prescriptions'] = intval($row['total'] ?? 0);
                 }
+
+                // Get total issued prescriptions (30 days)
+                $statsColumn = $hasOverallStatus ? 'overall_status' : 'status';
+                $total_issued_sql = "SELECT COUNT(*) as total FROM prescriptions WHERE COALESCE($statsColumn, 'issued') = 'issued' AND DATE(prescription_date) >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)";
+                $total_issued_result = $conn->query($total_issued_sql);
+                if ($total_issued_result && $row = $total_issued_result->fetch_assoc()) {
+                    $prescription_stats['total_issued'] = intval($row['total'] ?? 0);
+                }
+
+                // Get total medications dispensed (30 days) - from prescribed_medications table
+                $total_dispensed_medications_sql = "SELECT COUNT(*) as total 
+                                                  FROM prescribed_medications pm 
+                                                  INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id 
+                                                  WHERE pm.status = 'dispensed' 
+                                                  AND DATE(p.prescription_date) >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)";
+                $total_dispensed_result = $conn->query($total_dispensed_medications_sql);
+                if ($total_dispensed_result && $row = $total_dispensed_result->fetch_assoc()) {
+                    $prescription_stats['total_medications_dispensed'] = intval($row['total'] ?? 0);
+                }
+
+                // Get total medications unavailable (30 days) - from prescribed_medications table
+                $total_unavailable_medications_sql = "SELECT COUNT(*) as total 
+                                                    FROM prescribed_medications pm 
+                                                    INNER JOIN prescriptions p ON pm.prescription_id = p.prescription_id 
+                                                    WHERE pm.status = 'unavailable' 
+                                                    AND DATE(p.prescription_date) >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)";
+                $total_unavailable_result = $conn->query($total_unavailable_medications_sql);
+                if ($total_unavailable_result && $row = $total_unavailable_result->fetch_assoc()) {
+                    $prescription_stats['total_medications_unavailable'] = intval($row['total'] ?? 0);
+                }
+
             } catch (Exception $e) {
                 // Use default values if query fails (table doesn't exist)
+                error_log("Prescription Stats Error: " . $e->getMessage());
             }
             ?>
 
             <div class="stat-card total">
-                <div class="stat-number"><?= number_format($prescription_stats['total']) ?></div>
-                <div class="stat-label">Total Prescriptions (30 days)</div>
+                <div class="stat-number"><?= number_format($prescription_stats['total_prescriptions']) ?></div>
+                <div class="stat-label">Total Ordered Prescriptions (30 days)</div>
             </div>
 
             <div class="stat-card pending">
-                <div class="stat-number"><?= number_format($prescription_stats['pending']) ?></div>
-                <div class="stat-label">Active</div>
-            </div>
-
-            <div class="stat-card active">
-                <div class="stat-number"><?= number_format($prescription_stats['issued']) ?></div>
-                <div class="stat-label">Issued</div>
+                <div class="stat-number"><?= number_format($prescription_stats['total_issued']) ?></div>
+                <div class="stat-label">Total Issued</div>
             </div>
 
             <div class="stat-card completed">
-                <div class="stat-number"><?= number_format($prescription_stats['dispensed']) ?></div>
-                <div class="stat-label">Dispensed</div>
+                <div class="stat-number"><?= number_format($prescription_stats['total_medications_dispensed']) ?></div>
+                <div class="stat-label">Total Medications Dispensed</div>
+            </div>
+
+            <div class="stat-card voided">
+                <div class="stat-number"><?= number_format($prescription_stats['total_medications_unavailable']) ?></div>
+                <div class="stat-label">Total Medications Unavailable</div>
             </div>
         </div>
 
@@ -850,7 +1055,7 @@ try {
             <div class="prescription-panel">
                 <div class="panel-header">
                     <div class="panel-title">
-                        <i class="fas fa-prescription-bottle-alt"></i> Ordered Prescriptions (Active)
+                        <i class="fas fa-prescription-bottle-alt"></i> Ordered Prescriptions
                     </div>
                     <!-- View Available Medications Button -->
                     <div style="margin-bottom: 15px;">
@@ -860,9 +1065,15 @@ try {
                     </div>
                 </div>
 
+                <!-- Search Help Tip -->
+                <div style="background: #e7f3ff; border: 1px solid #b3d9ff; padding: 8px 12px; margin-bottom: 10px; border-radius: 4px; font-size: 13px; color: #0066cc;">
+                    <i class="fas fa-info-circle"></i> <strong>Search Tip:</strong> You can search using Patient ID, First Name, Last Name, or any combination. The date filter shows prescriptions ordered on that specific date.
+                </div>
+
                 <!-- Search and Filter Controls -->
                 <div class="search-filters">
-                    <input type="text" class="filter-input" id="searchPrescriptions" placeholder="Search patient name..." value="<?= htmlspecialchars($searchQuery) ?>">
+                    <input type="text" class="filter-input" id="searchPrescriptions" placeholder="Search by Patient ID, First Name, Last Name..." value="<?= htmlspecialchars($searchQuery) ?>" style="flex: 2;">
+                    <input type="date" class="filter-input" id="dateFilter" placeholder="Date Prescribed" value="<?= htmlspecialchars($dateFilter) ?>" title="Filter by Date Prescribed">
                     <select class="filter-input" id="barangayFilter">
                         <option value="">All Barangays</option>
                         <?php
@@ -884,12 +1095,11 @@ try {
                         }
                         ?>
                     </select>
-                    <input type="date" class="filter-input" id="dateFilter" placeholder="Prescribed Date" value="<?= htmlspecialchars($dateFilter) ?>">
-                    <select class="filter-input" id="statusFilter">
+                    <!--<select class="filter-input" id="statusFilter">
                         <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Active Prescriptions</option>
                         <option value="issued" <?= $statusFilter === 'issued' ? 'selected' : '' ?>>Issued (Ready for Print)</option>
                         <option value="cancelled" <?= $statusFilter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                    </select>
+                    </select>-->
                 </div>
                 <div class="search-filters" style="justify-content: flex-end; margin-top: -10px;">
                     <button type="button" class="filter-btn search-btn" id="searchBtn" onclick="applyFilters()">
@@ -955,6 +1165,39 @@ try {
                             <?php endwhile; ?>
                         </tbody>
                     </table>
+                    
+                    <!-- Pagination for All Prescriptions -->
+                    <?php 
+                    $totalPages = ceil($totalPrescriptions / $recordsPerPage);
+                    if ($totalPages > 1): 
+                    ?>
+                    <div class="pagination-container" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                        <span style="font-size: 0.9em; color: #666;">
+                            Showing <?= ($offset + 1) ?> to <?= min($offset + $recordsPerPage, $totalPrescriptions) ?> of <?= $totalPrescriptions ?> entries
+                        </span>
+                        <div class="pagination-buttons" style="display: flex; gap: 5px;">
+                            <?php if ($page > 1): ?>
+                                <button onclick="goToPage(<?= $page - 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                            <?php endif; ?>
+                            
+                            <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
+                                <button onclick="goToPage(<?= $i ?>)" class="pagination-btn <?= $i === $page ? 'active' : '' ?>" 
+                                        style="padding: 5px 10px; border: 1px solid #ddd; background: <?= $i === $page ? '#0077b6' : 'white' ?>; 
+                                               color: <?= $i === $page ? 'white' : 'black' ?>; cursor: pointer; border-radius: 3px;">
+                                    <?= $i ?>
+                                </button>
+                            <?php endfor; ?>
+                            
+                            <?php if ($page < $totalPages): ?>
+                                <button onclick="goToPage(<?= $page + 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 <?php else: ?>
                     <div class="empty-state">
                         <i class="fas fa-prescription-bottle-alt"></i>
@@ -970,6 +1213,20 @@ try {
                     <div class="panel-title">
                         <i class="fas fa-history"></i> Recently Dispensed
                     </div>
+                </div>
+
+                <!-- Search and Filter Controls for Recently Dispensed -->
+                <div class="search-filters">
+                    <input type="text" class="filter-input" id="recentSearchPrescriptions" placeholder="Search by Patient ID, First Name, Last Name..." value="<?= htmlspecialchars($recentSearchQuery) ?>" style="flex: 2;">
+                    <input type="date" class="filter-input" id="recentDateFilter" placeholder="Dispensed Date" value="<?= htmlspecialchars($recentDateFilter) ?>" title="Filter by Date Dispensed">
+                </div>
+                <div class="search-filters" style="justify-content: flex-end; margin-top: -10px;">
+                    <button type="button" class="filter-btn search-btn" onclick="applyRecentFilters()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button type="button" class="filter-btn clear-btn" onclick="clearRecentFilters()">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
                 </div>
 
                 <!-- Recently Dispensed Prescriptions Table -->
@@ -1009,6 +1266,39 @@ try {
                             <?php endwhile; ?>
                         </tbody>
                     </table>
+                    
+                    <!-- Pagination for Recently Dispensed -->
+                    <?php 
+                    $recentTotalPages = ceil($totalRecentDispensed / $recentRecordsPerPage);
+                    if ($recentTotalPages > 1): 
+                    ?>
+                    <div class="pagination-container" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                        <span style="font-size: 0.9em; color: #666;">
+                            Showing <?= ($recentOffset + 1) ?> to <?= min($recentOffset + $recentRecordsPerPage, $totalRecentDispensed) ?> of <?= $totalRecentDispensed ?> entries
+                        </span>
+                        <div class="pagination-buttons" style="display: flex; gap: 5px;">
+                            <?php if ($recentPage > 1): ?>
+                                <button onclick="goToRecentPage(<?= $recentPage - 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                            <?php endif; ?>
+                            
+                            <?php for ($i = max(1, $recentPage - 2); $i <= min($recentTotalPages, $recentPage + 2); $i++): ?>
+                                <button onclick="goToRecentPage(<?= $i ?>)" class="pagination-btn <?= $i === $recentPage ? 'active' : '' ?>" 
+                                        style="padding: 5px 10px; border: 1px solid #ddd; background: <?= $i === $recentPage ? '#0077b6' : 'white' ?>; 
+                                               color: <?= $i === $recentPage ? 'white' : 'black' ?>; cursor: pointer; border-radius: 3px;">
+                                    <?= $i ?>
+                                </button>
+                            <?php endfor; ?>
+                            
+                            <?php if ($recentPage < $recentTotalPages): ?>
+                                <button onclick="goToRecentPage(<?= $recentPage + 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 <?php else: ?>
                     <div class="empty-state">
                         <i class="fas fa-prescription-bottle"></i>
@@ -1345,24 +1635,65 @@ try {
 
     <script>
         // Prescription Management JavaScript Functions
+        
+        // Permission variables from PHP
+        const canUpdateMedications = <?= json_encode($canUpdateMedications) ?>;
 
-        // Search and filter functionality
-        document.getElementById('statusFilter').addEventListener('change', applyFilters);
-        document.getElementById('barangayFilter').addEventListener('change', applyFilters);
-        document.getElementById('dateFilter').addEventListener('change', applyFilters);
+        // Initialize event listeners when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded - Prescription Management');
+            
+            // Check if all modals exist
+            const modalIds = ['viewUpdatePrescriptionModal', 'viewDispensedModal', 'createPrescriptionModal', 'availableMedicationsModal'];
+            modalIds.forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                if (modal) {
+                    console.log(`Modal found: ${modalId}`);
+                } else {
+                    console.error(`Modal missing: ${modalId}`);
+                }
+            });
+            
+            // Search and filter functionality - with null checks
+            const statusFilter = document.getElementById('statusFilter');
+            const barangayFilter = document.getElementById('barangayFilter');
+            const dateFilter = document.getElementById('dateFilter');
+            const searchPrescriptions = document.getElementById('searchPrescriptions');
+            const recentSearchPrescriptions = document.getElementById('recentSearchPrescriptions');
 
-        // Allow Enter key to trigger search
-        document.getElementById('searchPrescriptions').addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                applyFilters();
+            if (statusFilter) statusFilter.addEventListener('change', applyFilters);
+            if (barangayFilter) barangayFilter.addEventListener('change', applyFilters);
+            if (dateFilter) dateFilter.addEventListener('change', applyFilters);
+
+            // Allow Enter key to trigger search
+            if (searchPrescriptions) {
+                searchPrescriptions.addEventListener('keypress', function(event) {
+                    if (event.key === 'Enter') {
+                        applyFilters();
+                    }
+                });
+            }
+
+            // Allow Enter key to trigger recent search
+            if (recentSearchPrescriptions) {
+                recentSearchPrescriptions.addEventListener('keypress', function(event) {
+                    if (event.key === 'Enter') {
+                        applyRecentFilters();
+                    }
+                });
             }
         });
 
         function applyFilters() {
-            const search = document.getElementById('searchPrescriptions').value.trim();
-            const barangay = document.getElementById('barangayFilter').value;
-            const status = document.getElementById('statusFilter').value;
-            const date = document.getElementById('dateFilter').value;
+            const searchElement = document.getElementById('searchPrescriptions');
+            const barangayElement = document.getElementById('barangayFilter');
+            const statusElement = document.getElementById('statusFilter');
+            const dateElement = document.getElementById('dateFilter');
+
+            const search = searchElement ? searchElement.value.trim() : '';
+            const barangay = barangayElement ? barangayElement.value : '';
+            const status = statusElement ? statusElement.value : '';
+            const date = dateElement ? dateElement.value : '';
 
             const params = new URLSearchParams();
             if (search) params.set('search', search);
@@ -1374,18 +1705,153 @@ try {
         }
 
         function clearFilters() {
-            document.getElementById('searchPrescriptions').value = '';
-            document.getElementById('barangayFilter').value = '';
-            document.getElementById('statusFilter').value = 'issued'; // Default to issued
-            document.getElementById('dateFilter').value = '';
+            const searchElement = document.getElementById('searchPrescriptions');
+            const barangayElement = document.getElementById('barangayFilter');
+            const statusElement = document.getElementById('statusFilter');
+            const dateElement = document.getElementById('dateFilter');
+
+            if (searchElement) searchElement.value = '';
+            if (barangayElement) barangayElement.value = '';
+            if (statusElement) statusElement.value = 'issued'; // Default to issued
+            if (dateElement) dateElement.value = '';
 
             // Redirect to page without any filters
             window.location.href = window.location.pathname;
         }
 
+        // Pagination functions for All Prescriptions
+        function goToPage(page) {
+            const searchElement = document.getElementById('searchPrescriptions');
+            const barangayElement = document.getElementById('barangayFilter');
+            const statusElement = document.getElementById('statusFilter');
+            const dateElement = document.getElementById('dateFilter');
+
+            const search = searchElement ? searchElement.value.trim() : '';
+            const barangay = barangayElement ? barangayElement.value : '';
+            const status = statusElement ? statusElement.value : '';
+            const date = dateElement ? dateElement.value : '';
+
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+            if (barangay) params.set('barangay', barangay);
+            if (status) params.set('status', status);
+            if (date) params.set('date', date);
+            params.set('page', page);
+
+            window.location.href = '?' + params.toString();
+        }
+
+        // Recently Dispensed search and filter functions
+        function applyRecentFilters() {
+            const recentSearchElement = document.getElementById('recentSearchPrescriptions');
+            const recentDateElement = document.getElementById('recentDateFilter');
+            
+            const recentSearch = recentSearchElement ? recentSearchElement.value.trim() : '';
+            const recentDate = recentDateElement ? recentDateElement.value : '';
+
+            // Get current main filters to preserve them
+            const searchElement = document.getElementById('searchPrescriptions');
+            const barangayElement = document.getElementById('barangayFilter');
+            const statusElement = document.getElementById('statusFilter');
+            const dateElement = document.getElementById('dateFilter');
+
+            const search = searchElement ? searchElement.value.trim() : '';
+            const barangay = barangayElement ? barangayElement.value : '';
+            const status = statusElement ? statusElement.value : '';
+            const date = dateElement ? dateElement.value : '';
+            const page = <?= $page ?>;
+
+            const params = new URLSearchParams();
+            // Preserve main filters
+            if (search) params.set('search', search);
+            if (barangay) params.set('barangay', barangay);
+            if (status) params.set('status', status);
+            if (date) params.set('date', date);
+            if (page) params.set('page', page);
+            
+            // Add recent filters
+            if (recentSearch) params.set('recent_search', recentSearch);
+            if (recentDate) params.set('recent_date', recentDate);
+
+            window.location.href = '?' + params.toString();
+        }
+
+        function clearRecentFilters() {
+            const recentSearchElement = document.getElementById('recentSearchPrescriptions');
+            const recentDateElement = document.getElementById('recentDateFilter');
+            
+            if (recentSearchElement) recentSearchElement.value = '';
+            if (recentDateElement) recentDateElement.value = '';
+
+            // Get current main filters to preserve them
+            const searchElement = document.getElementById('searchPrescriptions');
+            const barangayElement = document.getElementById('barangayFilter');
+            const statusElement = document.getElementById('statusFilter');
+            const dateElement = document.getElementById('dateFilter');
+
+            const search = searchElement ? searchElement.value.trim() : '';
+            const barangay = barangayElement ? barangayElement.value : '';
+            const status = statusElement ? statusElement.value : '';
+            const date = dateElement ? dateElement.value : '';
+            const page = <?= $page ?>;
+
+            const params = new URLSearchParams();
+            // Preserve main filters
+            if (search) params.set('search', search);
+            if (barangay) params.set('barangay', barangay);
+            if (status) params.set('status', status);
+            if (date) params.set('date', date);
+            if (page) params.set('page', page);
+
+            window.location.href = '?' + params.toString();
+        }
+
+        // Pagination functions for Recently Dispensed
+        function goToRecentPage(page) {
+            const recentSearchElement = document.getElementById('recentSearchPrescriptions');
+            const recentDateElement = document.getElementById('recentDateFilter');
+            
+            const recentSearch = recentSearchElement ? recentSearchElement.value.trim() : '';
+            const recentDate = recentDateElement ? recentDateElement.value : '';
+
+            // Get current main filters to preserve them
+            const searchElement = document.getElementById('searchPrescriptions');
+            const barangayElement = document.getElementById('barangayFilter');
+            const statusElement = document.getElementById('statusFilter');
+            const dateElement = document.getElementById('dateFilter');
+
+            const search = searchElement ? searchElement.value.trim() : '';
+            const barangay = barangayElement ? barangayElement.value : '';
+            const status = statusElement ? statusElement.value : '';
+            const date = dateElement ? dateElement.value : '';
+            const mainPage = <?= $page ?>;
+
+            const params = new URLSearchParams();
+            // Preserve main filters
+            if (search) params.set('search', search);
+            if (barangay) params.set('barangay', barangay);
+            if (status) params.set('status', status);
+            if (date) params.set('date', date);
+            if (mainPage) params.set('page', mainPage);
+            
+            // Add recent filters and pagination
+            if (recentSearch) params.set('recent_search', recentSearch);
+            if (recentDate) params.set('recent_date', recentDate);
+            params.set('recent_page', page);
+
+            window.location.href = '?' + params.toString();
+        }
+
         // Modal functions
         function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
+            console.log('closeModal called for:', modalId);
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'none';
+                console.log('Modal closed successfully:', modalId);
+            } else {
+                console.error('Modal not found:', modalId);
+            }
         }
 
         function viewPrescriptionDetails(prescriptionId) {
@@ -1505,19 +1971,40 @@ try {
 
         // View dispensed prescription function
         function viewDispensedPrescription(prescriptionId) {
+            console.log('viewDispensedPrescription called with ID:', prescriptionId);
+            
             // Set current prescription ID for PDF download
             updateCurrentPrescriptionId(prescriptionId);
 
-            document.getElementById('viewDispensedModal').style.display = 'block';
-            document.getElementById('viewDispensedBody').innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            const modal = document.getElementById('viewDispensedModal');
+            if (!modal) {
+                console.error('Modal viewDispensedModal not found');
+                return;
+            }
+            
+            console.log('Showing viewDispensedModal');
+            modal.style.display = 'block';
+            modal.style.zIndex = '1000';
+            
+            const modalBody = document.getElementById('viewDispensedBody');
+            if (modalBody) {
+                modalBody.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            }
 
             fetch(`api/get_dispensed_prescription_view.php?prescription_id=${prescriptionId}`)
                 .then(response => response.text())
                 .then(html => {
-                    document.getElementById('viewDispensedBody').innerHTML = html;
+                    const modalBody = document.getElementById('viewDispensedBody');
+                    if (modalBody) {
+                        modalBody.innerHTML = html;
+                    }
                 })
                 .catch(error => {
-                    document.getElementById('viewDispensedBody').innerHTML = '<div class="alert alert-error">Error loading prescription details.</div>';
+                    console.error('Error loading prescription details:', error);
+                    const modalBody = document.getElementById('viewDispensedBody');
+                    if (modalBody) {
+                        modalBody.innerHTML = '<div class="alert alert-error">Error loading prescription details.</div>';
+                    }
                 });
         }
 
@@ -1557,20 +2044,72 @@ try {
         }
 
         function viewUpdatePrescription(prescriptionId) {
+            console.log('viewUpdatePrescription called with ID:', prescriptionId);
+            
             // Set current prescription ID for PDF download
             updateCurrentPrescriptionId(prescriptionId);
 
-            document.getElementById('viewUpdatePrescriptionModal').style.display = 'block';
-            document.getElementById('viewUpdatePrescriptionBody').innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            const modal = document.getElementById('viewUpdatePrescriptionModal');
+            if (!modal) {
+                console.error('Modal viewUpdatePrescriptionModal not found');
+                return;
+            }
+            
+            console.log('Showing viewUpdatePrescriptionModal');
+            modal.style.display = 'block';
+            modal.style.zIndex = '1000';
+            
+            const modalBody = document.getElementById('viewUpdatePrescriptionBody');
+            if (modalBody) {
+                modalBody.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            }
 
             // Load prescription details with update form
             fetch(`api/get_prescription_update_form.php?prescription_id=${prescriptionId}`)
                 .then(response => response.text())
                 .then(html => {
-                    document.getElementById('viewUpdatePrescriptionBody').innerHTML = html;
+                    const modalBody = document.getElementById('viewUpdatePrescriptionBody');
+                    if (modalBody) {
+                        modalBody.innerHTML = html;
+                    }
+                    
+                    // Apply permission restrictions to the loaded content
+                    if (!canUpdateMedications) {
+                        // Add restriction notice
+                        const restrictionNotice = `
+                            <div class="alert alert-info" style="margin-bottom: 15px;">
+                                <i class="fas fa-info-circle"></i> 
+                                <strong>View Only Access:</strong> You can view prescription details but cannot update medication statuses. Only pharmacists can modify medication dispensing records.
+                            </div>
+                        `;
+                        if (modalBody) {
+                            modalBody.innerHTML = restrictionNotice + html;
+                        }
+                        
+                        // Disable all medication status checkboxes
+                        const checkboxes = document.querySelectorAll('#viewUpdatePrescriptionBody input[type="checkbox"]');
+                        checkboxes.forEach(checkbox => {
+                            checkbox.disabled = true;
+                            checkbox.style.opacity = '0.5';
+                            checkbox.style.cursor = 'not-allowed';
+                        });
+                        
+                        // Disable submit buttons
+                        const submitButtons = document.querySelectorAll('#viewUpdatePrescriptionBody button[type="submit"], #viewUpdatePrescriptionBody .btn-primary, #viewUpdatePrescriptionBody .btn-success');
+                        submitButtons.forEach(button => {
+                            button.disabled = true;
+                            button.style.opacity = '0.5';
+                            button.style.cursor = 'not-allowed';
+                            button.title = 'Only pharmacists can update medication statuses';
+                        });
+                    }
                 })
                 .catch(error => {
-                    document.getElementById('viewUpdatePrescriptionBody').innerHTML = '<div class="alert alert-error">Error loading prescription details.</div>';
+                    console.error('Error loading prescription details:', error);
+                    const modalBody = document.getElementById('viewUpdatePrescriptionBody');
+                    if (modalBody) {
+                        modalBody.innerHTML = '<div class="alert alert-error">Error loading prescription details.</div>';
+                    }
                 });
         }
 
@@ -1606,6 +2145,17 @@ try {
         // Medication Status Update Functions (Global Scope)
         window.updateMedicationStatus = function(medicationId, statusType, isChecked) {
             console.log('updateMedicationStatus called:', medicationId, statusType, isChecked);
+
+            // Check permission before allowing any updates
+            if (!canUpdateMedications) {
+                showAlert('You are not authorized to update medication statuses. Only pharmacists can perform this action.', 'error');
+                // Revert the checkbox change
+                const checkbox = document.getElementById(statusType + '_' + medicationId);
+                if (checkbox) {
+                    checkbox.checked = !isChecked;
+                }
+                return;
+            }
 
             try {
                 // Prevent both dispensed and unavailable from being checked at the same time
@@ -1644,6 +2194,13 @@ try {
 
         window.updateMedicationStatuses = function(event) {
             console.log('updateMedicationStatuses called');
+
+            // Check permission before allowing any updates
+            if (!canUpdateMedications) {
+                showAlert('You are not authorized to update medication statuses. Only pharmacists can perform this action.', 'error');
+                event.preventDefault();
+                return;
+            }
 
             try {
                 event.preventDefault();
@@ -1839,7 +2396,7 @@ try {
         };
 
         // Enhanced close modal function to handle z-index reset
-        const originalCloseModal = window.closeModal || closeModal;
+        const originalCloseModal = closeModal; // Reference the function, not window.closeModal
         window.closeModal = function(modalId) {
             const modal = document.getElementById(modalId);
             if (modal) {
@@ -1848,10 +2405,6 @@ try {
                 if (modalId === 'availableMedicationsModal') {
                     modal.style.zIndex = '';
                 }
-            }
-            // Call original function if it exists
-            if (originalCloseModal && originalCloseModal !== window.closeModal) {
-                originalCloseModal(modalId);
             }
         };
 

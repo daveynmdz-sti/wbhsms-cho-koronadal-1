@@ -25,7 +25,7 @@ $activePage = 'laboratory_management';
 
 // Define role-based permissions using role_id
 $canViewLab = in_array($_SESSION['role_id'], [1, 2, 3, 7, 9]); // admin, doctor, nurse, records_officer, laboratory_tech
-$canUploadResults = in_array($_SESSION['role_id'], [1, 9]); // admin, laboratory_tech
+$canUploadResults = in_array($_SESSION['role_id'], [9]); // laboratory_tech only
 $canCreateOrders = in_array($_SESSION['role_id'], [1, 2, 3, 9]); // admin, doctor, nurse, laboratory_tech (records officers cannot create)
 
 if (!$canViewLab) {

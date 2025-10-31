@@ -2440,6 +2440,9 @@ try {
                     <button type="button" id="printConsultationBtn" class="btn btn-secondary" onclick="printConsultationDetails()" style="display: none;">
                         <i class="fas fa-print"></i> Print
                     </button>
+                    <button type="button" id="downloadConsultationBtn" class="btn btn-secondary" onclick="downloadConsultationPDF()" style="display: none;">
+                        <i class="fas fa-download"></i> Download PDF
+                    </button>
                 </div>
                 <div class="modal-footer-right">
                     <button type="button" class="btn btn-secondary" onclick="closeConsultationModal()">
@@ -2718,20 +2721,27 @@ try {
                     <p>Loading consultation details...</p>
                 </div>
             `;
-            editBtn.style.display = 'none';
-            printBtn.style.display = 'none';
-            downloadBtn.style.display = 'none';
+            
+            // Hide action buttons safely
+            if (editBtn) editBtn.style.display = 'none';
+            if (printBtn) printBtn.style.display = 'none';
+            if (downloadBtn) downloadBtn.style.display = 'none';
 
             // Fetch consultation details
             fetch(`get_consultation_details.php?id=${consultationId}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data.success) {
                         renderConsultationDetails(data.consultation);
 
-                        // Show action buttons
-                        printBtn.style.display = 'inline-flex';
-                        downloadBtn.style.display = 'inline-flex';
+                        // Show action buttons safely
+                        if (printBtn) printBtn.style.display = 'inline-flex';
+                        if (downloadBtn) downloadBtn.style.display = 'inline-flex';
 
                         // Show edit button if user has permission (records officers excluded)
                         const userRole = '<?= $employee_role ?>';
@@ -2739,7 +2749,7 @@ try {
                         const isOngoing = data.consultation.status === 'ongoing';
                         const isNurse = userRole === 'nurse';
 
-                        if (authorizedRoles.includes(userRole) || (isOngoing && isNurse)) {
+                        if (editBtn && (authorizedRoles.includes(userRole) || (isOngoing && isNurse))) {
                             editBtn.style.display = 'inline-flex';
                             editBtn.onclick = () => {
                                 window.location.href = `edit_consultation_new.php?id=${consultationId}`;
@@ -2760,6 +2770,7 @@ try {
                         <div class="loading-spinner">
                             <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
                             <p>Error loading consultation details. Please try again.</p>
+                            <p style="font-size: 0.8rem; color: #6c757d;">Error: ${error.message}</p>
                         </div>
                     `;
                 });
