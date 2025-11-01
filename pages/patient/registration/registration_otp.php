@@ -170,11 +170,14 @@ if ($isPost) {
 
         $pdo->commit();
 
+        // Store registration data for success page before cleanup
+        $_SESSION['registration_username'] = $generatedUsername;
+        $_SESSION['registration_email'] = $regData['email'];
+        $_SESSION['registration_first_name'] = $regData['first_name'];
+        $_SESSION['registration_last_name'] = $regData['last_name'];
+
         // Cleanup OTP + registration payload
         unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['registration']);
-
-        // Store username in session to show on success page
-        $_SESSION['registration_username'] = $generatedUsername;
 
         respond($isAjax, true, [
             'message'  => 'Registration successful.',

@@ -21,14 +21,14 @@ if (!class_exists('\PHPMailer\PHPMailer\PHPMailer')) {
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Get username from session (set during OTP verification)
+// Get registration data from session (set during OTP verification)
 $username = isset($_SESSION['registration_username']) ? htmlspecialchars($_SESSION['registration_username']) : null;
 $email_sent = false;
 
 // Send welcome email with Patient ID if username exists
-if ($username && isset($_SESSION['registration']) && !empty($_SESSION['registration']['email'])) {
-    $patient_email = $_SESSION['registration']['email'];
-    $patient_name = trim(($_SESSION['registration']['first_name'] ?? '') . ' ' . ($_SESSION['registration']['last_name'] ?? ''));
+if ($username && isset($_SESSION['registration_email']) && !empty($_SESSION['registration_email'])) {
+    $patient_email = $_SESSION['registration_email'];
+    $patient_name = trim(($_SESSION['registration_first_name'] ?? '') . ' ' . ($_SESSION['registration_last_name'] ?? ''));
     
     // Check if email bypass is enabled for development
     $bypassEmail = empty($_ENV['SMTP_PASS']) || $_ENV['SMTP_PASS'] === 'disabled';
@@ -93,6 +93,15 @@ if ($username && isset($_SESSION['registration']) && !empty($_SESSION['registrat
 // Clear the session data since registration is complete
 if (isset($_SESSION['registration_username'])) {
     unset($_SESSION['registration_username']);
+}
+if (isset($_SESSION['registration_email'])) {
+    unset($_SESSION['registration_email']);
+}
+if (isset($_SESSION['registration_first_name'])) {
+    unset($_SESSION['registration_first_name']);
+}
+if (isset($_SESSION['registration_last_name'])) {
+    unset($_SESSION['registration_last_name']);
 }
 if (isset($_SESSION['registration_otp'])) {
     unset($_SESSION['registration_otp']);
