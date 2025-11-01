@@ -243,8 +243,9 @@ if (is_employee_logged_in()) {
         $is_login_page = strpos($_SERVER['REQUEST_URI'] ?? '', 'employee_login.php') !== false;
         
         if (!$is_ajax && !$is_login_page && !headers_sent()) {
-            $root_path = getEmployeeRootPath();
-            $login_url = $root_path . 'pages/management/auth/employee_login.php?timeout=1';
+            // Use absolute URL for production compatibility
+            $base_url = defined('WBHSMS_BASE_URL') ? WBHSMS_BASE_URL : '';
+            $login_url = $base_url . '/pages/management/auth/employee_login.php?timeout=1';
             
             // Clear any output buffer before redirect
             if (ob_get_level()) {

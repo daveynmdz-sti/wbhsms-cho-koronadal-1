@@ -29,47 +29,11 @@ header('Expires: 0');
 
 // Include employee session configuration - Use absolute path resolution
 require_once $root_path . '/config/session/employee_session.php';
+require_once $root_path . '/config/auth_helpers.php';
 
-// If user is not logged in, bounce to login
-if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
-    if (ob_get_level()) {
-        ob_end_clean(); // Clear buffer before redirect
-    }
-    header('Location: ../auth/employee_login.php');
-    exit();
-}
-
-// Check if role is authorized
+// Check authentication and authorization
 $authorized_roles = ['admin', 'dho', 'bhw', 'doctor', 'nurse', 'records_officer'];
-if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
-    if (ob_get_level()) {
-        ob_end_clean(); // Clear buffer before redirect
-    }
-    // Redirect to role-specific dashboard
-    $user_role = strtolower($_SESSION['role']);
-    switch ($user_role) {
-        case 'dho':
-            $dashboard_path = '../management/dho/dashboard.php';
-            break;
-        case 'bhw':
-            $dashboard_path = '../management/bhw/dashboard.php';
-            break;
-        case 'doctor':
-            $dashboard_path = '../management/doctor/dashboard.php';
-            break;
-        case 'nurse':
-            $dashboard_path = '../management/nurse/dashboard.php';
-            break;
-        case 'records_officer':
-            $dashboard_path = '../management/records_officer/dashboard.php';
-            break;
-        default:
-            $dashboard_path = '../dashboard.php';
-            break;
-    }
-    header("Location: $dashboard_path");
-    exit();
-}
+require_employee_auth($authorized_roles);
 
 // Database connection
 require_once $root_path . '/config/db.php';

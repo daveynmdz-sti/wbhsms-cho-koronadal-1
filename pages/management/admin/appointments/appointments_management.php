@@ -17,25 +17,15 @@ header('Expires: 0');
 // Include employee session configuration - Use absolute path resolution
 $root_path = dirname(dirname(dirname(dirname(__DIR__))));
 require_once $root_path . '/config/session/employee_session.php';
+require_once $root_path . '/config/auth_helpers.php';
 
-// If user is not logged in, bounce to login
-if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
-    if (ob_get_level()) {
-        ob_end_clean(); // Clear buffer before redirect
-    }
-    header('Location: ../auth/employee_login.php');
-    exit();
-}
+// Enhanced security checks for production
+handle_session_security();
+check_session_timeout();
 
-// Check if role is authorized
+// Check if role is authorized using new auth helpers
 $authorized_roles = ['admin', 'dho', 'bhw', 'doctor', 'nurse', 'records_officer'];
-if (!in_array(strtolower($_SESSION['role']), $authorized_roles)) {
-    if (ob_get_level()) {
-        ob_end_clean(); // Clear buffer before redirect
-    }
-    header('Location: ../dashboard.php');
-    exit();
-}
+require_employee_auth($authorized_roles);
 
 // Database connection
 require_once $root_path . '/config/db.php';
