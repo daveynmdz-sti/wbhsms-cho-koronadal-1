@@ -55,7 +55,8 @@ if ($is_production || $env_is_production) {
     ini_set('display_errors', 0);
     ini_set('display_startup_errors', 0);
     ini_set('log_errors', 1);
-    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE);
+    // E_STRICT is deprecated in PHP 8.0+, so we exclude it for compatibility
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
 } else {
     // Development: Show errors for debugging
     ini_set('display_errors', 1);

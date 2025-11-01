@@ -1,19 +1,29 @@
 <?php
-// Enable error reporting for debugging
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Production-ready error handling
+$root_path = dirname(__DIR__);
+require_once $root_path . '/config/env.php';
+require_once $root_path . '/config/production_security.php';
+
+if (getenv('APP_DEBUG') === '1') {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+} else {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+}
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 // Include session and database
-$root_path = dirname(__DIR__);
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
 // Check if user is logged in and authorized
 if (!is_employee_logged_in()) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access', 'debug' => 'Session not found']);
+    http_response_code(401);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
     exit();
 }
 
@@ -21,18 +31,21 @@ $employee_id = get_employee_session('employee_id');
 $role = get_employee_session('role');
 
 if (!$employee_id || !$role) {
-    echo json_encode(['success' => false, 'message' => 'Session data incomplete', 'debug' => 'employee_id or role missing']);
+    http_response_code(401);
+    echo json_encode(['success' => false, 'message' => 'Session data incomplete']);
     exit();
 }
 
 $authorized_roles = ['admin', 'dho', 'bhw', 'doctor', 'nurse'];
 if (!in_array(strtolower($role), $authorized_roles)) {
-    echo json_encode(['success' => false, 'message' => 'Insufficient permissions', 'role' => $role]);
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Insufficient permissions']);
     exit();
 }
 
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
+    http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Database connection failed']);
     exit();
 }
@@ -40,6 +53,7 @@ if (!isset($conn) || $conn->connect_error) {
 $appointment_id = $_GET['appointment_id'] ?? '';
 
 if (empty($appointment_id) || !is_numeric($appointment_id)) {
+    http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid appointment ID']);
     exit();
 }
@@ -69,6 +83,7 @@ try {
     $appointment = $result->fetch_assoc();
 
     if (!$appointment) {
+        http_response_code(404);
         echo json_encode(['success' => false, 'message' => 'Appointment not found']);
         exit();
     }
@@ -93,6 +108,14 @@ try {
     echo json_encode(['success' => true, 'appointment' => $appointment]);
 
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+    http_response_code(500);
+    
+    // Log detailed error in debug mode only
+    if (getenv('APP_DEBUG') === '1') {
+        error_log("Database error in get_appointment_details.php: " . $e->getMessage());
+        echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Internal server error']);
+    }
 }
 ?>

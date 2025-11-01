@@ -159,6 +159,10 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-share-square"></i> Referral Management
         </a>
+        <a href="<?= $nav_base ?>appointment/appointments_management.php"
+            class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-calendar-alt"></i> My Facility Appointments
+        </a>
         <a href="<?= $nav_base ?>clinical-encounter-management/index.php"
             class="<?= $activePage === 'clinical_encounters' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-stethoscope"></i> Clinical Encounters
