@@ -205,7 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $visit_id = $conn->insert_id;
 
             // Log the check-in in appointment_logs
-            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'checked_in', 'confirmed', 'checked_in', 'Patient checked in for appointment', 'employee', ?)");
+            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'updated', 'confirmed', 'checked_in', 'Patient checked in for appointment', 'employee', ?)");
             $log_stmt->bind_param("iii", $appointment_id, $appointment_data['patient_id'], $employee_id);
             $log_stmt->execute();
 
@@ -2701,7 +2701,16 @@ function getSortIcon($column, $current_sort, $current_direction)
                         if (!response.ok) {
                             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                         }
-                        return response.json();
+                        // Get the response text first to debug JSON parsing issues
+                        return response.text().then(text => {
+                            try {
+                                return JSON.parse(text);
+                            } catch (e) {
+                                console.error('JSON Parse Error:', e);
+                                console.error('Response Text:', text);
+                                throw new Error(`Invalid JSON response: ${text.substring(0, 100)}...`);
+                            }
+                        });
                     })
                     .then(data => {
                         if (data.success && data.vitals) {
@@ -3264,7 +3273,21 @@ function getSortIcon($column, $current_sort, $current_direction)
                                 },
                                 body: JSON.stringify(formData)
                             })
-                            .then(response => response.json())
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                                }
+                                // Get the response text first to debug JSON parsing issues
+                                return response.text().then(text => {
+                                    try {
+                                        return JSON.parse(text);
+                                    } catch (e) {
+                                        console.error('JSON Parse Error:', e);
+                                        console.error('Response Text:', text);
+                                        throw new Error(`Invalid JSON response: ${text.substring(0, 100)}...`);
+                                    }
+                                });
+                            })
                             .then(data => {
                                 if (data.success) {
                                     const action = data.data && data.data.action === 'updated' ? 'updated' : 'recorded';

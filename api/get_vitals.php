@@ -27,6 +27,11 @@ try {
     require_once $root_path . '/config/db.php';
     require_once $root_path . '/config/session/employee_session.php';
 
+    // Check if PDO is available
+    if (!isset($pdo)) {
+        throw new Exception('PDO connection not available');
+    }
+
     // Check if user is logged in
     if (!is_employee_logged_in()) {
         throw new Exception('Authentication required');
