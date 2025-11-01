@@ -460,38 +460,6 @@ $asset_base_url = $protocol . $host . $base_path;
             line-height: 1.3;
         }
 
-        /* Input group with prefix */
-        .input-group {
-            position: relative;
-            display: flex;
-            align-items: center;
-        }
-
-        .input-prefix {
-            background: #f3f4f6;
-            border: 1px solid #d1d5db;
-            border-right: none;
-            border-radius: 8px 0 0 8px;
-            padding: 12px 12px;
-            font-weight: 600;
-            color: #374151;
-            font-size: 14px;
-            min-width: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .input-group .input-field {
-            border-radius: 0 8px 8px 0;
-            border-left: none;
-            flex: 1;
-        }
-
-        .input-group .input-field:focus {
-            border-left: 1px solid #2563eb;
-        }
-
         /* Login attempts warning */
         .attempts-warning {
             background: #fef3c7;
@@ -534,14 +502,11 @@ $asset_base_url = $protocol . $host . $base_path;
 
                 <!-- Employee Number -->
                 <label for="employee_number">Employee Number</label>
-                <div class="input-group">
-                    <span class="input-prefix">EMP</span>
-                    <input type="number" id="employee_number" name="employee_number" class="input-field"
-                        placeholder="00001" inputmode="numeric" autocomplete="username"
-                        aria-describedby="employee-number-help" required min="1" max="99999"
-                        value="<?= htmlspecialchars(str_replace('EMP', '', $employee_number)) ?>" />
-                </div>
-                <span class="input-help" id="employee-number-help">Enter your 5-digit employee number (numbers only).</span>
+                <input type="text" id="employee_number" name="employee_number" class="input-field"
+                    placeholder="EMP00001" inputmode="text" autocomplete="username"
+                    aria-describedby="employee-number-help" required maxlength="8"
+                    value="<?= htmlspecialchars($employee_number ?: 'EMP') ?>" />
+                <span class="input-help" id="employee-number-help">Enter your employee number (EMP + 5 digits).</span>
                 
                 <!-- Password -->
                 <div class="password-wrapper">
@@ -621,49 +586,74 @@ $asset_base_url = $protocol . $host . $base_path;
 
             // Real-time validation for Employee Number
             if (empNumInput) {
-                // Format input to 5 digits with leading zeros
+                // Ensure EMP is always at the beginning and handle numeric input
                 empNumInput.addEventListener('input', function(e) {
-                    let value = e.target.value.replace(/[^0-9]/g, ''); // Only numbers
+                    let value = e.target.value;
                     
-                    // Limit to 5 digits
-                    if (value.length > 5) {
-                        value = value.substring(0, 5);
+                    // Always ensure it starts with EMP
+                    if (!value.startsWith('EMP')) {
+                        value = 'EMP' + value.replace(/EMP/g, '');
                     }
                     
-                    e.target.value = value;
+                    // Extract the numeric part after EMP
+                    let numericPart = value.substring(3).replace(/[^0-9]/g, '');
+                    
+                    // Limit to 5 digits
+                    if (numericPart.length > 5) {
+                        numericPart = numericPart.substring(0, 5);
+                    }
+                    
+                    // Reconstruct the value
+                    e.target.value = 'EMP' + numericPart;
                 });
 
-                // Validation on blur - pad with leading zeros
+                // Set cursor position after EMP when focused
+                empNumInput.addEventListener('focus', function(e) {
+                    if (e.target.value === 'EMP' || e.target.value === '') {
+                        e.target.value = 'EMP';
+                        // Set cursor after EMP
+                        setTimeout(() => {
+                            e.target.setSelectionRange(3, 3);
+                        }, 0);
+                    }
+                });
+
+                // Prevent cursor from going before EMP
+                empNumInput.addEventListener('keydown', function(e) {
+                    const cursorPos = e.target.selectionStart;
+                    const cursorEnd = e.target.selectionEnd;
+                    
+                    // Prevent deletion of EMP
+                    if ((e.key === 'Backspace' || e.key === 'Delete') && cursorPos <= 3) {
+                        e.preventDefault();
+                        return false;
+                    }
+                    
+                    // Prevent cursor from moving before EMP
+                    if ((e.key === 'ArrowLeft' || e.key === 'Home') && cursorPos <= 3) {
+                        e.preventDefault();
+                        e.target.setSelectionRange(3, 3);
+                        return false;
+                    }
+                });
+
+                // Validation on blur
                 empNumInput.addEventListener('blur', function(e) {
-                    let value = e.target.value.trim();
-                    if (value) {
-                        // Pad with leading zeros to make it 5 digits
-                        value = value.padStart(5, '0');
-                        e.target.value = value;
-                        
-                        // Validate the padded value
-                        if (!value.match(/^\d{5}$/)) {
-                            showValidationError('Employee number must be exactly 5 digits');
-                            e.target.focus();
-                        }
+                    const value = e.target.value.trim();
+                    if (value && !value.match(/^EMP\d{5}$/)) {
+                        showValidationError('Employee Number must be EMP followed by exactly 5 digits (e.g., EMP00001)');
+                        e.target.focus();
                     }
                 });
             }
 
             // Form submission validation
             form.addEventListener("submit", function(e) {
-                let empNumber = empNumInput ? empNumInput.value.trim() : '';
+                const empNumber = empNumInput ? empNumInput.value.trim() : '';
                 const password = passwordInput ? passwordInput.value.trim() : '';
 
                 // Check for empty fields
-                if (!empNumber && !password) {
-                    e.preventDefault();
-                    showValidationError('Please enter both Employee Number and Password');
-                    if (empNumInput) empNumInput.focus();
-                    return;
-                }
-
-                if (!empNumber) {
+                if (!empNumber || empNumber === 'EMP') {
                     e.preventDefault();
                     showValidationError('Please enter your Employee Number');
                     if (empNumInput) empNumInput.focus();
@@ -677,21 +667,12 @@ $asset_base_url = $protocol . $host . $base_path;
                     return;
                 }
 
-                // Pad employee number with leading zeros and prepend EMP
-                empNumber = empNumber.padStart(5, '0');
-                const fullEmpNumber = 'EMP' + empNumber;
-
-                // Validate Employee Number format (5 digits)
-                if (!empNumber.match(/^\d{5}$/)) {
+                // Validate Employee Number format (EMP + 5 digits)
+                if (!empNumber.match(/^EMP\d{5}$/)) {
                     e.preventDefault();
-                    showValidationError('Employee Number must be exactly 5 digits');
+                    showValidationError('Employee Number must be EMP followed by exactly 5 digits (e.g., EMP00001)');
                     if (empNumInput) empNumInput.focus();
                     return;
-                }
-
-                // Update the input value to include EMP prefix for server processing
-                if (empNumInput) {
-                    empNumInput.value = fullEmpNumber;
                 }
 
                 // If all validations pass, check native form validity
