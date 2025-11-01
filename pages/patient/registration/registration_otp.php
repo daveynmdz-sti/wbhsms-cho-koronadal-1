@@ -9,28 +9,6 @@ ob_start();
 $root_path = dirname(dirname(dirname(__DIR__)));
 require_once $root_path . '/config/db.php'; // must set $pdo (PDO, ERRMODE_EXCEPTION recommended)
 
-// Helper: Map form philhealth_type values to database ENUM values
-function mapPhilhealthType($formValue) {
-    $mapping = [
-        'Employees' => 'Employed Private',
-        'Kasambahay' => 'Employed Private',
-        'Self-earning' => 'Individual Paying', 
-        'OFW' => 'OFW',
-        'Filipinos_abroad' => 'Individual Paying',
-        'Lifetime' => 'Lifetime Member',
-        'Indigents' => 'Indigent',
-        '4Ps' => 'Sponsored',
-        'Senior_citizens' => 'Senior Citizen',
-        'PWD' => 'PWD',
-        'SK_officials' => 'Employed Government',
-        'LGU_sponsored' => 'Sponsored', 
-        'No_capacity' => 'Indigent',
-        'Solo_parent' => 'Sponsored'
-    ];
-    
-    return $mapping[$formValue] ?? null;
-}
-
 // Helper: respond JSON for AJAX, otherwise redirect with a flash-style message
 function respond($isAjax, $ok, $payload = [])
 {
@@ -90,10 +68,10 @@ if ($isPost) {
     $regData = $_SESSION['registration'];
     $hashedPassword = $regData['password']; // Already hashed in register_patient.php
     
-    // Map philhealth_type from form values to database ENUM values
-    $mappedPhilhealthType = null;
-    if (!empty($regData['philhealth_type'])) {
-        $mappedPhilhealthType = mapPhilhealthType($regData['philhealth_type']);
+    // No need to map PhilHealth type anymore since we're using philhealth_type_id
+    $philhealthTypeId = null;
+    if (!empty($regData['philhealth_type_id'])) {
+        $philhealthTypeId = $regData['philhealth_type_id'];
     }
 
     try {
@@ -104,7 +82,7 @@ if ($isPost) {
 
         // First, insert the patient record without username to get the patient_id
         $sql = "INSERT INTO patients
-                (first_name, middle_name, last_name, suffix, barangay_id, date_of_birth, sex, contact_number, email, password_hash, isPWD, pwd_id_number, isPhilHealth, philhealth_type, philhealth_id_number, isSenior, senior_citizen_id)
+                (first_name, middle_name, last_name, suffix, barangay_id, date_of_birth, sex, contact_number, email, password_hash, isPWD, pwd_id_number, isPhilHealth, philhealth_type_id, philhealth_id_number, isSenior, senior_citizen_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -121,7 +99,7 @@ if ($isPost) {
             $regData['isPWD']       ?? 0,
             $regData['pwd_id_number'] ?? null,
             $regData['isPhilHealth'] ?? 0,
-            $mappedPhilhealthType,  // Use mapped value instead of raw form value
+            $philhealthTypeId,  // Use philhealth_type_id instead of mapped value
             $regData['philhealth_id_number'] ?? null,
             $regData['isSenior']    ?? 0,
             $regData['senior_citizen_id'] ?? null

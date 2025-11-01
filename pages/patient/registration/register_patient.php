@@ -102,7 +102,7 @@ try {
         $isPWD = isset($_POST['isPWD']) ? 1 : 0;
         $pwd_id_number = isset($_POST['pwd_id_number']) ? trim((string)$_POST['pwd_id_number']) : '';
         $isPhilHealth = isset($_POST['isPhilHealth']) ? 1 : 0;
-        $philhealth_type = isset($_POST['philhealth_type']) ? trim((string)$_POST['philhealth_type']) : '';
+        $philhealth_type_id = isset($_POST['philhealth_type_id']) ? (int)$_POST['philhealth_type_id'] : null;
         $philhealth_id_number = isset($_POST['philhealth_id_number']) ? trim((string)$_POST['philhealth_id_number']) : '';
         $isSenior = isset($_POST['isSenior']) ? 1 : 0;
         $senior_citizen_id = isset($_POST['senior_citizen_id']) ? trim((string)$_POST['senior_citizen_id']) : '';
@@ -227,9 +227,26 @@ try {
 
         // PhilHealth validation
         if ($isPhilHealth) {
-            if (empty($philhealth_type) || !in_array($philhealth_type, ['Member', 'Beneficiary'], true)) {
-                back_with_error('Valid PhilHealth membership type is required.');
+            if (empty($philhealth_type_id)) {
+                back_with_error('PhilHealth membership type is required.');
             }
+            
+            // Validate philhealth_type_id exists in database
+            try {
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM philhealth_types WHERE id = ? AND status = "active"');
+                if ($stmt && $stmt->execute([$philhealth_type_id])) {
+                    $count = $stmt->fetchColumn();
+                    if ($count == 0) {
+                        back_with_error('Invalid PhilHealth membership type selected.');
+                    }
+                } else {
+                    back_with_error('Error validating PhilHealth membership type.');
+                }
+            } catch (Throwable $e) {
+                error_log('PhilHealth type validation error: ' . $e->getMessage());
+                back_with_error('Error validating PhilHealth membership type.');
+            }
+            
             if (empty($philhealth_id_number)) {
                 back_with_error('PhilHealth ID Number is required when PhilHealth is selected.');
             }
@@ -351,7 +368,7 @@ try {
             'isPWD'        => $isPWD,
             'pwd_id_number' => $pwd_id_number,
             'isPhilHealth' => $isPhilHealth,
-            'philhealth_type' => $philhealth_type,
+            'philhealth_type_id' => $philhealth_type_id,
             'philhealth_id_number' => $philhealth_id_number,
             'isSenior'     => $isSenior,
             'senior_citizen_id' => $senior_citizen_id,

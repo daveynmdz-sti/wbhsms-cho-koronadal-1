@@ -50,6 +50,27 @@ try {
     ];
 }
 
+// Load PhilHealth types from database
+$philhealth_types = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT id, type_code, type_name, category, description 
+        FROM philhealth_types 
+        WHERE is_active = 1 
+        ORDER BY category, type_name
+    ");
+    $stmt->execute();
+    $philhealth_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log('Failed to load PhilHealth types: ' . $e->getMessage());
+    // Fallback to empty array - form will show no options
+    $philhealth_types = [];
+}
+
+// Group types by category for better form organization
+$direct_types = array_filter($philhealth_types, fn($type) => $type['category'] === 'Direct');
+$indirect_types = array_filter($philhealth_types, fn($type) => $type['category'] === 'Indirect');
+
 // --- Error message and repopulation logic ---
 $errorMsg = '';
 if (isset($_SESSION['registration_error'])) {
@@ -69,7 +90,7 @@ $formData = [
     'isPWD' => false,
     'pwd_id_number' => '',
     'isPhilHealth' => false,
-    'philhealth_type' => '',
+    'philhealth_type_id' => '', // Changed from philhealth_type to philhealth_type_id
     'philhealth_id_number' => '',
     'isSenior' => false,
     'senior_citizen_id' => '',
@@ -1186,7 +1207,7 @@ unset($_SESSION['registration']);
             <div class="loading-card">
                 <img class="logo" src="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128"
                     alt="CHO Koronadal Logo" />
-                <p class="title">Validating and checking for duplicates…</p>
+                <p class="title">Loading...</p>
                 <p><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i></p>
             </div>
         </div>
@@ -1319,26 +1340,32 @@ unset($_SESSION['registration']);
                                 <div class="conditional-field philhealth-fields" id="philhealth-fields">
                                     <div>
                                         <label for="philhealth_type">Membership Type</label>
-                                        <select id="philhealth_type" name="philhealth_type" class="input-field">
+                                        <select id="philhealth_type" name="philhealth_type_id" class="input-field">
                                             <option value="">Select Membership Type</option>
+                                            
+                                            <?php if (!empty($direct_types)): ?>
                                             <optgroup label="Direct Contributors">
-                                                <option value="Employed Private" <?php echo $formData['philhealth_type'] === 'Employed Private' ? 'selected' : ''; ?>>Employees (with formal employment)</option>
-                                                <option value="Employed Private" <?php echo $formData['philhealth_type'] === 'Employed Private' ? 'selected' : ''; ?>>Kasambahay</option>
-                                                <option value="Individual Paying" <?php echo $formData['philhealth_type'] === 'Individual Paying' ? 'selected' : ''; ?>>Self-earning individuals; Professional practitioners</option>
-                                                <option value="OFW" <?php echo $formData['philhealth_type'] === 'OFW' ? 'selected' : ''; ?>>Overseas Filipino Workers</option>
-                                                <option value="Individual Paying" <?php echo $formData['philhealth_type'] === 'Individual Paying' ? 'selected' : ''; ?>>Filipinos living abroad and those with dual citizenship</option>
-                                                <option value="Lifetime Member" <?php echo $formData['philhealth_type'] === 'Lifetime Member' ? 'selected' : ''; ?>>Lifetime members (21+ years, capacity to pay)</option>
+                                                <?php foreach ($direct_types as $type): ?>
+                                                    <option value="<?php echo htmlspecialchars($type['id'], ENT_QUOTES); ?>" 
+                                                            <?php echo ($formData['philhealth_type_id'] ?? '') == $type['id'] ? 'selected' : ''; ?>
+                                                            title="<?php echo htmlspecialchars($type['description'] ?? '', ENT_QUOTES); ?>">
+                                                        <?php echo htmlspecialchars($type['type_name'], ENT_QUOTES); ?>
+                                                    </option>
+                                                <?php endforeach; ?>
                                             </optgroup>
+                                            <?php endif; ?>
+                                            
+                                            <?php if (!empty($indirect_types)): ?>
                                             <optgroup label="Indirect Contributors">
-                                                <option value="Indigent" <?php echo $formData['philhealth_type'] === 'Indigent' ? 'selected' : ''; ?>>Indigents (identified by DSWD)</option>
-                                                <option value="Sponsored" <?php echo $formData['philhealth_type'] === 'Sponsored' ? 'selected' : ''; ?>>Pantawid Pamilyang Pilipino Program beneficiaries</option>
-                                                <option value="Senior Citizen" <?php echo $formData['philhealth_type'] === 'Senior Citizen' ? 'selected' : ''; ?>>Senior citizens</option>
-                                                <option value="PWD" <?php echo $formData['philhealth_type'] === 'PWD' ? 'selected' : ''; ?>>Persons with disability</option>
-                                                <option value="Employed Government" <?php echo $formData['philhealth_type'] === 'Employed Government' ? 'selected' : ''; ?>>Sangguniang Kabataan officials</option>
-                                                <option value="Sponsored" <?php echo $formData['philhealth_type'] === 'Sponsored' ? 'selected' : ''; ?>>Point-of-service / LGU sponsored</option>
-                                                <option value="Indigent" <?php echo $formData['philhealth_type'] === 'Indigent' ? 'selected' : ''; ?>>Filipinos 21+ years without capacity to pay</option>
-                                                <option value="Sponsored" <?php echo $formData['philhealth_type'] === 'Sponsored' ? 'selected' : ''; ?>>Solo Parent</option>
+                                                <?php foreach ($indirect_types as $type): ?>
+                                                    <option value="<?php echo htmlspecialchars($type['id'], ENT_QUOTES); ?>" 
+                                                            <?php echo ($formData['philhealth_type_id'] ?? '') == $type['id'] ? 'selected' : ''; ?>
+                                                            title="<?php echo htmlspecialchars($type['description'] ?? '', ENT_QUOTES); ?>">
+                                                        <?php echo htmlspecialchars($type['type_name'], ENT_QUOTES); ?>
+                                                    </option>
+                                                <?php endforeach; ?>
                                             </optgroup>
+                                            <?php endif; ?>
                                         </select>
                                     </div>
                                     <div>
@@ -2610,7 +2637,7 @@ unset($_SESSION['registration']);
                 isPWD: pwdCheckbox.checked ? 1 : 0,
                 pwd_id_number: pwdCheckbox.checked ? $('#pwd_id_number').value : '',
                 isPhilHealth: philhealthCheckbox.checked ? 1 : 0,
-                philhealth_type: philhealthCheckbox.checked ? $('#philhealth_type').value : '',
+                philhealth_type_id: philhealthCheckbox.checked ? $('#philhealth_type').value : '',
                 philhealth_id_number: philhealthCheckbox.checked ? $('#philhealth_id_number').value : '',
                 isSenior: seniorCheckbox.checked ? 1 : 0,
                 senior_citizen_id: seniorCheckbox.checked ? $('#senior_citizen_id').value : '',

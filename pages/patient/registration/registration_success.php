@@ -61,7 +61,7 @@ if ($username && isset($_SESSION['registration_email']) && !empty($_SESSION['reg
             $welcome_content = StandardEmailTemplate::generatePatientWelcomeContent([
                 'patient_name' => $patient_name,
                 'patient_id' => $username,
-                'login_url' => 'http://cityhealthofficeofkoronadal.31.97.106.60.sslip.io/pages/patient/auth/patient_login.php',
+                'login_url' => 'https://cityhealthofficeofkoronadal.site/pages/patient/auth/patient_login.php',
                 'contact_phone' => $_ENV['CONTACT_PHONE'] ?? '(083) 228-8042',
                 'contact_email' => $_ENV['CONTACT_EMAIL'] ?? 'info@chokoronadal.gov.ph'
             ]);
