@@ -2501,7 +2501,16 @@ function getSortIcon($column, $current_sort, $current_direction)
                         if (!response.ok) {
                             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                         }
-                        return response.json();
+                        // Get the response text first to debug JSON parsing issues
+                        return response.text().then(text => {
+                            try {
+                                return JSON.parse(text);
+                            } catch (e) {
+                                console.error('JSON Parse Error:', e);
+                                console.error('Response Text:', text);
+                                throw new Error(`Invalid JSON response: ${text.substring(0, 100)}...`);
+                            }
+                        });
                     })
                     .then(data => {
                         if (data.success) {
