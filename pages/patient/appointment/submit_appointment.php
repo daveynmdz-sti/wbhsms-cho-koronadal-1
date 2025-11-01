@@ -231,18 +231,17 @@ try {
         throw new Exception('This time slot is fully booked at ' . $facility_name . '. Please select another time.');
     }
     
-    // Check for duplicate appointments - prevent same patient booking same facility on same date/time
+    // Check for duplicate appointments - prevent same patient booking same facility on same date (any time)
     $stmt = $conn->prepare("
         SELECT COUNT(*) as existing_count
         FROM appointments 
         WHERE patient_id = ? 
         AND facility_id = ?
         AND scheduled_date = ? 
-        AND scheduled_time = ?
         AND status = 'confirmed'
     ");
     
-    $stmt->bind_param("iiss", $patient_id, $facility_id, $appointment_date, $appointment_time);
+    $stmt->bind_param("iis", $patient_id, $facility_id, $appointment_date);
     $stmt->execute();
     $result = $stmt->get_result();
     $row = $result->fetch_assoc();
@@ -250,32 +249,11 @@ try {
     $stmt->close();
     
     if ($existing_appointments > 0) {
-        throw new Exception('You already have an appointment at ' . $facility_name . ' for this date and time. Please select a different time slot.');
+        throw new Exception('You already have an appointment at ' . $facility_name . ' for this date. You can only book one appointment per facility per day. Please select a different date.');
     }
-    
-    // Optional: Check for conflicts with appointments at other facilities (same date/time)
-    // Comment out this section if you want to allow patients to book multiple facilities simultaneously
-    $stmt = $conn->prepare("
-        SELECT f.name as facility_name
-        FROM appointments a
-        JOIN facilities f ON a.facility_id = f.facility_id
-        WHERE a.patient_id = ? 
-        AND a.scheduled_date = ? 
-        AND a.scheduled_time = ?
-        AND a.facility_id != ?
-        AND a.status = 'confirmed'
-        LIMIT 1
-    ");
-    
-    $stmt->bind_param("issi", $patient_id, $appointment_date, $appointment_time, $facility_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $conflict_appointment = $result->fetch_assoc();
-    $stmt->close();
-    
-    if ($conflict_appointment) {
-        throw new Exception('You already have an appointment at ' . $conflict_appointment['facility_name'] . ' on this date and time. Please select a different time slot or cancel your existing appointment.');
-    }
+
+    // REMOVED: Cross-facility time conflict check to allow multiple facility bookings on same day
+    // Patients can now book at BHC, DHO, and CHO on the same day at different times
     
     // If referral is provided, validate it belongs to the patient and is active
     if ($referral_id) {

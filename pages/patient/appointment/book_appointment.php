@@ -177,6 +177,26 @@ try {
     error_log("Error fetching referrals: " . $e->getMessage());
 }
 
+// Helper function to check if patient already has an appointment for a specific facility on a given date
+function hasAppointmentForFacility($conn, $patient_id, $facility_id, $date) {
+    try {
+        $stmt = $conn->prepare("
+            SELECT COUNT(*) as count 
+            FROM appointments 
+            WHERE patient_id = ? AND facility_id = ? AND appointment_date = ?
+        ");
+        $stmt->bind_param("iis", $patient_id, $facility_id, $date);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $stmt->close();
+        return $row['count'] > 0;
+    } catch (Exception $e) {
+        error_log("Error checking appointment for facility: " . $e->getMessage());
+        return false;
+    }
+}
+
 // Check facility availability based on referral conditions
 $facility_availability = [
     'bhc_enabled' => true,  // Default: BHC available (primary care)
@@ -185,11 +205,11 @@ $facility_availability = [
 ];
 
 try {
-    // Query to check facility availability conditions
+    $today = date('Y-m-d');
+    
+    // Query to check referral availability conditions
     $facility_check_query = "
         SELECT 
-            COUNT(CASE WHEN DATE(referral_date) = CURDATE() AND status = 'active' THEN 1 END) as same_day_active_referrals,
-            COUNT(CASE WHEN referred_to_facility_id IN (1,2,3) AND status = 'active' THEN 1 END) as any_facility_active_referrals,
             COUNT(CASE WHEN referred_to_facility_id IN (2,3) AND status = 'active' THEN 1 END) as dho_referrals,
             COUNT(CASE WHEN referred_to_facility_id = 1 AND status = 'active' THEN 1 END) as cho_referrals
         FROM referrals 
@@ -205,21 +225,53 @@ try {
         $stmt->close();
         
         if ($facility_data) {
-            // BHC Logic: Enable only if NO same-day active referral exists AND no active referrals to facilities 1,2,3
-            $facility_availability['bhc_enabled'] = ($facility_data['same_day_active_referrals'] == 0 && $facility_data['any_facility_active_referrals'] == 0);
+            // NEW LOGIC: Enable facility if patient doesn't already have an appointment for that facility today
+            // and meets referral requirements
             
-            // DHO Logic: Enable if referral to facilities 2 or 3 exists
-            $facility_availability['dho_enabled'] = ($facility_data['dho_referrals'] > 0);
+            // Get patient's BHC facility ID based on barangay
+            $patient_barangay_facility_id = null;
+            if ($patient_info && isset($patient_info['barangay_id'])) {
+                // Map barangay_id to facility_id for BHC
+                // This assumes there's a mapping between barangay and their respective BHC
+                $barangay_facility_query = "SELECT facility_id FROM facilities WHERE barangay_id = ? AND type = 'BHC' LIMIT 1";
+                $barangay_stmt = $conn->prepare($barangay_facility_query);
+                if ($barangay_stmt) {
+                    $barangay_stmt->bind_param("i", $patient_info['barangay_id']);
+                    $barangay_stmt->execute();
+                    $barangay_result = $barangay_stmt->get_result();
+                    $barangay_row = $barangay_result->fetch_assoc();
+                    if ($barangay_row) {
+                        $patient_barangay_facility_id = $barangay_row['facility_id'];
+                    }
+                    $barangay_stmt->close();
+                }
+            }
             
-            // CHO Logic: Enable if referral to facility 1 exists
-            $facility_availability['cho_enabled'] = ($facility_data['cho_referrals'] > 0);
+            // Fallback: If no specific BHC found, use facility_id 25 (Avanceña BHC as example)
+            if (!$patient_barangay_facility_id) {
+                $patient_barangay_facility_id = 25;
+            }
+            
+            // BHC Logic: Enable if no appointment today for patient's BHC
+            $facility_availability['bhc_enabled'] = !hasAppointmentForFacility($conn, $patient_id, $patient_barangay_facility_id, $today);
+            
+            // DHO Logic: Enable if referral to facilities 2 or 3 exists AND no appointment today for DHO
+            $facility_availability['dho_enabled'] = ($facility_data['dho_referrals'] > 0) && 
+                                                  !hasAppointmentForFacility($conn, $patient_id, 3, $today);
+            
+            // CHO Logic: Enable if referral to facility 1 exists AND no appointment today for CHO
+            $facility_availability['cho_enabled'] = ($facility_data['cho_referrals'] > 0) && 
+                                                   !hasAppointmentForFacility($conn, $patient_id, 1, $today);
             
             // Debug logging
-            error_log("DEBUG - Facility Availability Check:");
-            error_log("  - Same day active referrals: " . $facility_data['same_day_active_referrals']);
-            error_log("  - Any facility (1,2,3) active referrals: " . $facility_data['any_facility_active_referrals']);
+            error_log("DEBUG - NEW Facility Availability Check:");
+            error_log("  - Today's date: " . $today);
+            error_log("  - Patient BHC facility_id: " . $patient_barangay_facility_id);
             error_log("  - DHO referrals (facilities 2,3): " . $facility_data['dho_referrals']);
             error_log("  - CHO referrals (facility 1): " . $facility_data['cho_referrals']);
+            error_log("  - BHC has appointment today: " . (hasAppointmentForFacility($conn, $patient_id, $patient_barangay_facility_id, $today) ? 'true' : 'false'));
+            error_log("  - DHO has appointment today: " . (hasAppointmentForFacility($conn, $patient_id, 3, $today) ? 'true' : 'false'));
+            error_log("  - CHO has appointment today: " . (hasAppointmentForFacility($conn, $patient_id, 1, $today) ? 'true' : 'false'));
             error_log("  - BHC enabled: " . ($facility_availability['bhc_enabled'] ? 'true' : 'false'));
             error_log("  - DHO enabled: " . ($facility_availability['dho_enabled'] ? 'true' : 'false'));
             error_log("  - CHO enabled: " . ($facility_availability['cho_enabled'] ? 'true' : 'false'));
