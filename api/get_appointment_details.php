@@ -25,7 +25,7 @@ require_once $root_path . '/config/db.php';
 
 // Check if user is logged in and authorized
 if (!is_employee_logged_in()) {
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
     exit();
@@ -35,7 +35,7 @@ $employee_id = get_employee_session('employee_id');
 $role = get_employee_session('role');
 
 if (!$employee_id || !$role) {
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Session data incomplete']);
     exit();
@@ -43,7 +43,7 @@ if (!$employee_id || !$role) {
 
 $authorized_roles = ['admin', 'dho', 'bhw', 'doctor', 'nurse', 'records_officer'];
 if (!in_array(strtolower($role), $authorized_roles)) {
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Insufficient permissions']);
     exit();
@@ -51,7 +51,7 @@ if (!in_array(strtolower($role), $authorized_roles)) {
 
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Database connection failed']);
     exit();
@@ -60,7 +60,7 @@ if (!isset($conn) || $conn->connect_error) {
 $appointment_id = $_GET['appointment_id'] ?? '';
 
 if (empty($appointment_id) || !is_numeric($appointment_id)) {
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid appointment ID']);
     exit();
@@ -91,7 +91,7 @@ try {
     $appointment = $result->fetch_assoc();
 
     if (!$appointment) {
-        ob_clean();
+        if (ob_get_level()) { ob_clean(); }
         http_response_code(404);
         echo json_encode(['success' => false, 'message' => 'Appointment not found']);
         exit();
@@ -115,12 +115,12 @@ try {
     }
 
     // Clean output buffer and send success response
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     echo json_encode(['success' => true, 'appointment' => $appointment]);
 
 } catch (Exception $e) {
     // Clean output buffer and send error response
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     http_response_code(500);
     
     // Log detailed error in debug mode only
@@ -132,7 +132,7 @@ try {
     }
 } catch (Error $e) {
     // Clean output buffer and send error response for fatal errors
-    ob_clean();
+    if (ob_get_level()) { ob_clean(); }
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'System error occurred']);
 }

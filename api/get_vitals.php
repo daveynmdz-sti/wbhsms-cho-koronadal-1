@@ -68,7 +68,9 @@ try {
     }
 
     // Clean output buffer and send response
-    ob_clean();
+    if (ob_get_level()) {
+        ob_clean();
+    }
     echo json_encode([
         'success' => true,
         'vitals' => $vitals
@@ -76,7 +78,9 @@ try {
 
 } catch (Exception $e) {
     // Clean output buffer and send error response
-    ob_clean();
+    if (ob_get_level()) {
+        ob_clean();
+    }
     http_response_code(400);
     echo json_encode([
         'success' => false,
@@ -84,7 +88,9 @@ try {
     ]);
 } catch (Error $e) {
     // Clean output buffer and send error response for fatal errors
-    ob_clean();
+    if (ob_get_level()) {
+        ob_clean();
+    }
     http_response_code(500);
     echo json_encode([
         'success' => false,
