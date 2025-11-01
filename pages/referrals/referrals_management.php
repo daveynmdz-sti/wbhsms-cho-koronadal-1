@@ -235,9 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch referrals with patient information
-$patient_id = $_GET['patient_id'] ?? '';
-$first_name = $_GET['first_name'] ?? '';
-$last_name = $_GET['last_name'] ?? '';
+$patient_search = $_GET['patient_search'] ?? '';
 $barangay = $_GET['barangay'] ?? '';
 $status_filter = $_GET['status'] ?? '';
 $notice = $_GET['notice'] ?? '';
@@ -251,25 +249,21 @@ $where_conditions = [];
 $params = [];
 $param_types = '';
 
-if (!empty($patient_id)) {
-    $where_conditions[] = "p.username LIKE ?";
-    $patient_id_term = "%$patient_id%";
-    $params[] = $patient_id_term;
-    $param_types .= 's';
-}
+// Employee-based restriction: Only show referrals created by the logged-in employee
+$where_conditions[] = "r.referred_by = ?";
+$params[] = $employee_id;
+$param_types .= 's';
 
-if (!empty($first_name)) {
-    $where_conditions[] = "p.first_name LIKE ?";
-    $first_name_term = "%$first_name%";
-    $params[] = $first_name_term;
-    $param_types .= 's';
-}
+// Current month restriction: Only show referrals from current month
+$where_conditions[] = "YEAR(r.referral_date) = YEAR(CURDATE()) AND MONTH(r.referral_date) = MONTH(CURDATE())";
 
-if (!empty($last_name)) {
-    $where_conditions[] = "p.last_name LIKE ?";
-    $last_name_term = "%$last_name%";
-    $params[] = $last_name_term;
-    $param_types .= 's';
+if (!empty($patient_search)) {
+    $where_conditions[] = "(p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ?)";
+    $search_term = "%$patient_search%";
+    $params[] = $search_term;
+    $params[] = $search_term;
+    $params[] = $search_term;
+    $param_types .= 'sss';
 }
 
 if (!empty($barangay)) {
@@ -288,17 +282,6 @@ if (!empty($status_filter)) {
 $where_clause = '';
 if (!empty($where_conditions)) {
     $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
-}
-
-// Add jurisdiction restriction to WHERE clause
-if (!empty($jurisdiction_restriction)) {
-    if (empty($where_clause)) {
-        // No existing WHERE clause, start with WHERE
-        $where_clause = 'WHERE ' . ltrim($jurisdiction_restriction, ' AND');
-    } else {
-        // Existing WHERE clause, append with AND
-        $where_clause .= $jurisdiction_restriction;
-    }
 }
 
 try {
@@ -326,12 +309,9 @@ try {
 
     $count_stmt = $conn->prepare($count_sql);
 
-    // Combine all parameters for count query
-    $count_params = array_merge($params, $jurisdiction_params);
-    $count_param_types = $param_types . $jurisdiction_param_types;
-
-    if (!empty($count_params)) {
-        $count_stmt->bind_param($count_param_types, ...$count_params);
+    // Use only the employee-based filter parameters for count query
+    if (!empty($params)) {
+        $count_stmt->bind_param($param_types, ...$params);
     }
     $count_stmt->execute();
     $count_result = $count_stmt->get_result();
@@ -360,9 +340,9 @@ try {
 
     $stmt = $conn->prepare($sql);
 
-    // Combine all parameters for main query
-    $all_params = array_merge($params, $jurisdiction_params);
-    $all_param_types = $param_types . $jurisdiction_param_types;
+    // Use only the employee-based filter parameters for main query
+    $all_params = $params;
+    $all_param_types = $param_types;
 
     // Add pagination parameters
     $all_params[] = $per_page;
@@ -394,25 +374,20 @@ $stats = [
 ];
 
 try {
-    // Statistics query with jurisdiction restrictions
-    $stats_where_clause = '';
-    if (!empty($jurisdiction_restriction)) {
-        $stats_where_clause = 'WHERE ' . ltrim($jurisdiction_restriction, ' AND');
-    }
-
+    // Statistics query with employee-based restriction and current month filter
     $stats_sql = "
         SELECT r.status, COUNT(*) as count 
         FROM referrals r
         LEFT JOIN patients p ON r.patient_id = p.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
-        $stats_where_clause
+        WHERE r.referred_by = ? 
+        AND YEAR(r.referral_date) = YEAR(CURDATE()) 
+        AND MONTH(r.referral_date) = MONTH(CURDATE())
         GROUP BY r.status
     ";
 
     $stmt = $conn->prepare($stats_sql);
-    if (!empty($jurisdiction_params)) {
-        $stmt->bind_param($jurisdiction_param_types, ...$jurisdiction_params);
-    }
+    $stmt->bind_param('s', $employee_id);
     $stmt->execute();
     $result = $stmt->get_result();
     while ($row = $result->fetch_assoc()) {
@@ -443,7 +418,7 @@ try {
 
 <head>
     <meta charset="UTF-8" />
-        <!-- Favicon -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
@@ -1960,6 +1935,12 @@ try {
             </div>
         <?php endif; ?>
 
+        <!-- Statistics Notice -->
+        <div style="background: #e3f2fd; border: 1px solid #1976d2; border-radius: 8px; padding: 12px 16px; margin-bottom: 1.5rem; color: #0d47a1;">
+            <i class="fas fa-info-circle" style="margin-right: 8px; color: #1976d2;"></i>
+            <strong>Current Month Filter:</strong> The statistics and table below show only referrals you issued in <?php echo date('F Y'); ?>.
+        </div>
+
         <!-- Statistics -->
         <div class="stats-grid">
             <div class="stat-card total">
@@ -1993,19 +1974,9 @@ try {
             </div>
             <form method="GET" class="filters-grid">
                 <div class="form-group">
-                    <label for="patient_id">Patient ID</label>
-                    <input type="text" id="patient_id" name="patient_id" value="<?php echo htmlspecialchars($patient_id); ?>"
-                        placeholder="Enter patient ID...">
-                </div>
-                <div class="form-group">
-                    <label for="first_name">First Name</label>
-                    <input type="text" id="first_name" name="first_name" value="<?php echo htmlspecialchars($first_name); ?>"
-                        placeholder="Enter first name...">
-                </div>
-                <div class="form-group">
-                    <label for="last_name">Last Name</label>
-                    <input type="text" id="last_name" name="last_name" value="<?php echo htmlspecialchars($last_name); ?>"
-                        placeholder="Enter last name...">
+                    <label for="patient_search">Patient Search</label>
+                    <input type="text" id="patient_search" name="patient_search" value="<?php echo htmlspecialchars($patient_search); ?>"
+                        placeholder="Search by Patient ID, First Name, or Last Name...">
                 </div>
                 <div class="form-group">
                     <label for="barangay">Barangay</label>
@@ -2056,7 +2027,7 @@ try {
                         <h3>No Referrals Found</h3>
                         <p>No referrals match your current search criteria.</p>
                         <?php if ($canCreateReferrals): ?>
-                            <a href="create_referrals.php" class="btn btn-primary">Create First Referral</a>
+                            <a href="create_referrals.php" class="btn btn-primary" style="margin-top: 20px;">Create First Referral</a>
                         <?php endif; ?>
                     </div>
                 <?php else: ?>

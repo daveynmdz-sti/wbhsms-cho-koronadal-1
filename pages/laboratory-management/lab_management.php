@@ -9,6 +9,7 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 // Use absolute path resolution
 $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
+require_once $root_path . '/config/auth_helpers.php';
 include $root_path . '/config/db.php';
 
 // Use relative path for assets - more reliable than absolute URLs
@@ -43,8 +44,7 @@ if (!$canViewLab) {
         9 => 'laboratory_tech'
     ];
     $role = $roleMap[$role_id] ?? 'employee';
-    header("Location: ../management/$role/dashboard.php");
-    exit();
+    redirect_to_dashboard($role);
 }
 
 // Handle AJAX requests for search and filter
@@ -1756,7 +1756,11 @@ try {
     <section class="content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb" style="margin-top: 50px;">
-            <a href="../management/admin/dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+            <?php
+            $user_role = strtolower($_SESSION['role']);
+            $dashboard_path = get_role_dashboard_url($user_role);
+            ?>
+            <a href="<?php echo htmlspecialchars($dashboard_path); ?>"><i class="fas fa-home"></i> Dashboard</a>
             <i class="fas fa-chevron-right"></i>
             <span>Laboratory Management</span>
         </div>

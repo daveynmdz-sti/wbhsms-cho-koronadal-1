@@ -49,7 +49,7 @@ if (!function_exists('is_localhost')) {
  */
 if (!function_exists('get_employee_login_url')) {
     function get_employee_login_url($message = '') {
-        $base_url = defined('WBHSMS_BASE_URL') ? WBHSMS_BASE_URL : '';
+        $base_url = get_base_url();
         $login_url = $base_url . '/pages/management/auth/employee_login.php';
         
         if ($message) {
@@ -67,7 +67,7 @@ if (!function_exists('get_employee_login_url')) {
  */
 if (!function_exists('get_role_dashboard_url')) {
     function get_role_dashboard_url($role) {
-        $base_url = defined('WBHSMS_BASE_URL') ? WBHSMS_BASE_URL : '';
+        $base_url = get_base_url();
         $role = strtolower($role);
         
         switch ($role) {
@@ -217,6 +217,55 @@ if (!function_exists('check_session_timeout')) {
                 set_employee_session('last_activity', time());
             }
         }
+    }
+}
+
+/**
+ * Production-safe redirect to role dashboard with proper URL handling
+ * Use this instead of relative paths like '../management/role/dashboard.php'
+ * @param string $role Optional role override
+ */
+if (!function_exists('redirect_to_dashboard')) {
+    function redirect_to_dashboard($role = null) {
+        // Clear output buffer before redirect
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        $user_role = $role ?: (isset($_SESSION['role']) ? $_SESSION['role'] : 'admin');
+        $dashboard_url = get_role_dashboard_url($user_role);
+        
+        // Log redirect for debugging
+        error_log('[Auth] Redirecting to role dashboard: ' . $user_role . ' -> ' . $dashboard_url);
+        
+        header('Location: ' . $dashboard_url);
+        exit();
+    }
+}
+
+/**
+ * Get production-safe base URL for the application
+ * @return string
+ */
+if (!function_exists('get_base_url')) {
+    function get_base_url() {
+        $base_url = defined('WBHSMS_BASE_URL') ? WBHSMS_BASE_URL : '';
+        
+        // If no base URL defined, construct it
+        if (empty($base_url)) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            
+            // For development (localhost with project folder)
+            if (strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false) {
+                $base_url = $protocol . $host . '/wbhsms-cho-koronadal-1';
+            } else {
+                // For production (assume project is at root)
+                $base_url = $protocol . $host;
+            }
+        }
+        
+        return rtrim($base_url, '/');
     }
 }
 ?>

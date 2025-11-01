@@ -126,11 +126,10 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'medical_print' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-print"></i> Medical Record Printing
         </a>
-        -->
         <a href="<?= $nav_base ?>management/bhw/appointments_management.php"
             class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-calendar-check"></i> Appointments Management
-        </a>
+        </a>-->
         <a href="<?= $nav_base ?>appointment/appointments_management.php"
             class="<?= $activePage === 'my_facility_appointments' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-calendar-alt"></i> My Facility Appointments

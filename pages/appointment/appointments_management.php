@@ -57,12 +57,13 @@ try {
     $stmt->execute();
     $result = $stmt->get_result();
     $row = $result->fetch_assoc();
-    if ($row) {
+    if ($row && isset($row['name']) && !empty($row['name'])) {
         $facility_name = $row['name'];
     }
     $stmt->close();
 } catch (Exception $e) {
     // Keep default facility name if query fails
+    error_log("Failed to get facility name for employee ID {$employee_id}: " . $e->getMessage());
 }
 
 // Define role-based permissions for appointments management
@@ -156,25 +157,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Appointment not found or not in confirmed status.");
             }
 
+            // Determine attendance status based on check-in time vs scheduled time
+            $scheduled_datetime = $appointment_data['scheduled_date'] . ' ' . $appointment_data['scheduled_time'];
+            $scheduled_timestamp = strtotime($scheduled_datetime);
+            $current_timestamp = time();
+
+            $attendance_status = 'on_time'; // default
+
+            // Check if early (before scheduled time)
+            if ($current_timestamp < $scheduled_timestamp) {
+                $attendance_status = 'early';
+            }
+            // Check if late (after the scheduled hour)
+            else if ($current_timestamp > ($scheduled_timestamp + 3600)) { // 3600 seconds = 1 hour
+                $attendance_status = 'late';
+            }
+            // Otherwise it's on_time (within the scheduled hour)
+
             // Update appointment status to checked_in
             $update_stmt = $conn->prepare("UPDATE appointments SET status = 'checked_in' WHERE appointment_id = ?");
             $update_stmt->bind_param("i", $appointment_id);
             $update_stmt->execute();
 
-            // Create new visit record
-            $visit_stmt = $conn->prepare("INSERT INTO visits (patient_id, facility_id, appointment_id, visit_date, time_in, attending_employee_id, visit_status, attendance_status) VALUES (?, ?, ?, CURDATE(), NOW(), ?, 'ongoing', 'on_time')");
-            $visit_stmt->bind_param("iiii", $appointment_data['patient_id'], $appointment_data['facility_id'], $appointment_id, $employee_id);
+            // Create new visit record with smart attendance status
+            $visit_stmt = $conn->prepare("INSERT INTO visits (patient_id, facility_id, appointment_id, visit_date, time_in, attending_employee_id, visit_status, attendance_status) VALUES (?, ?, ?, CURDATE(), NOW(), ?, 'ongoing', ?)");
+            $visit_stmt->bind_param("iiiis", $appointment_data['patient_id'], $appointment_data['facility_id'], $appointment_id, $employee_id, $attendance_status);
             $visit_stmt->execute();
 
             $visit_id = $conn->insert_id;
 
             // Log the check-in in appointment_logs
-            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'updated', 'confirmed', 'checked_in', 'Patient checked in for appointment', 'employee', ?)");
-            $log_stmt->bind_param("iii", $appointment_id, $appointment_data['patient_id'], $employee_id);
+            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'updated', 'confirmed', 'checked_in', ?, 'employee', ?)");
+            $log_reason = "Patient checked in for appointment - Attendance: " . ucfirst($attendance_status);
+            $log_stmt->bind_param("iisi", $appointment_id, $appointment_data['patient_id'], $log_reason, $employee_id);
             $log_stmt->execute();
 
             $conn->commit();
-            $message = "Patient " . htmlspecialchars($appointment_data['first_name'] . ' ' . $appointment_data['last_name']) . " checked in successfully. Visit ID: " . $visit_id;
+            $message = "Patient " . htmlspecialchars($appointment_data['first_name'] . ' ' . $appointment_data['last_name']) . " checked in successfully. Visit ID: " . $visit_id . " (Attendance: " . ucfirst($attendance_status) . ")";
         } catch (Exception $e) {
             $conn->rollback();
             $error = "Failed to check in patient: " . $e->getMessage();
@@ -221,6 +240,103 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Failed to complete patient visit: " . $e->getMessage();
         }
     }
+
+    // Handle automatic cancellation for appointments after 5 PM
+    if ($action === 'auto_cancel_late_appointments') {
+        try {
+            $conn->begin_transaction();
+            $current_time = date('H:i:s');
+            $current_date = date('Y-m-d');
+            $cancelled_count = 0;
+
+            // Only run if it's after 5 PM (17:00)
+            if ($current_time >= '17:00:00') {
+                // Handle confirmed appointments (no show)
+                $confirmed_stmt = $conn->prepare("
+                    SELECT a.appointment_id, a.patient_id, a.facility_id, a.scheduled_date, a.scheduled_time,
+                           p.first_name, p.last_name
+                    FROM appointments a 
+                    JOIN patients p ON a.patient_id = p.patient_id
+                    WHERE a.status = 'confirmed' 
+                    AND DATE(a.scheduled_date) = ?
+                ");
+                $confirmed_stmt->bind_param("s", $current_date);
+                $confirmed_stmt->execute();
+                $confirmed_result = $confirmed_stmt->get_result();
+
+                while ($apt = $confirmed_result->fetch_assoc()) {
+                    // Update appointment to cancelled
+                    $cancel_reason = "No show - Patient did not arrive by closing time";
+                    $update_apt = $conn->prepare("UPDATE appointments SET status = 'cancelled', cancellation_reason = ? WHERE appointment_id = ?");
+                    $update_apt->bind_param("si", $cancel_reason, $apt['appointment_id']);
+                    $update_apt->execute();
+
+                    // Create visit record for no show
+                    $visit_stmt = $conn->prepare("INSERT INTO visits (patient_id, facility_id, appointment_id, visit_date, time_in, attending_employee_id, visit_status, attendance_status, remarks) VALUES (?, ?, ?, ?, NOW(), ?, 'cancelled', 'no_show', ?)");
+                    $visit_stmt->bind_param("iiisis", $apt['patient_id'], $apt['facility_id'], $apt['appointment_id'], $current_date, $employee_id, $cancel_reason);
+                    $visit_stmt->execute();
+
+                    // Log the cancellation
+                    $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'cancelled', 'confirmed', 'cancelled', ?, 'system', ?)");
+                    $log_stmt->bind_param("iisi", $apt['appointment_id'], $apt['patient_id'], $cancel_reason, $employee_id);
+                    $log_stmt->execute();
+
+                    $cancelled_count++;
+                }
+
+                // Handle checked_in appointments (left early)
+                $checkedin_stmt = $conn->prepare("
+                    SELECT a.appointment_id, a.patient_id, a.facility_id, a.scheduled_date, a.scheduled_time,
+                           p.first_name, p.last_name, v.visit_id
+                    FROM appointments a 
+                    JOIN patients p ON a.patient_id = p.patient_id
+                    LEFT JOIN visits v ON a.appointment_id = v.appointment_id
+                    WHERE a.status = 'checked_in' 
+                    AND DATE(a.scheduled_date) = ?
+                ");
+                $checkedin_stmt->bind_param("s", $current_date);
+                $checkedin_stmt->execute();
+                $checkedin_result = $checkedin_stmt->get_result();
+
+                while ($apt = $checkedin_result->fetch_assoc()) {
+                    // Update appointment to cancelled
+                    $cancel_reason = "Left early - Patient left before completing visit";
+                    $update_apt = $conn->prepare("UPDATE appointments SET status = 'cancelled', cancellation_reason = ? WHERE appointment_id = ?");
+                    $update_apt->bind_param("si", $cancel_reason, $apt['appointment_id']);
+                    $update_apt->execute();
+
+                    if ($apt['visit_id']) {
+                        // Update existing visit record
+                        $update_visit = $conn->prepare("UPDATE visits SET time_out = NOW(), visit_status = 'cancelled', attendance_status = 'left_early', remarks = ? WHERE visit_id = ?");
+                        $update_visit->bind_param("si", $cancel_reason, $apt['visit_id']);
+                        $update_visit->execute();
+                    } else {
+                        // Create visit record if doesn't exist
+                        $visit_stmt = $conn->prepare("INSERT INTO visits (patient_id, facility_id, appointment_id, visit_date, time_in, time_out, attending_employee_id, visit_status, attendance_status, remarks) VALUES (?, ?, ?, ?, NOW(), NOW(), ?, 'cancelled', 'left_early', ?)");
+                        $visit_stmt->bind_param("iiisis", $apt['patient_id'], $apt['facility_id'], $apt['appointment_id'], $current_date, $employee_id, $cancel_reason);
+                        $visit_stmt->execute();
+                    }
+
+                    // Log the cancellation
+                    $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'cancelled', 'checked_in', 'cancelled', ?, 'system', ?)");
+                    $log_stmt->bind_param("iisi", $apt['appointment_id'], $apt['patient_id'], $cancel_reason, $employee_id);
+                    $log_stmt->execute();
+
+                    $cancelled_count++;
+                }
+            }
+
+            $conn->commit();
+            if ($cancelled_count > 0) {
+                $message = "Automatically cancelled {$cancelled_count} late appointment(s) after closing time.";
+            } else {
+                $message = "No late appointments found to cancel.";
+            }
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Failed to auto-cancel late appointments: " . $e->getMessage();
+        }
+    }
 }
 
 // Get filter parameters  
@@ -254,45 +370,24 @@ $where_conditions = [];
 $params = [];
 $param_types = '';
 
-// Role-based appointment restriction
+// Role-based appointment restriction - All employees should only see appointments for their assigned facility
 $role = strtolower($employee_role);
-$assigned_district = '';
 $assigned_facility_id = '';
 
-if ($role === 'dho') {
-    // Get district_id from facilities table based on employee's facility_id
-    $stmt = $conn->prepare("SELECT f.district_id FROM employees e JOIN facilities f ON e.facility_id = f.facility_id WHERE e.employee_id = ?");
-    $stmt->bind_param("i", $employee_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $assigned_district = $row ? $row['district_id'] : '';
-    $stmt->close();
+// Get employee's facility_id for all roles (including DHO)
+$stmt = $conn->prepare("SELECT facility_id FROM employees WHERE employee_id = ?");
+$stmt->bind_param("i", $employee_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$row = $result->fetch_assoc();
+$assigned_facility_id = $row ? $row['facility_id'] : '';
+$stmt->close();
 
-    if ($assigned_district) {
-        // Only show appointments for facilities in this district
-        $where_conditions[] = "f.district_id = ?";
-        $params[] = $assigned_district;
-        $param_types .= 'i';
-    }
-}
-
-if ($role === 'bhw') {
-    // Get facility_id directly from employee record (BHW is assigned to specific facility)
-    $stmt = $conn->prepare("SELECT facility_id FROM employees WHERE employee_id = ?");
-    $stmt->bind_param("i", $employee_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $assigned_facility_id = $row ? $row['facility_id'] : '';
-    $stmt->close();
-
-    if ($assigned_facility_id) {
-        // Only show appointments for this facility
-        $where_conditions[] = "a.facility_id = ?";
-        $params[] = $assigned_facility_id;
-        $param_types .= 'i';
-    }
+// All roles (admin, doctor, nurse, dho, bhw, records_officer) only see appointments for their assigned facility
+if ($assigned_facility_id) {
+    $where_conditions[] = "a.facility_id = ?";
+    $params[] = $assigned_facility_id;
+    $param_types .= 'i';
 }
 
 // General search filter (patient ID, first name, last name)
@@ -322,7 +417,7 @@ if (!empty($date_filter)) {
 } else {
     // Check if any filters are applied to determine if we should show current month only
     $has_active_filters = !empty($search_filter) || !empty($status_filter) || !empty($barangay_filter);
-    
+
     if (!$has_active_filters) {
         // No filters applied - show only current month appointments
         $where_conditions[] = "YEAR(a.scheduled_date) = YEAR(CURDATE()) AND MONTH(a.scheduled_date) = MONTH(CURDATE())";
@@ -355,7 +450,8 @@ try {
     }
     $count_stmt->execute();
     $count_result = $count_stmt->get_result();
-    $total_records = $count_result->fetch_assoc()['total'];
+    $count_row = $count_result->fetch_assoc();
+    $total_records = ($count_row && isset($count_row['total'])) ? $count_row['total'] : 0;
     $count_stmt->close();
 
     $total_pages = ceil($total_records / $per_page);
@@ -430,14 +526,8 @@ try {
     $stats_params = [];
     $stats_types = '';
 
-    // Apply same role-based restrictions to stats
-    if ($role === 'dho' && !empty($assigned_district)) {
-        $stats_where_conditions[] = "f.district_id = ?";
-        $stats_params[] = $assigned_district;
-        $stats_types .= 'i';
-    }
-
-    if ($role === 'bhw' && !empty($assigned_facility_id)) {
+    // Apply same facility-based restrictions to stats for all roles
+    if (!empty($assigned_facility_id)) {
         $stats_where_conditions[] = "a.facility_id = ?";
         $stats_params[] = $assigned_facility_id;
         $stats_types .= 'i';
@@ -495,16 +585,12 @@ try {
 // Fetch facilities for dropdown (role-based)
 $facilities = [];
 try {
-    if ($role === 'dho' && !empty($assigned_district)) {
-        // DHO can only see facilities in their district
-        $stmt = $conn->prepare("SELECT facility_id, name, district_id FROM facilities WHERE status = 'active' AND district_id = ? ORDER BY name ASC");
-        $stmt->bind_param("i", $assigned_district);
-    } elseif ($role === 'bhw' && !empty($assigned_facility_id)) {
-        // BHW can only see their assigned facility
+    // All roles can only see their assigned facility
+    if (!empty($assigned_facility_id)) {
         $stmt = $conn->prepare("SELECT facility_id, name, district_id FROM facilities WHERE status = 'active' AND facility_id = ? ORDER BY name ASC");
         $stmt->bind_param("i", $assigned_facility_id);
     } else {
-        // Admin and other roles can see all facilities
+        // Fallback - should not happen if employee has valid facility assignment
         $stmt = $conn->prepare("SELECT facility_id, name, district_id FROM facilities WHERE status = 'active' ORDER BY name ASC");
     }
     $stmt->execute();
@@ -519,12 +605,26 @@ try {
 $barangays = [];
 if (in_array($role, ['nurse', 'records_officer', 'dho', 'admin'])) {
     try {
-        if ($role === 'dho' && !empty($assigned_district)) {
-            // DHO can only see barangays in their district
-            $stmt = $conn->prepare("SELECT b.barangay_id, b.barangay_name FROM barangay b WHERE b.district_id = ? ORDER BY b.barangay_name ASC");
-            $stmt->bind_param("i", $assigned_district);
+        // Get the district_id for the employee's facility to show relevant barangays
+        if (!empty($assigned_facility_id)) {
+            $stmt = $conn->prepare("SELECT f.district_id FROM facilities f WHERE f.facility_id = ?");
+            $stmt->bind_param("i", $assigned_facility_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $row = $result->fetch_assoc();
+            $facility_district_id = $row ? $row['district_id'] : '';
+            $stmt->close();
+
+            if ($facility_district_id) {
+                // Show barangays in the same district as the employee's facility
+                $stmt = $conn->prepare("SELECT b.barangay_id, b.barangay_name FROM barangay b WHERE b.district_id = ? ORDER BY b.barangay_name ASC");
+                $stmt->bind_param("i", $facility_district_id);
+            } else {
+                // Fallback - show all barangays if district not found
+                $stmt = $conn->prepare("SELECT b.barangay_id, b.barangay_name FROM barangay b ORDER BY b.barangay_name ASC");
+            }
         } else {
-            // Nurse, Records Officer, and Admin can see all barangays
+            // Fallback - show all barangays if facility not assigned
             $stmt = $conn->prepare("SELECT b.barangay_id, b.barangay_name FROM barangay b ORDER BY b.barangay_name ASC");
         }
         $stmt->execute();
@@ -536,7 +636,36 @@ if (in_array($role, ['nurse', 'records_officer', 'dho', 'admin'])) {
     }
 }
 
-// Helper function to generate sort icons
+// Auto-check for late appointments if it's after 5 PM
+$current_hour = (int)date('H');
+$should_auto_cancel = false;
+$auto_cancel_count = 0;
+
+if ($current_hour >= 17) { // After 5 PM
+    try {
+        $current_date = date('Y-m-d');
+
+        // Count appointments that need auto-cancellation
+        $count_stmt = $conn->prepare("
+            SELECT COUNT(*) as total
+            FROM appointments a 
+            WHERE (a.status = 'confirmed' OR a.status = 'checked_in') 
+            AND DATE(a.scheduled_date) = ?
+        ");
+        $count_stmt->bind_param("s", $current_date);
+        $count_stmt->execute();
+        $count_result = $count_stmt->get_result();
+        $count_row = $count_result->fetch_assoc();
+        $auto_cancel_count = ($count_row && isset($count_row['total'])) ? $count_row['total'] : 0;
+        $count_stmt->close();
+
+        if ($auto_cancel_count > 0) {
+            $should_auto_cancel = true;
+        }
+    } catch (Exception $e) {
+        // Silent fail for auto-check
+    }
+}
 function getSortIcon($column, $current_sort, $current_direction)
 {
     if ($column === $current_sort) {
@@ -593,7 +722,7 @@ function getSortIcon($column, $current_sort, $current_direction)
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
             transition: left 0.5s;
         }
 
@@ -614,9 +743,17 @@ function getSortIcon($column, $current_sort, $current_direction)
         }
 
         @keyframes pulse-warning {
-            0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
-            70% { box-shadow: 0 0 0 6px rgba(255, 193, 7, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 6px rgba(255, 193, 7, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+            }
         }
 
         .page-header {
@@ -1210,6 +1347,34 @@ function getSortIcon($column, $current_sort, $current_direction)
             color: #444;
         }
 
+        /* Scrollable modal body for appointment details */
+        #viewAppointmentModal .modal-body {
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 30px;
+            line-height: 1.6;
+            color: #444;
+        }
+
+        /* Custom scrollbar for appointment modal */
+        #viewAppointmentModal .modal-body::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #viewAppointmentModal .modal-body::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        #viewAppointmentModal .modal-body::-webkit-scrollbar-thumb {
+            background: #0077b6;
+            border-radius: 4px;
+        }
+
+        #viewAppointmentModal .modal-body::-webkit-scrollbar-thumb:hover {
+            background: #005a87;
+        }
+
         .modal-body .form-group {
             margin-bottom: 25px;
         }
@@ -1755,6 +1920,101 @@ function getSortIcon($column, $current_sort, $current_direction)
                 opacity: 1;
             }
         }
+
+        /* Modal appointment details styling */
+        .appointment-details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .details-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .details-section h4 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 8px;
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+            gap: 10px;
+            text-align: left;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 14px;
+            min-width: 120px;
+            flex-shrink: 0;
+        }
+
+        .detail-value {
+            color: #495057;
+            font-size: 14px;
+            text-align: right;
+            flex-grow: 1;
+            word-break: break-word;
+        }
+
+        .detail-value.highlight {
+            background: linear-gradient(45deg, #e3f2fd, #bbdefb);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            color: #1565c0;
+        }
+
+        .vitals-group {
+            background: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 12px;
+        }
+
+        .vitals-group h6 {
+            margin: 0 0 8px 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .appointment-details-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .detail-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+
+            .detail-label {
+                min-width: auto;
+            }
+
+            .detail-value {
+                text-align: left;
+            }
+        }
     </style>
 </head>
 
@@ -1791,33 +2051,11 @@ function getSortIcon($column, $current_sort, $current_direction)
             <!-- Breadcrumb Navigation -->
             <div class="breadcrumb" style="margin-top: 50px;">
                 <?php
-                // Role-specific dashboard link
+                // Use production-safe dashboard URLs
                 $user_role = strtolower($_SESSION['role']);
-                switch ($user_role) {
-                    case 'dho':
-                        $dashboard_path = '../management/dho/dashboard.php';
-                        break;
-                    case 'bhw':
-                        $dashboard_path = '../management/bhw/dashboard.php';
-                        break;
-                    case 'doctor':
-                        $dashboard_path = '../management/doctor/dashboard.php';
-                        break;
-                    case 'nurse':
-                        $dashboard_path = '../management/nurse/dashboard.php';
-                        break;
-                    case 'records_officer':
-                        $dashboard_path = '../management/records_officer/dashboard.php';
-                        break;
-                    case 'admin':
-                        $dashboard_path = '../management/admin/dashboard.php';
-                        break;
-                    default:
-                        $dashboard_path = '../dashboard.php';
-                        break;
-                }
+                $dashboard_path = get_role_dashboard_url($user_role);
                 ?>
-                <a href="<?php echo $dashboard_path; ?>"><i class="fas fa-home"></i> Dashboard</a>
+                <a href="<?php echo htmlspecialchars($dashboard_path); ?>"><i class="fas fa-home"></i> Dashboard</a>
                 <i class="fas fa-chevron-right"></i>
                 <span><?php echo htmlspecialchars($facility_name); ?> Appointments</span>
             </div>
@@ -1841,15 +2079,31 @@ function getSortIcon($column, $current_sort, $current_direction)
             <!-- Statistics Notice -->
             <div style="background: #e3f2fd; border: 1px solid #1976d2; border-radius: 8px; padding: 12px 16px; margin-bottom: 1.5rem; color: #0d47a1;">
                 <i class="fas fa-info-circle" style="margin-right: 8px; color: #1976d2;"></i>
-                <strong>Current Month Statistics:</strong> The statistics below show appointment counts for <?php echo date('F Y'); ?> only.
+                <strong>Current Month Statistics:</strong> The statistics and table below show appointments made for <?php echo htmlspecialchars($facility_name); ?> on <?php echo date('F Y'); ?> only.
             </div>
+
+            <?php if ($should_auto_cancel): ?>
+                <!-- Auto-Cancellation Notice -->
+                <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 12px 16px; margin-bottom: 1.5rem; color: #856404; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <i class="fas fa-exclamation-triangle" style="margin-right: 8px; color: #ffc107;"></i>
+                        <strong>Late Appointments Detected:</strong> Found <?php echo $auto_cancel_count; ?> appointment(s) from today that may need cancellation after closing time (5 PM).
+                    </div>
+                    <form method="POST" style="margin: 0;">
+                        <input type="hidden" name="action" value="auto_cancel_late_appointments">
+                        <button type="submit" class="btn btn-warning btn-sm" style="padding: 8px 16px; font-size: 12px;">
+                            <i class="fas fa-clock"></i> Auto-Cancel Late Appointments
+                        </button>
+                    </form>
+                </div>
+            <?php endif; ?>
 
             <!-- Statistics -->
             <div class="stats-grid">
-                <!--<div class="stat-card total">
+                <div class="stat-card total">
                     <div class="stat-number"><?php echo $stats['total']; ?></div>
                     <div class="stat-label">Total Appointments</div>
-                </div>-->
+                </div>
                 <div class="stat-card confirmed">
                     <div class="stat-number"><?php echo $stats['confirmed']; ?></div>
                     <div class="stat-label">Confirmed</div>
@@ -1909,7 +2163,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                                 <?php foreach ($barangays as $barangay): ?>
                                     <option value="<?php echo $barangay['barangay_id']; ?>"
                                         <?php echo $barangay_filter == $barangay['barangay_id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($barangay['name']); ?>
+                                        <?php echo htmlspecialchars($barangay['barangay_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -1951,29 +2205,29 @@ function getSortIcon($column, $current_sort, $current_direction)
                             <table class="table">
                                 <thead>
                                     <tr>
-                                        <th class="sortable" onclick="sortTable('patient_name')">
-                                            Patient
-                                            <?php echo getSortIcon('patient_name', $sort_column, $sort_direction); ?>
+                                        <th class="sortable" onclick="sortTable('appointment_id')">
+                                            Appointment ID
+                                            <?php echo getSortIcon('appointment_id', $sort_column, $sort_direction); ?>
                                         </th>
                                         <th class="sortable" onclick="sortTable('patient_id')">
                                             Patient ID
                                             <?php echo getSortIcon('patient_id', $sort_column, $sort_direction); ?>
                                         </th>
+                                        <th class="sortable" onclick="sortTable('patient_name')">
+                                            Patient Name
+                                            <?php echo getSortIcon('patient_name', $sort_column, $sort_direction); ?>
+                                        </th>
                                         <th class="sortable" onclick="sortTable('scheduled_date')">
-                                            Date
+                                            Scheduled Date
                                             <?php echo getSortIcon('scheduled_date', $sort_column, $sort_direction); ?>
                                         </th>
                                         <th class="sortable" onclick="sortTable('scheduled_time')">
-                                            Time Slot
+                                            Scheduled Time
                                             <?php echo getSortIcon('scheduled_time', $sort_column, $sort_direction); ?>
                                         </th>
                                         <th class="sortable" onclick="sortTable('status')">
                                             Status
                                             <?php echo getSortIcon('status', $sort_column, $sort_direction); ?>
-                                        </th>
-                                        <th class="sortable" onclick="sortTable('facility_name')">
-                                            Facility
-                                            <?php echo getSortIcon('facility_name', $sort_column, $sort_direction); ?>
                                         </th>
                                         <th>Actions</th>
                                     </tr>
@@ -1981,6 +2235,8 @@ function getSortIcon($column, $current_sort, $current_direction)
                                 <tbody>
                                     <?php foreach ($appointments as $appointment): ?>
                                         <tr data-appointment-id="<?php echo $appointment['appointment_id']; ?>">
+                                            <td><strong><?php echo 'APT-' . str_pad($appointment['appointment_id'], 8, '0', STR_PAD_LEFT); ?></strong></td>
+                                            <td><?php echo htmlspecialchars($appointment['patient_id_display']); ?></td>
                                             <td>
                                                 <div style="display: flex; align-items: center; gap: 10px;">
                                                     <img src="<?php echo $assets_path; ?>/images/user-default.png"
@@ -1993,7 +2249,6 @@ function getSortIcon($column, $current_sort, $current_direction)
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td><?php echo htmlspecialchars($appointment['patient_id_display']); ?></td>
                                             <td><?php echo date('M j, Y', strtotime($appointment['scheduled_date'])); ?></td>
                                             <td>
                                                 <span class="time-slot"><?php echo date('g:i A', strtotime($appointment['scheduled_time'])); ?></span>
@@ -2023,7 +2278,6 @@ function getSortIcon($column, $current_sort, $current_direction)
                                                     <?php echo ucfirst(htmlspecialchars($appointment['status'])); ?>
                                                 </span>
                                             </td>
-                                            <td><?php echo htmlspecialchars($appointment['facility_name']); ?></td>
                                             <td>
                                                 <div class="actions-group">
                                                     <button onclick="viewAppointment(<?php echo $appointment['appointment_id']; ?>)"
@@ -2041,7 +2295,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                                                             <?php if (!empty($appointment['vitals_id'])): ?>
                                                                 <!-- Vitals already recorded - show edit/view button -->
                                                                 <button onclick="viewEditVitals(<?php echo $appointment['appointment_id']; ?>, <?php echo $appointment['patient_id']; ?>, <?php echo $appointment['vitals_id']; ?>)"
-                                                                    class="btn btn-sm btn-success vitals-recorded" title="View/Edit Vitals (Recorded: <?php echo date('M j, g:i A', strtotime($appointment['vitals_recorded_at'])); ?>)" 
+                                                                    class="btn btn-sm btn-success vitals-recorded" title="View/Edit Vitals (Recorded: <?php echo date('M j, g:i A', strtotime($appointment['vitals_recorded_at'])); ?>)"
                                                                     data-vitals-id="<?php echo htmlspecialchars($appointment['vitals_id']); ?>">
                                                                     <i class="fas fa-heartbeat"></i> ✓
                                                                 </button>
@@ -2143,7 +2397,7 @@ function getSortIcon($column, $current_sort, $current_direction)
 
         <!-- View Appointment Modal -->
         <div id="viewAppointmentModal" class="modal">
-            <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-content" style="max-width: 900px;">
                 <div class="modal-header">
                     <h3><i class="fas fa-calendar-check"></i> Appointment Details</h3>
                     <button type="button" class="close" onclick="closeModal('viewAppointmentModal')">&times;</button>
@@ -2152,6 +2406,9 @@ function getSortIcon($column, $current_sort, $current_direction)
                     <!-- Content will be loaded here -->
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="printAppointmentDetails()">
+                        <i class="fas fa-print"></i> Print Details
+                    </button>
                     <button type="button" class="btn btn-secondary" onclick="closeModal('viewAppointmentModal')">Close</button>
                 </div>
             </div>
@@ -2467,12 +2724,20 @@ function getSortIcon($column, $current_sort, $current_direction)
                         }
                         // Get the response text first to debug JSON parsing issues
                         return response.text().then(text => {
+                            // Debug: Log raw response for troubleshooting
+                            console.log('Raw API Response:', text);
+                            console.log('Response length:', text.length);
+                            
+                            if (!text || text.trim() === '') {
+                                throw new Error('Empty response from server');
+                            }
+                            
                             try {
                                 return JSON.parse(text);
                             } catch (e) {
                                 console.error('JSON Parse Error:', e);
                                 console.error('Response Text:', text);
-                                throw new Error(`Invalid JSON response: ${text.substring(0, 100)}...`);
+                                throw new Error(`Invalid JSON response: ${text.substring(0, 200)}...`);
                             }
                         });
                     })
@@ -2502,7 +2767,229 @@ function getSortIcon($column, $current_sort, $current_direction)
             `;
             }
 
+            function formatAttendanceStatus(status) {
+                if (!status) return null;
+
+                const statusMap = {
+                    'early': 'Early Arrival',
+                    'on_time': 'On Time',
+                    'late': 'Late Arrival',
+                    'no_show': 'No Show',
+                    'left_early': 'Left Early'
+                };
+
+                return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1);
+            }
+
+            // Helper functions to generate vital status indicators for appointment details
+            function getBloodPressureStatus(systolic, diastolic) {
+                if (!systolic && !diastolic) return '';
+
+                let status = '';
+                let className = '';
+                let icon = '';
+
+                if (systolic && diastolic) {
+                    // Both values present - full assessment
+                    if (systolic >= 180 || diastolic >= 120) {
+                        status = 'CRITICAL HIGH';
+                        className = 'critical';
+                        icon = '⚠️';
+                    } else if (systolic >= 140 || diastolic >= 90) {
+                        status = 'HIGH';
+                        className = 'high';
+                        icon = '⬆️';
+                    } else if (systolic < 90 || diastolic < 60) {
+                        status = 'LOW';
+                        className = 'low';
+                        icon = '⬇️';
+                    } else {
+                        status = 'NORMAL';
+                        className = 'normal';
+                        icon = '✓';
+                    }
+                } else if (systolic) {
+                    // Only systolic
+                    if (systolic >= 180) {
+                        status = 'SYS CRITICAL';
+                        className = 'critical';
+                        icon = '⚠️';
+                    } else if (systolic >= 140) {
+                        status = 'SYS HIGH';
+                        className = 'high';
+                        icon = '⬆️';
+                    } else if (systolic < 90) {
+                        status = 'SYS LOW';
+                        className = 'low';
+                        icon = '⬇️';
+                    } else {
+                        status = 'SYS NORMAL';
+                        className = 'normal';
+                        icon = '✓';
+                    }
+                } else if (diastolic) {
+                    // Only diastolic
+                    if (diastolic >= 120) {
+                        status = 'DIA CRITICAL';
+                        className = 'critical';
+                        icon = '⚠️';
+                    } else if (diastolic >= 90) {
+                        status = 'DIA HIGH';
+                        className = 'high';
+                        icon = '⬆️';
+                    } else if (diastolic < 60) {
+                        status = 'DIA LOW';
+                        className = 'low';
+                        icon = '⬇️';
+                    } else {
+                        status = 'DIA NORMAL';
+                        className = 'normal';
+                        icon = '✓';
+                    }
+                }
+
+                return `<span class="vital-status ${className}" style="margin-left: 8px; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 2px;">${icon} ${status}</span>`;
+            }
+
+            function getHeartRespiratoryStatus(heartRate, respRate) {
+                if (!heartRate && !respRate) return '';
+
+                let status = '';
+                let className = '';
+                let icon = '';
+
+                // Check heart rate (60-100 bpm normal for adults)
+                let heartStatus = '';
+                if (heartRate) {
+                    if (heartRate < 60) {
+                        heartStatus = 'HR LOW';
+                        className = 'low';
+                    } else if (heartRate > 100) {
+                        heartStatus = 'HR HIGH';
+                        className = className === 'low' ? 'high' : (className || 'high');
+                    } else {
+                        heartStatus = 'HR NORMAL';
+                        className = className || 'normal';
+                    }
+                }
+
+                // Check respiratory rate (12-20 breaths/min normal for adults)
+                let respStatus = '';
+                if (respRate) {
+                    if (respRate < 12) {
+                        respStatus = 'RR LOW';
+                        className = className === 'normal' ? 'low' : (className || 'low');
+                    } else if (respRate > 20) {
+                        respStatus = 'RR HIGH';
+                        className = 'high';
+                    } else {
+                        respStatus = 'RR NORMAL';
+                        className = className === 'low' || className === 'high' ? className : 'normal';
+                    }
+                }
+
+                // Combine statuses
+                if (heartStatus && respStatus) {
+                    if (className === 'normal') {
+                        status = 'NORMAL';
+                        icon = '✓';
+                    } else if (className === 'high') {
+                        status = 'ELEVATED';
+                        icon = '⬆️';
+                    } else {
+                        status = 'LOW';
+                        icon = '⬇️';
+                    }
+                } else {
+                    status = heartStatus || respStatus;
+                    icon = className === 'normal' ? '✓' : (className === 'high' ? '⬆️' : '⬇️');
+                }
+
+                return `<span class="vital-status ${className}" style="margin-left: 8px; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 2px;">${icon} ${status}</span>`;
+            }
+
+            function getTemperatureStatus(temp) {
+                if (!temp) return '';
+
+                let status = '';
+                let className = '';
+                let icon = '';
+
+                // Normal temperature range: 36.1°C - 37.2°C (97°F - 99°F)
+                if (temp >= 39.0) {
+                    status = 'HIGH FEVER';
+                    className = 'critical';
+                    icon = '🔥';
+                } else if (temp >= 38.0) {
+                    status = 'FEVER';
+                    className = 'high';
+                    icon = '⬆️';
+                } else if (temp >= 37.3) {
+                    status = 'ELEVATED';
+                    className = 'high';
+                    icon = '⬆️';
+                } else if (temp >= 36.1) {
+                    status = 'NORMAL';
+                    className = 'normal';
+                    icon = '✓';
+                } else if (temp >= 35.0) {
+                    status = 'LOW';
+                    className = 'low';
+                    icon = '⬇️';
+                } else {
+                    status = 'HYPOTHERMIA';
+                    className = 'critical';
+                    icon = '❄️';
+                }
+
+                return `<span class="vital-status ${className}" style="margin-left: 8px; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 2px;">${icon} ${status}</span>`;
+            }
+
+            function getBMIStatus(weight, height) {
+                if (!weight || !height || weight <= 0 || height <= 0) return '';
+
+                const heightInMeters = height / 100;
+                const bmi = (weight / (heightInMeters * heightInMeters)).toFixed(1);
+
+                let status = '';
+                let className = '';
+                let icon = '';
+
+                if (bmi < 18.5) {
+                    status = 'UNDERWEIGHT';
+                    className = 'low';
+                    icon = '⬇️';
+                } else if (bmi < 25) {
+                    status = 'NORMAL BMI';
+                    className = 'normal';
+                    icon = '✓';
+                } else if (bmi < 30) {
+                    status = 'OVERWEIGHT';
+                    className = 'high';
+                    icon = '⬆️';
+                } else if (bmi < 35) {
+                    status = 'OBESE I';
+                    className = 'high';
+                    icon = '⚠️';
+                } else if (bmi < 40) {
+                    status = 'OBESE II';
+                    className = 'critical';
+                    icon = '⚠️';
+                } else {
+                    status = 'OBESE III';
+                    className = 'critical';
+                    icon = '🚨';
+                }
+
+                return `<span class="vital-status ${className}" style="margin-left: 8px; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 2px;">${icon} ${status}</span>`;
+            }
+
             function displayAppointmentDetails(appointment) {
+                // Debug: Log the appointment data to see what we're receiving
+                console.log('Appointment data received:', appointment);
+                console.log('Visit details:', appointment.visit_details);
+                console.log('Vitals data:', appointment.vitals);
+
                 const content = `
                 <div class="appointment-details-grid">
                     <div class="details-section">
@@ -2532,6 +3019,10 @@ function getSortIcon($column, $current_sort, $current_direction)
                     <div class="details-section">
                         <h4><i class="fas fa-calendar"></i> Appointment Details</h4>
                         <div class="detail-item">
+                            <span class="detail-label">Appointment ID:</span>
+                            <span class="detail-value highlight">APT-${appointment.appointment_id ? String(appointment.appointment_id).padStart(8, '0') : 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
                             <span class="detail-label">Date:</span>
                             <span class="detail-value">${appointment.appointment_date || 'N/A'}</span>
                         </div>
@@ -2553,6 +3044,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                         </div>
                     </div>
                 </div>
+                
                 <div class="details-section">
                     <h4><i class="fas fa-file-medical"></i> Referral Information</h4>
                         ${appointment.referral_id ? `
@@ -2572,6 +3064,161 @@ function getSortIcon($column, $current_sort, $current_direction)
                         `}
                 </div>
                 
+                <div class="details-section">
+                    <h4><i class="fas fa-qrcode"></i> QR Code Information</h4>
+                        ${appointment.qr_code_path ? `
+                            <div class="detail-item">
+                                <span class="detail-label">QR Code:</span>
+                                <span class="detail-value" style="color: #28a745; font-weight: 600;">Available</span>
+                            </div>
+                            <div class="detail-item" style="margin-top: 10px;justify-content: center;">
+                                <div class="qr-code-container" style="text-align: center;">
+                                    <img src="data:image/png;base64,${appointment.qr_code_path}" 
+                                         alt="Appointment QR Code">
+                                    <p class="qr-code-description">Scan this QR code for quick appointment access</p>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="detail-item">
+                                <span class="detail-label">QR Code:</span>
+                                <span class="detail-value" style="color: #6c757d;">No QR code generated for this appointment</span>
+                            </div>
+                        `}
+                </div>
+
+                ${((appointment.status || '').toLowerCase() === 'completed' || (appointment.status || '').toLowerCase() === 'cancelled') && appointment.visit_details ? `
+                    <div class="details-section" style="border-left: 4px solid #17a2b8; background: #f8f9fa; margin-top: 20px;">
+                        <h4><i class="fas fa-clipboard-check" style="color: #17a2b8;"></i> Visit Details</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Check-in Time:</span>
+                            <span class="detail-value">${appointment.visit_details.time_in || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Check-out Time:</span>
+                            <span class="detail-value">${appointment.visit_details.time_out || 'Not completed'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Attending Employee:</span>
+                            <span class="detail-value">${appointment.visit_details.attending_employee_name || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Attendance Status:</span>
+                            <span class="detail-value">${formatAttendanceStatus(appointment.visit_details.attendance_status) || 'N/A'}</span>
+                        </div>
+                        ${appointment.visit_details.remarks ? `
+                            <div class="detail-item">
+                                <span class="detail-label">Visit Remarks:</span>
+                                <span class="detail-value">${appointment.visit_details.remarks}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
+
+                ${((appointment.status || '').toLowerCase() === 'completed' || (appointment.status || '').toLowerCase() === 'cancelled') && appointment.vitals ? `
+                    <div class="details-section" style="border-left: 4px solid #28a745; background: #f8fff8; margin-top: 20px;">
+                        <h4><i class="fas fa-heartbeat" style="color: #28a745;"></i> Recorded Vitals</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                            ${appointment.vitals.systolic_bp || appointment.vitals.diastolic_bp ? `
+                                <div class="vitals-group">
+                                    <h6 style="color: #0077b6; margin-bottom: 8px; font-size: 14px;">
+                                        <i class="fas fa-tint"></i> Blood Pressure
+                                        ${getBloodPressureStatus(appointment.vitals.systolic_bp, appointment.vitals.diastolic_bp)}
+                                    </h6>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Systolic:</span>
+                                        <span class="detail-value">${appointment.vitals.systolic_bp || 'N/A'} mmHg</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Diastolic:</span>
+                                        <span class="detail-value">${appointment.vitals.diastolic_bp || 'N/A'} mmHg</span>
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            ${appointment.vitals.heart_rate || appointment.vitals.respiratory_rate ? `
+                                <div class="vitals-group">
+                                    <h6 style="color: #0077b6; margin-bottom: 8px; font-size: 14px;">
+                                        <i class="fas fa-heart"></i> Heart & Respiratory
+                                        ${getHeartRespiratoryStatus(appointment.vitals.heart_rate, appointment.vitals.respiratory_rate)}
+                                    </h6>
+                                    ${appointment.vitals.heart_rate ? `
+                                        <div class="detail-item">
+                                            <span class="detail-label">Heart Rate:</span>
+                                            <span class="detail-value">${appointment.vitals.heart_rate} bpm</span>
+                                        </div>
+                                    ` : ''}
+                                    ${appointment.vitals.respiratory_rate ? `
+                                        <div class="detail-item">
+                                            <span class="detail-label">Respiratory Rate:</span>
+                                            <span class="detail-value">${appointment.vitals.respiratory_rate} breaths/min</span>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                            
+                            ${appointment.vitals.temperature ? `
+                                <div class="vitals-group">
+                                    <h6 style="color: #0077b6; margin-bottom: 8px; font-size: 14px;">
+                                        <i class="fas fa-thermometer-half"></i> Temperature
+                                        ${getTemperatureStatus(appointment.vitals.temperature)}
+                                    </h6>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Temperature:</span>
+                                        <span class="detail-value">${appointment.vitals.temperature}°C</span>
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            ${appointment.vitals.weight || appointment.vitals.height ? `
+                                <div class="vitals-group">
+                                    <h6 style="color: #0077b6; margin-bottom: 8px; font-size: 14px;">
+                                        <i class="fas fa-weight"></i> Physical Measurements
+                                        ${appointment.vitals.weight && appointment.vitals.height ? getBMIStatus(appointment.vitals.weight, appointment.vitals.height) : ''}
+                                    </h6>
+                                    ${appointment.vitals.weight ? `
+                                        <div class="detail-item">
+                                            <span class="detail-label">Weight:</span>
+                                            <span class="detail-value">${appointment.vitals.weight} kg</span>
+                                        </div>
+                                    ` : ''}
+                                    ${appointment.vitals.height ? `
+                                        <div class="detail-item">
+                                            <span class="detail-label">Height:</span>
+                                            <span class="detail-value">${appointment.vitals.height} cm</span>
+                                        </div>
+                                    ` : ''}
+                                    ${appointment.vitals.weight && appointment.vitals.height ? `
+                                        <div class="detail-item">
+                                            <span class="detail-label">BMI:</span>
+                                            <span class="detail-value">${((appointment.vitals.weight / Math.pow(appointment.vitals.height / 100, 2)).toFixed(1))} kg/m²</span>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        ${appointment.vitals.remarks ? `
+                            <div class="detail-item" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e9ecef;">
+                                <span class="detail-label">Vitals Remarks:</span>
+                                <span class="detail-value">${appointment.vitals.remarks}</span>
+                            </div>
+                        ` : ''}
+                        
+                        <div class="detail-item" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e9ecef;">
+                            <span class="detail-label">Recorded At:</span>
+                            <span class="detail-value" style="color: #6c757d; font-size: 0.9em;">${appointment.vitals.recorded_at || 'N/A'}</span>
+                        </div>
+                    </div>
+                ` : (((appointment.status || '').toLowerCase() === 'completed' || (appointment.status || '').toLowerCase() === 'cancelled')) ? `
+                    <div class="details-section" style="border-left: 4px solid #ffc107; background: #fffef7; margin-top: 20px;">
+                        <h4><i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i> Vitals Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Vitals Status:</span>
+                            <span class="detail-value" style="color: #856404;">No vitals were recorded for this visit</span>
+                        </div>
+                    </div>
+                ` : ''}
+                
                 ${appointment.cancel_reason ? `
                     <div class="details-section" style="border-left: 4px solid #dc3545; background: #fff5f5; margin-top: 20px;">
                         <h4><i class="fas fa-times-circle" style="color: #dc3545;"></i> Cancellation Details</h4>
@@ -2588,6 +3235,296 @@ function getSortIcon($column, $current_sort, $current_direction)
             `;
 
                 document.getElementById('appointmentDetailsContent').innerHTML = content;
+            }
+
+            function printAppointmentDetails() {
+                // Get the appointment details content
+                const modalContent = document.getElementById('appointmentDetailsContent').innerHTML;
+                const facilityName = "<?php echo htmlspecialchars($facility_name); ?>";
+                const currentDate = new Date().toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                const currentTime = new Date().toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                // Create a new window for printing
+                const printWindow = window.open('', '_blank', 'width=800,height=600');
+
+                // Write the print content
+                printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Appointment Details - ${facilityName}</title>
+                        <style>
+                            body {
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                margin: 0;
+                                padding: 15px;
+                                color: #333;
+                                line-height: 1.4;
+                                font-size: 12px;
+                            }
+                            .print-header {
+                                text-align: center;
+                                border-bottom: 2px solid #0077b6;
+                                padding-bottom: 10px;
+                                margin-bottom: 15px;
+                            }
+                            .print-header h1 {
+                                color: #0077b6;
+                                margin: 0 0 5px 0;
+                                font-size: 22px;
+                                font-weight: 600;
+                            }
+                            .print-header h2 {
+                                color: #666;
+                                margin: 0 0 3px 0;
+                                font-size: 16px;
+                                font-weight: 400;
+                            }
+                            .print-date {
+                                color: #888;
+                                font-size: 11px;
+                                margin-top: 5px;
+                            }
+                            .appointment-details-grid {
+                                display: grid;
+                                grid-template-columns: 1fr 1fr;
+                                gap: 10px;
+                                margin-bottom: 10px;
+                            }
+                            .details-section {
+                                background: #f8f9fa;
+                                border: 1px solid #e9ecef;
+                                border-radius: 4px;
+                                padding: 8px;
+                                margin-bottom: 8px;
+                                break-inside: avoid;
+                            }
+                            .details-section h4 {
+                                margin: 0 0 8px 0;
+                                color: #0077b6;
+                                font-size: 13px;
+                                font-weight: 600;
+                                border-bottom: 1px solid #e9ecef;
+                                padding-bottom: 4px;
+                                display: flex;
+                                align-items: center;
+                                gap: 4px;
+                            }
+                            .detail-item {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: flex-start;
+                                margin-bottom: 4px;
+                                gap: 8px;
+                            }
+                            .detail-label {
+                                font-weight: 600;
+                                color: #6c757d;
+                                font-size: 11px;
+                                min-width: 80px;
+                                flex-shrink: 0;
+                            }
+                            .detail-value {
+                                color: #495057;
+                                font-size: 11px;
+                                text-align: right;
+                                flex-grow: 1;
+                                word-break: break-word;
+                            }
+                            .detail-value.highlight {
+                                background: #e3f2fd;
+                                padding: 2px 4px;
+                                border-radius: 3px;
+                                font-weight: 600;
+                                color: #1565c0;
+                            }
+                            .vitals-group {
+                                background: #ffffff;
+                                border: 1px solid #e9ecef;
+                                border-radius: 4px;
+                                padding: 6px;
+                                margin-bottom: 6px;
+                            }
+                            .vitals-group h6 {
+                                margin: 0 0 4px 0;
+                                font-weight: 600;
+                                color: #0077b6;
+                                display: flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 11px;
+                            }
+                            .print-footer {
+                                margin-top: 15px;
+                                padding-top: 8px;
+                                border-top: 1px solid #ddd;
+                                text-align: center;
+                                color: #888;
+                                font-size: 9px;
+                            }
+                            
+                            /* QR Code specific styles */
+                            .qr-code-container {
+                                text-align: center;
+                                margin: 10px 0;
+                            }
+                            
+                            .qr-code-container img {
+                                max-width: 120px;
+                                max-height: 120px;
+                                border: 1px solid #ddd;
+                                border-radius: 4px;
+                                display: block;
+                                margin: 0 auto;
+                            }
+                            
+                            .qr-code-description {
+                                margin-top: 5px;
+                                font-size: 10px;
+                                color: #6c757d;
+                                text-align: center;
+                            }
+                            
+                            /* Print-specific styles for single page */
+                            @media print {
+                                @page {
+                                    size: A4;
+                                    margin: 0.5in;
+                                }
+                                body {
+                                    padding: 0;
+                                    font-size: 10px;
+                                    line-height: 1.2;
+                                }
+                                .print-header {
+                                    margin-bottom: 10px;
+                                    padding-bottom: 8px;
+                                }
+                                .print-header h1 {
+                                    font-size: 18px;
+                                    margin-bottom: 3px;
+                                }
+                                .print-header h2 {
+                                    font-size: 14px;
+                                    margin-bottom: 2px;
+                                }
+                                .print-date {
+                                    font-size: 9px;
+                                    margin-top: 3px;
+                                }
+                                .appointment-details-grid {
+                                    grid-template-columns: 1fr 1fr;
+                                    gap: 8px;
+                                    margin-bottom: 8px;
+                                }
+                                .details-section {
+                                    padding: 6px;
+                                    margin-bottom: 6px;
+                                }
+                                .details-section h4 {
+                                    font-size: 11px;
+                                    margin-bottom: 6px;
+                                    padding-bottom: 3px;
+                                }
+                                .detail-item {
+                                    margin-bottom: 3px;
+                                    gap: 6px;
+                                }
+                                .detail-label, .detail-value {
+                                    font-size: 9px;
+                                }
+                                .detail-label {
+                                    min-width: 70px;
+                                }
+                                .vitals-group {
+                                    padding: 4px;
+                                    margin-bottom: 4px;
+                                }
+                                .vitals-group h6 {
+                                    font-size: 9px;
+                                    margin-bottom: 3px;
+                                }
+                                .print-footer {
+                                    margin-top: 10px;
+                                    padding-top: 6px;
+                                    font-size: 8px;
+                                }
+                                .print-footer p {
+                                    margin: 2px 0;
+                                }
+                                
+                                /* Ensure vitals grid is compact */
+                                .details-section[style*="grid"] > div {
+                                    display: grid !important;
+                                    grid-template-columns: 1fr 1fr !important;
+                                    gap: 4px !important;
+                                }
+                                
+                                /* QR Code print styles */
+                                .qr-code-container {
+                                    margin: 8px 0;
+                                }
+                                
+                                .qr-code-container img {
+                                    max-width: 100px;
+                                    max-height: 100px;
+                                }
+                                
+                                .qr-code-description {
+                                    font-size: 8px;
+                                    margin-top: 3px;
+                                }
+                            }
+                            
+                            /* Hide icons in print for cleaner look */
+                            @media print {
+                                .fas, .fa {
+                                    display: none !important;
+                                }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="print-header">
+                            <h1>${facilityName}</h1>
+                            <h2>Appointment Details Report</h2>
+                            <div class="print-date">
+                                Generated on: ${currentDate} at ${currentTime}
+                            </div>
+                        </div>
+                        
+                        <div class="print-content">
+                            ${modalContent}
+                        </div>
+                        
+                        <div class="print-footer">
+                            <p>This document was generated from the ${facilityName} Appointment Management System</p>
+                            <p>For official use only - Contains confidential patient information</p>
+                        </div>
+                    </body>
+                    </html>
+                `);
+
+                printWindow.document.close();
+
+                // Wait for content to load, then print
+                printWindow.onload = function() {
+                    setTimeout(() => {
+                        printWindow.print();
+                        // Close the print window after printing (optional)
+                        printWindow.onafterprint = function() {
+                            printWindow.close();
+                        };
+                    }, 250);
+                };
             }
 
             function cancelAppointment(appointmentId) {
@@ -2651,7 +3588,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                 // Update patient info text - get the display ID from the row
                 const row = document.querySelector(`tr[data-appointment-id="${appointmentId}"]`);
                 const patientDisplayId = row ? row.cells[1].textContent.trim() : patientId;
-                
+
                 // Update modal title for viewing/editing existing vitals
                 const modalTitle = document.querySelector('#addVitalsModal .modal-header h3');
                 modalTitle.innerHTML = '<i class="fas fa-heartbeat"></i> View/Edit Patient Vitals';
@@ -2706,7 +3643,7 @@ function getSortIcon($column, $current_sort, $current_direction)
             function populateVitalsForm(vitals, patientDisplayId) {
                 // Update patient info with recorded time
                 const recordedDate = new Date(vitals.recorded_at);
-                document.getElementById('vitalsPatientInfo').textContent = 
+                document.getElementById('vitalsPatientInfo').textContent =
                     `Vitals for Patient ID: ${patientDisplayId} (Last recorded: ${recordedDate.toLocaleDateString()} ${recordedDate.toLocaleTimeString()})`;
 
                 // Populate form fields
@@ -2779,7 +3716,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                     if (bmiDisplay) {
                         bmiDisplay.style.display = 'block';
                     }
-                    
+
                     // Also update BMI status indicator
                     checkBMIStatus(bmi);
                 } else {
@@ -3113,6 +4050,101 @@ function getSortIcon($column, $current_sort, $current_direction)
                 window.location.href = url.toString();
             }
 
+            // Function to check for late appointments and show notification
+            function checkForLateAppointments() {
+                // Only check if it's after 5 PM and not already showing the notice
+                const currentHour = new Date().getHours();
+                if (currentHour >= 17 && !document.querySelector('.late-appointments-notice')) {
+                    // Check if there are any confirmed or checked_in appointments for today
+                    const todayRows = document.querySelectorAll('table tbody tr');
+                    let lateCount = 0;
+
+                    todayRows.forEach(row => {
+                        const statusCell = row.cells[5]; // Assuming status is in column 6 (index 5)
+                        const dateCell = row.cells[2]; // Assuming date is in column 3 (index 2)
+
+                        if (statusCell && dateCell) {
+                            const status = statusCell.textContent.trim().toLowerCase();
+                            const appointmentDate = dateCell.textContent.trim();
+                            const today = new Date().toLocaleDateString('en-US', {
+                                month: 'long',
+                                day: 'numeric',
+                                year: 'numeric'
+                            });
+
+                            if ((status === 'confirmed' || status === 'checked in') && appointmentDate.includes(today.split(',')[0])) {
+                                lateCount++;
+                            }
+                        }
+                    });
+
+                    if (lateCount > 0) {
+                        showLateAppointmentNotification(lateCount);
+                    }
+                }
+            }
+
+            // Function to show late appointment notification
+            function showLateAppointmentNotification(count) {
+                // Only show if not already displayed
+                if (document.querySelector('.late-appointments-notice')) return;
+
+                const notice = document.createElement('div');
+                notice.className = 'alert alert-warning late-appointments-notice';
+                notice.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 1000; max-width: 400px; margin: 0; box-shadow: 0 8px 25px rgba(0,0,0,0.3);';
+                notice.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <i class="fas fa-clock" style="color: #856404; margin-right: 8px;"></i>
+                            <strong>Late Appointments:</strong> ${count} appointment(s) may need attention after closing time.
+                        </div>
+                        <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; opacity: 0.7; color: inherit; padding: 0; margin-left: 10px;">&times;</button>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button onclick="triggerAutoCancellation()" class="btn btn-warning btn-sm" style="font-size: 12px; padding: 6px 12px;">
+                            <i class="fas fa-exclamation-triangle"></i> Review & Cancel Late Appointments
+                        </button>
+                    </div>
+                `;
+
+                document.body.appendChild(notice);
+
+                // Auto-hide after 15 seconds
+                setTimeout(() => {
+                    if (notice.parentElement) {
+                        notice.style.opacity = '0';
+                        notice.style.transform = 'translateX(100%)';
+                        setTimeout(() => notice.remove(), 300);
+                    }
+                }, 15000);
+            }
+
+            // Function to trigger auto-cancellation via AJAX
+            function triggerAutoCancellation() {
+                if (confirm('This will automatically cancel all confirmed appointments (as no-show) and checked-in appointments (as left early) from today after 5 PM. Continue?')) {
+                    const formData = new FormData();
+                    formData.append('action', 'auto_cancel_late_appointments');
+
+                    fetch(window.location.href, {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.text())
+                        .then(() => {
+                            showSuccessMessage('Late appointments have been automatically cancelled.');
+                            // Remove the notification
+                            const notice = document.querySelector('.late-appointments-notice');
+                            if (notice) notice.remove();
+                            // Reload page after a short delay to show updated data
+                            setTimeout(() => window.location.reload(), 2000);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            showErrorMessage('Failed to auto-cancel appointments. Please try again.');
+                        });
+                }
+            }
+
             // Sorting function
             function sortTable(column) {
                 const url = new URL(window.location);
@@ -3137,6 +4169,12 @@ function getSortIcon($column, $current_sort, $current_direction)
 
             // Auto-dismiss alerts
             document.addEventListener('DOMContentLoaded', function() {
+                // Auto-check for late appointments if after 5 PM
+                const currentHour = new Date().getHours();
+                if (currentHour >= 17) { // After 5 PM
+                    checkForLateAppointments();
+                }
+
                 const alerts = document.querySelectorAll('.alert');
                 alerts.forEach(alert => {
                     setTimeout(() => {

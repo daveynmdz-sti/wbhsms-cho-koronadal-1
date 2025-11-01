@@ -129,10 +129,10 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-share"></i> Referrals Management
         </a>
-        <a href="<?= $nav_base ?>management/admin/appointments/appointments_management.php"
+        <!--<a href="<?= $nav_base ?>management/admin/appointments/appointments_management.php"
             class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-calendar-check"></i> Appointments Management
-        </a>
+        </a>-->
         <a href="<?= $nav_base ?>appointment/appointments_management.php"
             class="<?= $activePage === 'appointments' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-calendar-alt"></i> My Facility Appointments
