@@ -233,7 +233,7 @@ try {
             
             // Validate philhealth_type_id exists in database
             try {
-                $stmt = $pdo->prepare('SELECT COUNT(*) FROM philhealth_types WHERE id = ? AND status = "active"');
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM philhealth_types WHERE id = ? AND is_active = 1');
                 if ($stmt && $stmt->execute([$philhealth_type_id])) {
                     $count = $stmt->fetchColumn();
                     if ($count == 0) {
