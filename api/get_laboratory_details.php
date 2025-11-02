@@ -80,10 +80,10 @@ try {
             r.role_name as ordered_by_role,
             e.license_number as physician_license,
             
-            -- Facility information
-            f.name as facility_name,
-            f.type as facility_type,
-            f.district as facility_district
+            -- Facility information (with fallback to default facility)
+            COALESCE(f.name, f_default.name) as facility_name,
+            COALESCE(f.type, f_default.type) as facility_type,
+            COALESCE(f.district, f_default.district) as facility_district
             
         FROM lab_orders lo
         INNER JOIN patients p ON lo.patient_id = p.patient_id
@@ -92,6 +92,8 @@ try {
         LEFT JOIN roles r ON e.role_id = r.role_id
         LEFT JOIN visits v ON lo.visit_id = v.visit_id
         LEFT JOIN facilities f ON v.facility_id = f.facility_id
+        -- Fallback to default facility (facility_id = 1) for lab orders without visits
+        LEFT JOIN facilities f_default ON f_default.facility_id = 1
         
         WHERE lo.lab_order_id = :lab_order_id
     ";
@@ -231,9 +233,15 @@ try {
             'completed_at' => $item['completed_at'],
             'result_date' => $item['result_date'],
             
-            'formatted_started_at' => $item['started_at'] ? date('M j, Y g:i A', strtotime($item['started_at'])) : null,
-            'formatted_completed_at' => $item['completed_at'] ? date('M j, Y g:i A', strtotime($item['completed_at'])) : null,
-            'formatted_result_date' => $item['result_date'] ? date('M j, Y g:i A', strtotime($item['result_date'])) : null,
+            // Use fallback dates when started_at/completed_at are null
+            'formatted_started_at' => $item['started_at'] ? date('M j, Y g:i A', strtotime($item['started_at'])) : 
+                                     ($item['item_created_at'] ? date('M j, Y g:i A', strtotime($item['item_created_at'])) : null),
+            'formatted_completed_at' => $item['completed_at'] ? date('M j, Y g:i A', strtotime($item['completed_at'])) : 
+                                       (strtolower($item['item_status']) === 'completed' && $item['item_updated_at'] ? 
+                                        date('M j, Y g:i A', strtotime($item['item_updated_at'])) : null),
+            'formatted_result_date' => $item['result_date'] ? date('M j, Y g:i A', strtotime($item['result_date'])) : 
+                                      (strtolower($item['item_status']) === 'completed' && $item['item_updated_at'] ? 
+                                       date('M j, Y g:i A', strtotime($item['item_updated_at'])) : null),
             
             // Status styling
             'status_class' => match(strtolower($item['item_status'])) {

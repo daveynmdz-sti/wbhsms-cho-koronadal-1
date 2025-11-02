@@ -5806,18 +5806,21 @@ function getSortIcon($column, $current_sort, $current_direction)
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 return response.text().then(text => {
-                    console.log('Raw API response:', text.substring(0, 500));
+                    console.log('Billing API raw response:', text.substring(0, 500));
+                    console.log('Billing API response length:', text.length);
+                    
                     if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
                         throw new Error('Session expired. Please refresh the page and log in again.');
                     }
                     
                     try {
                         const jsonData = JSON.parse(text);
-                        console.log('Parsed JSON response:', jsonData);
+                        console.log('Billing API parsed JSON:', jsonData);
                         return jsonData;
                     } catch (e) {
-                        console.error('JSON Parse Error:', e);
-                        throw new Error('Invalid JSON response: ' + text.substring(0, 200));
+                        console.error('Billing API JSON Parse Error:', e);
+                        console.error('Full response text:', text);
+                        throw new Error('Invalid JSON response. Check console for full response.');
                     }
                 });
             })

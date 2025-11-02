@@ -38,11 +38,30 @@ require_employee_auth($authorized_roles);
 // Database connection
 require_once $root_path . '/config/db.php';
 
+// Verify database connection
+if (!$conn || $conn->connect_error) {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Database connection failed'
+    ]);
+    exit;
+}
+
 try {
     // Validate patient_id parameter
     $patient_id = isset($_GET['patient_id']) ? intval($_GET['patient_id']) : 0;
     
     if ($patient_id <= 0) {
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(400);
         echo json_encode([
             'success' => false,
             'error' => 'Invalid patient ID provided'
@@ -63,6 +82,11 @@ try {
     $stmt->close();
     
     if (!$employee_facility) {
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(403);
         echo json_encode([
             'success' => false,
             'error' => 'Employee facility not found'
@@ -169,15 +193,18 @@ try {
     // Prepare and execute query
     $stmt = $conn->prepare($sql);
     
+    if (!$stmt) {
+        throw new Exception("Failed to prepare billing query: " . $conn->error);
+    }
+    
     // No facility restrictions - all users can see all billing records for the patient
-    error_log("Billing API: No facility restrictions - binding patient_id: $patient_id");
     $stmt->bind_param("i", $patient_id);
     
-    error_log("Billing API: Final SQL query: " . $sql);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    if (!$stmt->execute()) {
+        throw new Exception("Failed to execute billing query: " . $stmt->error);
+    }
     
-    error_log("Billing API: Query executed, rows found: " . $result->num_rows);
+    $result = $stmt->get_result();
     
     $billing_records = [];
     while ($row = $result->fetch_assoc()) {
@@ -231,12 +258,20 @@ try {
     $stmt->close();
     
     // Return successful response
-    echo json_encode([
+    $response = [
         'success' => true,
         'data' => $billing_records,
         'total_count' => count($billing_records),
         'patient_id' => $patient_id
-    ]);
+    ];
+    
+    // Clean any output and ensure JSON only
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response);
 
 } catch (Exception $e) {
     error_log("Error in get_patient_billing.php: " . $e->getMessage());
@@ -246,6 +281,8 @@ try {
         ob_end_clean();
     }
     
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code(500);
     echo json_encode([
         'success' => false,
         'error' => 'Failed to retrieve billing history. Please try again.',
@@ -257,6 +294,6 @@ try {
     }
 }
 
-// Clean output and ensure JSON only
-ob_end_clean();
+// Ensure no extra output
+exit;
 ?>

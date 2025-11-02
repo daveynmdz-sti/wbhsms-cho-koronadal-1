@@ -138,7 +138,7 @@ try {
             lo.ordered_by_employee_id,
             CONCAT(e.first_name, ' ', e.last_name) as ordered_by_name,
             r.role_name as ordered_by_role,
-            f.name as facility_name,
+            COALESCE(f.name, f_default.name, 'City Health Office') as facility_name,
             
             -- Count and aggregate lab order items
             COUNT(loi.item_id) as total_items,
@@ -189,6 +189,8 @@ try {
         LEFT JOIN visits v ON lo.visit_id = v.visit_id
         LEFT JOIN consultations c ON lo.consultation_id = c.consultation_id
         LEFT JOIN facilities f ON v.facility_id = f.facility_id
+        -- Fallback to default facility (facility_id = 1) for lab orders without visits
+        LEFT JOIN facilities f_default ON f_default.facility_id = 1
         
         WHERE lo.patient_id = :patient_id
         $access_where
@@ -268,7 +270,7 @@ try {
             'ordered_by_employee_id' => $order['ordered_by_employee_id'],
             'ordered_by_name' => $order['ordered_by_name'] ?: 'N/A',
             'ordered_by_role' => $order['ordered_by_role'] ?: 'N/A',
-            'facility_name' => $order['facility_name'] ?: 'N/A',
+            'facility_name' => $order['facility_name'] ?: 'City Health Office',
             'total_items' => $total,
             'completed_items' => $completed,
             'pending_items' => (int)$order['pending_items'],
