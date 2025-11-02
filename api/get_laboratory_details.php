@@ -68,7 +68,7 @@ try {
             CONCAT(p.first_name, ' ', COALESCE(p.middle_name, ''), ' ', p.last_name) as patient_name,
             CONCAT('PAT-', LPAD(p.patient_id, 8, '0')) as patient_id_display,
             p.date_of_birth,
-            p.gender,
+            p.sex,
             p.contact_number,
             TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as patient_age,
             
@@ -87,7 +87,7 @@ try {
             
         FROM lab_orders lo
         INNER JOIN patients p ON lo.patient_id = p.patient_id
-        LEFT JOIN barangays b ON p.barangay_id = b.barangay_id
+        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
         LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
         LEFT JOIN roles r ON e.role_id = r.role_id
         LEFT JOIN visits v ON lo.visit_id = v.visit_id
@@ -112,37 +112,32 @@ try {
             loi.item_id,
             loi.lab_order_id,
             loi.test_type,
-            loi.test_description,
-            loi.specimen_type,
+            loi.urgency,
             loi.status as item_status,
             loi.remarks as item_remarks,
-            loi.requested_date,
-            loi.collected_date,
+            loi.employee_id,
             loi.started_at,
             loi.completed_at,
             loi.result_date,
-            loi.normal_range,
-            loi.result_value,
-            loi.result_interpretation,
-            loi.technician_notes,
             loi.created_at as item_created_at,
             loi.updated_at as item_updated_at,
             
             -- Check if result file exists (without fetching the LONGBLOB)
             CASE WHEN loi.result_file IS NOT NULL THEN 1 ELSE 0 END as has_result_file,
             
-            -- Lab technician information
-            CONCAT(tech.first_name, ' ', tech.last_name) as technician_name,
-            tech_role.role_name as technician_role
+            -- Get technician information if employee_id is available
+            CONCAT(e.first_name, ' ', e.last_name) as technician_name,
+            r.role_name as technician_role
             
         FROM lab_order_items loi
-        LEFT JOIN employees tech ON loi.lab_technician_id = tech.employee_id
-        LEFT JOIN roles tech_role ON tech.role_id = tech_role.role_id
+        LEFT JOIN employees e ON loi.employee_id = e.employee_id
+        LEFT JOIN roles r ON e.role_id = r.role_id
         
         WHERE loi.lab_order_id = :lab_order_id
-        ORDER BY loi.test_type ASC, loi.item_id ASC
+        ORDER BY loi.urgency DESC, loi.test_type ASC, loi.item_id ASC
     ";
     
+    error_log("Laboratory Details API: Executing items query: " . $items_sql);
     $items_stmt = $pdo->prepare($items_sql);
     $items_stmt->execute([':lab_order_id' => $lab_order_id]);
     $lab_items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -172,7 +167,7 @@ try {
         'patient_name' => $lab_order['patient_name'],
         'patient_id_display' => $lab_order['patient_id_display'],
         'patient_age' => $lab_order['patient_age'],
-        'patient_gender' => $lab_order['gender'],
+        'patient_gender' => $lab_order['sex'],
         'patient_contact' => $lab_order['contact_number'],
         'patient_dob' => $lab_order['date_of_birth'],
         'patient_barangay' => $lab_order['barangay_name'],
@@ -221,29 +216,21 @@ try {
         $formatted_item = [
             'item_id' => $item['item_id'],
             'test_type' => $item['test_type'],
-            'test_description' => $item['test_description'],
-            'specimen_type' => $item['specimen_type'],
+            'urgency' => $item['urgency'],
             'status' => $item['item_status'],
             'remarks' => $item['item_remarks'],
-            'normal_range' => $item['normal_range'],
-            'result_value' => $item['result_value'],
-            'result_interpretation' => $item['result_interpretation'],
-            'technician_notes' => $item['technician_notes'],
             'has_result_file' => (bool)$item['has_result_file'],
             
             // Technician information
             'technician_name' => $item['technician_name'],
             'technician_role' => $item['technician_role'],
+            'employee_id' => $item['employee_id'],
             
-            // Formatted dates
-            'requested_date' => $item['requested_date'],
-            'collected_date' => $item['collected_date'],
+            // Dates
             'started_at' => $item['started_at'],
             'completed_at' => $item['completed_at'],
             'result_date' => $item['result_date'],
             
-            'formatted_requested_date' => $item['requested_date'] ? date('M j, Y g:i A', strtotime($item['requested_date'])) : null,
-            'formatted_collected_date' => $item['collected_date'] ? date('M j, Y g:i A', strtotime($item['collected_date'])) : null,
             'formatted_started_at' => $item['started_at'] ? date('M j, Y g:i A', strtotime($item['started_at'])) : null,
             'formatted_completed_at' => $item['completed_at'] ? date('M j, Y g:i A', strtotime($item['completed_at'])) : null,
             'formatted_result_date' => $item['result_date'] ? date('M j, Y g:i A', strtotime($item['result_date'])) : null,
@@ -255,6 +242,13 @@ try {
                 'pending' => 'badge-secondary',
                 'cancelled' => 'badge-danger',
                 default => 'badge-light'
+            },
+            
+            // Urgency styling
+            'urgency_class' => match(strtoupper($item['urgency'])) {
+                'STAT' => 'badge-danger',
+                'Routine' => 'badge-info',
+                default => 'badge-secondary'
             }
         ];
         

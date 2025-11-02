@@ -1340,6 +1340,103 @@ function getSortIcon($column, $current_sort, $current_direction)
                 margin-bottom: 0.5rem;
             }
         }
+
+        /* Laboratory item styling */
+        .lab-items-container {
+            margin-top: 1rem;
+        }
+
+        .lab-item {
+            display: block !important;
+            margin-bottom: 1.2rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #0077b6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .lab-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.7rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .lab-test-name {
+            margin: 0;
+            color: #0077b6;
+            font-weight: 600;
+            font-size: 1.1rem;
+            flex: 1;
+            min-width: 200px;
+            text-align: left;
+        }
+
+        .lab-badges {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .lab-item-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.7rem;
+            margin-bottom: 0.7rem;
+        }
+
+        .lab-detail {
+            background: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+
+        .lab-detail strong {
+            color: #495057;
+            font-size: 0.9rem;
+        }
+
+        .lab-remarks {
+            background: #e3f2fd;
+            padding: 0.7rem;
+            border-radius: 4px;
+            border-left: 3px solid #2196f3;
+            margin-bottom: 0.5rem;
+        }
+
+        .lab-remarks strong {
+            color: #1976d2;
+        }
+
+        .lab-actions {
+            text-align: right;
+            padding-top: 0.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .lab-item-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .lab-item-details {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+            }
+            
+            .lab-test-name {
+                min-width: auto;
+                margin-bottom: 0.5rem;
+            }
+
+            .lab-actions {
+                text-align: left;
+            }
+        }
     </style>
 </head>
 
@@ -2113,9 +2210,7 @@ function getSortIcon($column, $current_sort, $current_direction)
         // Dynamic configuration - works in any environment
         const APP_BASE_PATH = '<?php 
             $uri = $_SERVER["REQUEST_URI"];
-            // Remove the query string if present
             $uri = strtok($uri, "?");
-            // Get the base path by removing /pages/medical-records/medical_records.php
             $basePath = substr($uri, 0, strpos($uri, "/pages/"));
             echo $basePath;
         ?>';
@@ -7019,145 +7114,164 @@ function getSortIcon($column, $current_sort, $current_direction)
         function displayLaboratoryDetails(labOrder) {
             const contentDiv = document.getElementById('laboratoryDetailsContent');
             
-            // Build lab items HTML
+            // Store laboratory data globally for print function
+            currentLaboratoryData = labOrder;
+            
+            // Format order date
+            const orderDate = labOrder.formatted_order_datetime || new Date(labOrder.order_date).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // Build lab items list
             let labItemsHtml = '';
             if (labOrder.lab_items && labOrder.lab_items.length > 0) {
                 labOrder.lab_items.forEach((item, index) => {
-                    // Result file button (if available)
+                    const urgencyClass = item.urgency === 'STAT' ? 'badge-danger' : 'badge-info';
                     const resultFileButton = item.has_result_file 
-                        ? `<button class="btn btn-sm btn-info ml-2" onclick="viewResultFile(${item.item_id})" title="View Result File">
+                        ? `<button class="btn btn-xs btn-outline-primary ml-2" onclick="viewResultFile(${item.item_id})" title="View Result File">
                              <i class="fas fa-file-pdf"></i> View Result
                            </button>`
-                        : '<span class="text-muted"><i class="fas fa-file"></i> No result file</span>';
+                        : '<span class="text-muted small"><i class="fas fa-file"></i> No result file</span>';
                     
                     labItemsHtml += `
-                        <div class="card mb-3" style="border-left: 4px solid ${item.status === 'completed' ? '#28a745' : item.status === 'in_progress' ? '#ffc107' : '#6c757d'};">
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-8">
-                                        <h5 class="card-title">${item.test_type}</h5>
-                                        <p class="card-text">${item.test_description || 'No description provided'}</p>
-                                        <div class="row">
-                                            <div class="col-sm-6">
-                                                <strong>Specimen:</strong> ${item.specimen_type || 'Not specified'}<br>
-                                                <strong>Status:</strong> <span class="badge ${item.status_class}">${item.status.toUpperCase()}</span><br>
-                                                ${item.normal_range ? `<strong>Normal Range:</strong> ${item.normal_range}<br>` : ''}
-                                                ${item.result_value ? `<strong>Result:</strong> ${item.result_value}<br>` : ''}
-                                            </div>
-                                            <div class="col-sm-6">
-                                                ${item.formatted_requested_date ? `<strong>Requested:</strong> ${item.formatted_requested_date}<br>` : ''}
-                                                ${item.formatted_collected_date ? `<strong>Collected:</strong> ${item.formatted_collected_date}<br>` : ''}
-                                                ${item.formatted_completed_at ? `<strong>Completed:</strong> ${item.formatted_completed_at}<br>` : ''}
-                                                ${item.technician_name ? `<strong>Technician:</strong> ${item.technician_name}<br>` : ''}
-                                            </div>
-                                        </div>
-                                        ${item.result_interpretation ? `<div class="mt-2"><strong>Interpretation:</strong><br><em>${item.result_interpretation}</em></div>` : ''}
-                                        ${item.technician_notes ? `<div class="mt-2"><strong>Technician Notes:</strong><br><em>${item.technician_notes}</em></div>` : ''}
-                                        ${item.remarks ? `<div class="mt-2"><strong>Remarks:</strong><br><em>${item.remarks}</em></div>` : ''}
-                                    </div>
-                                    <div class="col-md-4 text-right">
-                                        ${resultFileButton}
-                                    </div>
+                        <div class="lab-item">
+                            <div class="lab-item-header">
+                                <h6 class="lab-test-name">${item.test_type}</h6>
+                                <div class="lab-badges">
+                                    <span class="badge ${urgencyClass}">${item.urgency}</span>
+                                    <span class="badge ${item.status_class}">${item.status}</span>
                                 </div>
+                            </div>
+                            <div class="lab-item-details">
+                                <div class="lab-detail">
+                                    <strong>Started:</strong><br>
+                                    ${item.formatted_started_at || 'Not started'}
+                                </div>
+                                <div class="lab-detail">
+                                    <strong>Completed:</strong><br>
+                                    ${item.formatted_completed_at || 'Not completed'}
+                                </div>
+                                <div class="lab-detail">
+                                    <strong>Result Date:</strong><br>
+                                    ${item.formatted_result_date || 'No result date'}
+                                </div>
+                                <div class="lab-detail">
+                                    <strong>Technician:</strong><br>
+                                    ${item.technician_name || 'Not assigned'}
+                                </div>
+                            </div>
+                            ${item.remarks ? `
+                                <div class="lab-remarks">
+                                    <strong>Remarks:</strong><br>
+                                    ${item.remarks}
+                                </div>
+                            ` : ''}
+                            <div class="lab-actions">
+                                ${resultFileButton}
                             </div>
                         </div>
                     `;
                 });
             } else {
-                labItemsHtml = '<p class="text-muted">No laboratory tests found for this order.</p>';
+                labItemsHtml = '<div class="detail-item"><div class="detail-value">No laboratory tests found</div></div>';
             }
             
             contentDiv.innerHTML = `
-                <div class="laboratory-details">
-                    <!-- Order Header -->
-                    <div class="card mb-4" style="border-left: 4px solid #0077b6;">
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-8">
-                                    <h4><i class="fas fa-flask"></i> ${labOrder.order_id_display}</h4>
-                                    <h5 class="text-primary">${labOrder.patient_name}</h5>
-                                    <p class="mb-1"><strong>Patient ID:</strong> ${labOrder.patient_id_display}</p>
-                                    <p class="mb-1"><strong>Age:</strong> ${labOrder.patient_age} years old (${labOrder.patient_gender})</p>
-                                    <p class="mb-1"><strong>Contact:</strong> ${labOrder.patient_contact || 'Not provided'}</p>
-                                    <p class="mb-1"><strong>Barangay:</strong> ${labOrder.patient_barangay || 'Not provided'}</p>
-                                </div>
-                                <div class="col-md-4 text-right">
-                                    <div class="summary-value">
-                                        <strong>Order Date</strong><br>
-                                        ${labOrder.formatted_order_datetime}
-                                    </div>
-                                    <div class="summary-value mt-3">
-                                        <strong>Overall Status</strong><br>
-                                        <span class="badge badge-info">${labOrder.overall_status.toUpperCase()}</span>
-                                    </div>
-                                </div>
-                            </div>
+                <div class="appointment-details-grid">
+                    <div class="details-section">
+                        <h4><i class="fas fa-user"></i> Patient Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Patient Name</span>
+                            <span class="detail-value highlight">${labOrder.patient_name}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Patient ID</span>
+                            <span class="detail-value">${labOrder.patient_id_display}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Age & Gender</span>
+                            <span class="detail-value">${labOrder.patient_age} years old (${labOrder.patient_gender})</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Contact</span>
+                            <span class="detail-value">${labOrder.patient_contact || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Barangay</span>
+                            <span class="detail-value">${labOrder.patient_barangay || 'N/A'}</span>
                         </div>
                     </div>
                     
-                    <!-- Progress Summary -->
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <div class="row text-center">
-                                <div class="col-md-3">
-                                    <div class="summary-value">
-                                        <strong>${labOrder.total_items}</strong><br>
-                                        <small class="text-muted">Total Tests</small>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="summary-value">
-                                        <strong style="color: #28a745;">${labOrder.completed_items}</strong><br>
-                                        <small class="text-muted">Completed</small>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="summary-value">
-                                        <strong style="color: #ffc107;">${labOrder.in_progress_items}</strong><br>
-                                        <small class="text-muted">In Progress</small>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="summary-value">
-                                        <strong style="color: #6c757d;">${labOrder.pending_items}</strong><br>
-                                        <small class="text-muted">Pending</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="progress mt-3" style="height: 25px;">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: ${labOrder.progress_percentage}%">
-                                    ${labOrder.progress_percentage}% Complete
-                                </div>
-                            </div>
+                    <div class="details-section">
+                        <h4><i class="fas fa-flask"></i> Laboratory Order Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Order ID</span>
+                            <span class="detail-value highlight">${labOrder.order_id_display}</span>
                         </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Order Date</span>
+                            <span class="detail-value">${orderDate}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Overall Status</span>
+                            <span class="detail-value"><span class="badge badge-info">${labOrder.overall_status}</span></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Progress</span>
+                            <span class="detail-value">${labOrder.completed_items}/${labOrder.total_items} tests completed (${labOrder.progress_percentage}%)</span>
+                        </div>
+                        ${labOrder.order_remarks ? `
+                        <div class="detail-item">
+                            <span class="detail-label">Order Remarks</span>
+                            <span class="detail-value">${labOrder.order_remarks}</span>
+                        </div>
+                        ` : ''}
                     </div>
                     
-                    <!-- Ordering Information -->
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <h5><i class="fas fa-user-md"></i> Ordering Information</h5>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <p><strong>Ordered By:</strong> ${labOrder.ordered_by_name || 'Not specified'}</p>
-                                    <p><strong>Role:</strong> ${labOrder.ordered_by_role || 'Not specified'}</p>
-                                    ${labOrder.physician_license ? `<p><strong>License Number:</strong> ${labOrder.physician_license}</p>` : ''}
-                                </div>
-                                <div class="col-md-6">
-                                    <p><strong>Facility:</strong> ${labOrder.facility_name || 'Not specified'}</p>
-                                    <p><strong>Type:</strong> ${labOrder.facility_type || 'Not specified'}</p>
-                                    <p><strong>District:</strong> ${labOrder.facility_district || 'Not specified'}</p>
-                                </div>
-                            </div>
-                            ${labOrder.order_remarks ? `<div class="mt-3"><strong>Order Remarks:</strong><br><em>${labOrder.order_remarks}</em></div>` : ''}
+                    <div class="details-section">
+                        <h4><i class="fas fa-user-md"></i> Ordering Physician</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Physician Name</span>
+                            <span class="detail-value">${labOrder.ordered_by_name || 'N/A'}</span>
                         </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Role</span>
+                            <span class="detail-value">${labOrder.ordered_by_role || 'N/A'}</span>
+                        </div>
+                        ${labOrder.physician_license ? `
+                        <div class="detail-item">
+                            <span class="detail-label">License Number</span>
+                            <span class="detail-value">${labOrder.physician_license}</span>
+                        </div>
+                        ` : ''}
                     </div>
                     
-                    <!-- Laboratory Tests -->
-                    <div class="card">
-                        <div class="card-body">
-                            <h5><i class="fas fa-vials"></i> Laboratory Tests (${labOrder.total_items})</h5>
-                            ${labItemsHtml}
+                    <div class="details-section">
+                        <h4><i class="fas fa-hospital"></i> Facility Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Facility Name</span>
+                            <span class="detail-value">${labOrder.facility_name || 'N/A'}</span>
                         </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Type</span>
+                            <span class="detail-value">${labOrder.facility_type || 'N/A'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">District</span>
+                            <span class="detail-value">${labOrder.facility_district || 'N/A'}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Laboratory Tests Section -->
+                <div class="details-section full-width">
+                    <h4><i class="fas fa-vials"></i> Laboratory Tests (${labOrder.total_items})</h4>
+                    <div class="lab-items-container">
+                        ${labItemsHtml}
                     </div>
                 </div>
             `;
@@ -7203,32 +7317,31 @@ function getSortIcon($column, $current_sort, $current_direction)
             let labItemsHtml = '';
             if (labOrder.lab_items && labOrder.lab_items.length > 0) {
                 labOrder.lab_items.forEach((item, index) => {
+                    const urgencyLabel = item.urgency === 'STAT' ? '(STAT)' : '';
+                    const technicianInfo = item.technician_name ? item.technician_name : 'Not assigned';
+                    
                     labItemsHtml += `
                         <tr style="border-bottom: 1px solid #ddd;">
-                            <td style="padding: 8px; vertical-align: top; width: 25%;">
-                                <strong>${item.test_type}</strong><br>
-                                <small style="color: #666;">${item.test_description || ''}</small>
+                            <td style="padding: 8px; vertical-align: top; width: 30%;">
+                                <strong>${item.test_type} ${urgencyLabel}</strong>
                             </td>
-                            <td style="padding: 8px; vertical-align: top; width: 15%;">
-                                ${item.specimen_type || 'N/A'}
-                            </td>
-                            <td style="padding: 8px; vertical-align: top; width: 15%;">
+                            <td style="padding: 8px; vertical-align: top; width: 20%;">
                                 <span style="background: ${item.status === 'completed' ? '#28a745' : item.status === 'in_progress' ? '#ffc107' : '#6c757d'}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">
                                     ${item.status.toUpperCase()}
                                 </span>
                             </td>
-                            <td style="padding: 8px; vertical-align: top; width: 20%;">
-                                ${item.normal_range || 'N/A'}
+                            <td style="padding: 8px; vertical-align: top; width: 25%;">
+                                ${technicianInfo}
                             </td>
                             <td style="padding: 8px; vertical-align: top; width: 25%;">
-                                ${item.result_value || 'Pending'}
-                                ${item.result_interpretation ? `<br><small style="color: #666; font-style: italic;">${item.result_interpretation}</small>` : ''}
+                                ${item.formatted_started_at || 'Not started'}<br>
+                                ${item.formatted_completed_at || 'Not completed'}
                             </td>
                         </tr>
                     `;
                 });
             } else {
-                labItemsHtml = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #666;">No laboratory tests found</td></tr>';
+                labItemsHtml = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #666;">No laboratory tests found</td></tr>';
             }
             
             // Create print content
@@ -7324,10 +7437,9 @@ function getSortIcon($column, $current_sort, $current_direction)
                         <thead>
                             <tr>
                                 <th>Test Type</th>
-                                <th>Specimen</th>
                                 <th>Status</th>
-                                <th>Normal Range</th>
-                                <th>Result</th>
+                                <th>Technician</th>
+                                <th>Timeline</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -7353,12 +7465,18 @@ function getSortIcon($column, $current_sort, $current_direction)
                 </html>
             `;
             
-            // Open print window
-            const printWindow = window.open('', '_blank');
+            // Open print window (popup window with specific dimensions)
+            const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
             printWindow.document.write(printContent);
             printWindow.document.close();
-            printWindow.focus();
-            printWindow.print();
+            
+            // Wait for content to load, then print and close
+            printWindow.onload = function() {
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                }, 500);
+            };
         }
         
         // View individual test result file
