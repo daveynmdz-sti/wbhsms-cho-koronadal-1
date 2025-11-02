@@ -1,5 +1,10 @@
 <?php
 // api/get_patient_billing.php - Get billing history for a specific patient
+
+// Clean any previous output and start fresh
+while (ob_get_level()) {
+    ob_end_clean();
+}
 ob_start();
 
 // Load environment configuration
@@ -9,7 +14,7 @@ require_once $root_path . '/config/env.php';
 // Set error reporting based on environment
 if (getenv('APP_DEBUG') === '1') {
     error_reporting(E_ALL);
-    ini_set('display_errors', 1);
+    ini_set('display_errors', 0); // Never display errors in API responses
 } else {
     error_reporting(E_ALL);
     ini_set('display_errors', 0);
@@ -236,6 +241,11 @@ try {
 } catch (Exception $e) {
     error_log("Error in get_patient_billing.php: " . $e->getMessage());
     
+    // Clean any output buffer and ensure clean JSON response
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
     echo json_encode([
         'success' => false,
         'error' => 'Failed to retrieve billing history. Please try again.',
@@ -247,5 +257,6 @@ try {
     }
 }
 
-ob_end_flush();
+// Clean output and ensure JSON only
+ob_end_clean();
 ?>

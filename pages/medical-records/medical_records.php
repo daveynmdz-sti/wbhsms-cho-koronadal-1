@@ -7061,7 +7061,7 @@ function getSortIcon($column, $current_sort, $current_direction)
             document.getElementById('viewLaboratoryModal').style.display = 'block';
 
             // Get laboratory data
-            fetch(`/wbhsms-cho-koronadal-1/api/get_laboratory_details.php?lab_order_id=${labOrderId}`, {
+            fetch(APP_CONFIG.apiPath(`get_laboratory_details.php?lab_order_id=${labOrderId}`), {
                     method: 'GET',
                     credentials: 'same-origin',
                     headers: {
@@ -7288,7 +7288,7 @@ function getSortIcon($column, $current_sort, $current_direction)
             }
             
             // Otherwise, fetch the data first
-            fetch(`/wbhsms-cho-koronadal-1/api/get_laboratory_details.php?lab_order_id=${labOrderId}`)
+            fetch(APP_CONFIG.apiPath(`get_laboratory_details.php?lab_order_id=${labOrderId}`))
                 .then(response => response.json())
                 .then(data => {
                     if (data.success && data.laboratory_order) {
@@ -7484,7 +7484,7 @@ function getSortIcon($column, $current_sort, $current_direction)
             console.log('viewResultFile called with item ID:', itemId);
             
             // Open result file in new window
-            const resultUrl = `/wbhsms-cho-koronadal-1/api/get_lab_result_file.php?item_id=${itemId}`;
+            const resultUrl = APP_CONFIG.apiPath(`get_lab_result_file.php?item_id=${itemId}`);
             window.open(resultUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
         }
         
