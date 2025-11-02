@@ -115,7 +115,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'
             }
             
             // Get total count first - execute the exact same query without LIMIT to get actual result count
-            $search_sql_copy = $search_sql . " ORDER BY p.last_name, p.first_name";
+            $search_sql_copy = $search_sql . " ORDER BY full_name";
             $count_stmt = $conn->prepare($search_sql_copy);
             if (!empty($search_params)) {
                 $count_stmt->bind_param($param_types, ...$search_params);
@@ -136,7 +136,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'
             $offset = ($page - 1) * $per_page;
             $total_pages = ceil($total_patients / $per_page);
             
-            $search_sql .= " ORDER BY p.last_name, p.first_name LIMIT ? OFFSET ?";
+            $search_sql .= " ORDER BY full_name LIMIT ? OFFSET ?";
             $search_params[] = $per_page;
             $search_params[] = $offset;
             $param_types .= "ii";
