@@ -6,9 +6,16 @@ require_once $root_path . '/config/db.php';
 
 // Check if user is logged in and has admin privileges
 if (!is_employee_logged_in()) {
-    ob_end_clean();
+    // Clean output buffer only if one exists
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     error_log('Redirecting to employee_login (absolute path) from ' . __FILE__ . ' URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
-    header("Location: /pages/management/auth/employee_login.php");
+    
+    // Check if headers can still be sent
+    if (!headers_sent()) {
+        header("Location: /pages/management/auth/employee_login.php");
+    }
     exit();
 }
 
@@ -1215,14 +1222,41 @@ try {
             window.location.href = window.location.pathname;
         }
         
-        // View invoice details in modal with simplified API path
+        // Universal path function for API calls (works in both local and production)
+        function getApiBasePath() {
+            const currentPath = window.location.pathname;
+            const pathParts = currentPath.split('/');
+            
+            // Find the project root by looking for the pages directory
+            let projectRoot = '';
+            for (let i = 0; i < pathParts.length; i++) {
+                if (pathParts[i] === 'pages') {
+                    projectRoot = pathParts.slice(0, i).join('/') || '/';
+                    break;
+                }
+            }
+            
+            // If no pages directory found, try to find wbhsms-cho-koronadal-1
+            if (!projectRoot && currentPath.includes('wbhsms-cho-koronadal-1')) {
+                const index = currentPath.indexOf('wbhsms-cho-koronadal-1');
+                projectRoot = currentPath.substring(0, index + 'wbhsms-cho-koronadal-1'.length);
+            } else if (!projectRoot) {
+                // Fallback for production environments
+                projectRoot = '';
+            }
+            
+            return projectRoot;
+        }
+        
+        // View invoice details in modal with universal API path
         function viewInvoice(billingId) {
             try {
                 // Show loading state
                 showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
                 
-                // Use simple relative path from current location
-                const apiUrl = `../../../../api/billing/management/get_invoice_details.php?billing_id=${billingId}`;
+                // Use universal path function for API calls
+                const basePath = getApiBasePath();
+                const apiUrl = `${basePath}/api/billing/management/get_invoice_details.php?billing_id=${billingId}`;
                 console.log('API URL:', apiUrl);
                 
                 fetch(apiUrl, {
@@ -1265,10 +1299,11 @@ try {
         }
         
         // Recursive function to try different API paths
-        // Print invoice using simplified API path
+        // Print invoice using universal API path
         function printInvoice(billingId) {
             try {
-                const printUrl = `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
+                const basePath = getApiBasePath();
+                const printUrl = `${basePath}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
                 console.log('Print URL:', printUrl);
                 
                 // Open in new window for printing
@@ -1284,10 +1319,11 @@ try {
             }
         }
 
-        // Download invoice as PDF using simplified API path
+        // Download invoice as PDF using universal API path
         function downloadInvoice(billingId) {
             try {
-                const downloadUrl = `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`;
+                const basePath = getApiBasePath();
+                const downloadUrl = `${basePath}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`;
                 console.log('Download URL:', downloadUrl);
                 
                 // Create temporary link for download

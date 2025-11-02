@@ -112,7 +112,7 @@ try {
         'discount_type' => $invoice['discount_type'],
         'net_amount' => floatval($invoice['net_amount']),
         'paid_amount' => floatval($invoice['paid_amount']),
-        'balance_due' => floatval($invoice['total_amount'] - $invoice['paid_amount']),
+        'balance_due' => floatval($invoice['net_amount'] - $invoice['paid_amount']), // Fixed: Use net_amount instead of total_amount
         'payment_status' => $invoice['payment_status'],
         'notes' => $invoice['notes'],
         'created_at' => $invoice['created_at'],

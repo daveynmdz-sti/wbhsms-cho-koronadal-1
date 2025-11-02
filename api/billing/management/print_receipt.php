@@ -158,7 +158,7 @@ try {
             'philhealth_coverage' => floatval($receipt['philhealth_coverage']),
             'total' => floatval($receipt['total_amount']),
             'amount_paid' => floatval($receipt['payment_amount']),
-            'balance_due' => floatval($receipt['total_amount'] - $receipt['paid_amount'])
+            'balance_due' => floatval($receipt['net_amount'] - $receipt['paid_amount']) // Fixed: Use net_amount instead of total_amount
         ],
         'payment' => [
             'method' => ucfirst($receipt['payment_method']),

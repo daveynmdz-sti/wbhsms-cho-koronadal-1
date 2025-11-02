@@ -174,7 +174,7 @@ try {
                 'paid_amount' => floatval($invoice['paid_amount']),
                 'discount_amount' => floatval($invoice['discount_amount']),
                 'philhealth_coverage' => floatval($invoice['philhealth_coverage']),
-                'balance_due' => floatval($invoice['total_amount'] - $invoice['paid_amount'])
+                'balance_due' => floatval($invoice['net_amount'] - $invoice['paid_amount']) // Fixed: Use net_amount instead of total_amount
             ],
             'payment_status' => $invoice['payment_status'],
             'dates' => [
@@ -209,7 +209,7 @@ try {
             SUM(CASE WHEN payment_status = 'exempted' THEN 1 ELSE 0 END) as exempted_count,
             SUM(total_amount) as total_amount_sum,
             SUM(paid_amount) as paid_amount_sum,
-            SUM(CASE WHEN payment_status = 'unpaid' THEN total_amount - paid_amount ELSE 0 END) as outstanding_amount
+            SUM(CASE WHEN payment_status = 'unpaid' THEN net_amount - paid_amount ELSE 0 END) as outstanding_amount -- Fixed: Use net_amount
         FROM billing b
         JOIN patients p ON b.patient_id = p.patient_id
         LEFT JOIN receipts r ON b.receipt_id = r.receipt_id

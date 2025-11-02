@@ -83,29 +83,26 @@ try {
             COUNT(*) as total_invoices,
             COUNT(CASE WHEN payment_status = 'unpaid' THEN 1 END) as unpaid_count,
             COUNT(CASE WHEN payment_status = 'paid' AND YEAR(billing_date) = YEAR(CURDATE()) THEN 1 END) as paid_count,
-            COALESCE(SUM(CASE WHEN payment_status = 'unpaid' THEN total_amount END), 0) as total_outstanding,
-            COALESCE(SUM(CASE WHEN payment_status = 'paid' AND YEAR(billing_date) = YEAR(CURDATE()) THEN total_amount END), 0) as paid_this_year
+            COALESCE(SUM(CASE WHEN payment_status = 'unpaid' THEN net_amount END), 0) as total_outstanding,
+            COALESCE(SUM(CASE WHEN payment_status = 'paid' AND YEAR(billing_date) = YEAR(CURDATE()) THEN paid_amount END), 0) as paid_this_year
         FROM billing 
         WHERE patient_id = ?
     ");
     $stmt->execute([$patient_id]);
     $billing_summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Get recent bills (limit to 10 for overview)
+    // Get recent bills with receipts (limit to 10 for overview)
     $stmt = $pdo->prepare("
         SELECT 
             b.*,
-            COUNT(bi.billing_item_id) as item_count,
-            COALESCE(r_sum.total_paid, 0) as total_paid,
-            (b.total_amount - COALESCE(r_sum.total_paid, 0)) as balance_due,
-            CASE WHEN r_sum.total_paid >= b.total_amount THEN 1 ELSE 0 END as has_receipt
+            COUNT(DISTINCT bi.billing_item_id) as item_count,
+            b.paid_amount as total_paid,
+            (b.net_amount - b.paid_amount) as balance_due,
+            CASE WHEN b.paid_amount >= b.net_amount THEN 1 ELSE 0 END as has_receipt,
+            COUNT(DISTINCT r.receipt_id) as receipt_count
         FROM billing b
         LEFT JOIN billing_items bi ON b.billing_id = bi.billing_id
-        LEFT JOIN (
-            SELECT billing_id, SUM(amount_paid) as total_paid 
-            FROM receipts 
-            GROUP BY billing_id
-        ) r_sum ON b.billing_id = r_sum.billing_id
+        LEFT JOIN receipts r ON b.billing_id = r.billing_id
         WHERE b.patient_id = ?
         GROUP BY b.billing_id
         ORDER BY b.billing_date DESC
@@ -118,16 +115,13 @@ try {
     $stmt = $pdo->prepare("
         SELECT 
             b.*,
-            COUNT(bi.billing_item_id) as item_count,
-            COALESCE(r_sum.total_paid, 0) as total_paid,
-            (b.total_amount - COALESCE(r_sum.total_paid, 0)) as balance_due
+            COUNT(DISTINCT bi.billing_item_id) as item_count,
+            b.paid_amount as total_paid,
+            (b.net_amount - b.paid_amount) as balance_due,
+            COUNT(DISTINCT r.receipt_id) as receipt_count
         FROM billing b
         LEFT JOIN billing_items bi ON b.billing_id = bi.billing_id
-        LEFT JOIN (
-            SELECT billing_id, SUM(amount_paid) as total_paid 
-            FROM receipts 
-            GROUP BY billing_id
-        ) r_sum ON b.billing_id = r_sum.billing_id
+        LEFT JOIN receipts r ON b.billing_id = r.billing_id
         WHERE b.patient_id = ? AND b.payment_status = 'unpaid'
         GROUP BY b.billing_id
         ORDER BY b.billing_date DESC
@@ -135,6 +129,43 @@ try {
     ");
     $stmt->execute([$patient_id]);
     $unpaid_bills = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Get receipts for all bills to show individual payment receipts
+    $receipts_by_billing = [];
+    if (!empty($recent_bills) || !empty($unpaid_bills)) {
+        $all_billing_ids = array_merge(
+            array_column($recent_bills, 'billing_id'),
+            array_column($unpaid_bills, 'billing_id')
+        );
+        $all_billing_ids = array_unique($all_billing_ids);
+        
+        if (!empty($all_billing_ids)) {
+            $placeholders = str_repeat('?,', count($all_billing_ids) - 1) . '?';
+            $receipts_sql = "
+                SELECT 
+                    r.receipt_id,
+                    r.billing_id,
+                    r.receipt_number,
+                    r.amount_paid,
+                    r.change_amount,
+                    r.payment_method,
+                    r.payment_date,
+                    (r.amount_paid - COALESCE(r.change_amount, 0)) as net_payment
+                FROM receipts r
+                WHERE r.billing_id IN ($placeholders)
+                ORDER BY r.billing_id, r.payment_date ASC
+            ";
+            
+            $stmt = $pdo->prepare($receipts_sql);
+            $stmt->execute($all_billing_ids);
+            $all_receipts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Group receipts by billing_id
+            foreach ($all_receipts as $receipt) {
+                $receipts_by_billing[$receipt['billing_id']][] = $receipt;
+            }
+        }
+    }
 } catch (Exception $e) {
     error_log("Billing data error: " . $e->getMessage());
     $error = "Failed to fetch billing data: " . $e->getMessage();
@@ -526,7 +557,8 @@ try {
             border: 1px solid #e9ecef;
             margin-bottom: 1rem;
             transition: all 0.3s ease;
-            overflow: hidden;
+            overflow: visible;
+            position: relative;
         }
 
         .bill-card:hover {
@@ -592,6 +624,8 @@ try {
 
         .bill-content {
             padding: 1.5rem;
+            position: relative;
+            overflow: visible;
         }
 
         .bill-amount {
@@ -611,6 +645,66 @@ try {
             display: flex;
             gap: 0.5rem;
             flex-wrap: wrap;
+            align-items: center;
+            position: relative;
+            z-index: 50;
+        }
+
+        .btn-group {
+            position: relative;
+            display: inline-block;
+            z-index: 100;
+        }
+
+        .dropdown-toggle::after {
+            content: '▼';
+            font-size: 0.7rem;
+            margin-left: 0.5rem;
+            opacity: 0.7;
+        }
+
+        .receipt-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            z-index: 9999;
+            min-width: 220px;
+            margin-top: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: nowrap;
+        }
+
+        .receipt-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .receipt-item:last-child {
+            border-bottom: none;
+        }
+
+        .receipt-item:hover {
+            background: #f8f9fa;
+        }
+
+        .receipt-item div:first-child {
+            font-weight: 600;
+            color: #0077b6;
+            font-size: 0.85rem;
+            margin-bottom: 2px;
+        }
+
+        .receipt-item div:last-child {
+            font-size: 0.75rem;
+            color: #6c757d;
+            line-height: 1.3;
         }
 
         .btn-outline {
@@ -1165,7 +1259,7 @@ try {
                             <?php foreach ($unpaid_bills as $bill): ?>
                                 <tr class="bill-row" data-invoice="<?php echo strtolower($bill['billing_id']); ?>"
                                     data-date="<?php echo $bill['billing_date']; ?>"
-                                    data-amount="<?php echo $bill['total_amount']; ?>">
+                                    data-amount="<?php echo $bill['net_amount']; ?>">
                                     <td>
                                         <div class="bill-info">
                                             <strong style="color: #0077b6;">Invoice #<?php echo str_pad($bill['billing_id'], 6, '0', STR_PAD_LEFT); ?></strong>
@@ -1174,10 +1268,16 @@ try {
                                     </td>
                                     <td>
                                         <div style="color: #dc3545; font-weight: bold; font-size: 1.1rem;">
-                                            ₱<?php echo number_format($bill['total_amount'], 2); ?>
+                                            ₱<?php echo number_format($bill['net_amount'], 2); ?>
                                         </div>
-                                        <?php if ($bill['balance_due'] > 0 && $bill['balance_due'] < $bill['total_amount']): ?>
-                                            <small style="color: #6c757d;">Balance: ₱<?php echo number_format($bill['balance_due'], 2); ?></small>
+                                        <?php if ($bill['discount_amount'] > 0): ?>
+                                            <small style="color: #6c757d;">
+                                                Original: ₱<?php echo number_format($bill['total_amount'], 2); ?> 
+                                                (₱<?php echo number_format($bill['discount_amount'], 2); ?> <?php echo ucfirst($bill['discount_type']); ?> discount)
+                                            </small>
+                                        <?php endif; ?>
+                                        <?php if ($bill['balance_due'] > 0 && $bill['balance_due'] < $bill['net_amount']): ?>
+                                            <small style="color: #6c757d; display: block;">Balance: ₱<?php echo number_format($bill['balance_due'], 2); ?></small>
                                         <?php endif; ?>
                                     </td>
                                     <td>
@@ -1276,7 +1376,7 @@ try {
                             data-status="<?php echo $bill['payment_status']; ?>"
                             data-invoice="<?php echo strtolower($bill['billing_id']); ?>"
                             data-date="<?php echo $bill['billing_date']; ?>"
-                            data-amount="<?php echo $bill['total_amount']; ?>">
+                            data-amount="<?php echo $bill['net_amount']; ?>">
                             <div class="bill-header">
                                 <div class="bill-info">
                                     <h4>Invoice #<?php echo str_pad($bill['billing_id'], 6, '0', STR_PAD_LEFT); ?></h4>
@@ -1288,22 +1388,50 @@ try {
                             </div>
                             <div class="bill-content">
                                 <div class="bill-amount">
-                                    ₱<?php echo number_format($bill['total_amount'], 2); ?>
+                                    ₱<?php echo number_format($bill['net_amount'], 2); ?>
+                                    <?php if ($bill['discount_amount'] > 0): ?>
+                                        <small style="display: block; font-size: 0.75rem; color: #6c757d; font-weight: normal; margin-top: 2px;">
+                                            Original: ₱<?php echo number_format($bill['total_amount'], 2); ?> 
+                                            (₱<?php echo number_format($bill['discount_amount'], 2); ?> <?php echo ucfirst($bill['discount_type']); ?> discount)
+                                        </small>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="bill-details">
                                     <?php echo $bill['item_count']; ?> service<?php echo $bill['item_count'] != 1 ? 's' : ''; ?>
                                     <?php if ($bill['balance_due'] > 0): ?>
                                         • Balance: ₱<?php echo number_format($bill['balance_due'], 2); ?>
                                     <?php endif; ?>
+                                    <?php if (isset($receipts_by_billing[$bill['billing_id']]) && count($receipts_by_billing[$bill['billing_id']]) > 0): ?>
+                                        • <?php echo count($receipts_by_billing[$bill['billing_id']]); ?> payment<?php echo count($receipts_by_billing[$bill['billing_id']]) != 1 ? 's' : ''; ?> made
+                                    <?php endif; ?>
                                 </div>
                                 <div class="bill-actions">
                                     <button class="btn btn-outline-primary btn-sm" onclick="viewBillDetails(<?php echo $bill['billing_id']; ?>)">
                                         <i class="fas fa-eye"></i> View Details
                                     </button>
-                                    <?php if ($bill['has_receipt']): ?>
-                                        <button class="btn btn-primary btn-sm" onclick="downloadReceipt(<?php echo $bill['billing_id']; ?>)">
-                                            <i class="fas fa-download"></i> Receipt
-                                        </button>
+                                    <?php if (isset($receipts_by_billing[$bill['billing_id']]) && count($receipts_by_billing[$bill['billing_id']]) > 0): ?>
+                                        <div class="btn-group" style="display: inline-block; position: relative;">
+                                            <button class="btn btn-primary btn-sm dropdown-toggle" onclick="toggleReceiptDropdown(<?php echo $bill['billing_id']; ?>)" style="position: relative;">
+                                                <i class="fas fa-receipt"></i> View Receipts
+                                            </button>
+                                            <div id="receiptDropdown_<?php echo $bill['billing_id']; ?>" class="receipt-dropdown" style="display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; min-width: 200px; margin-top: 2px;">
+                                                <?php foreach ($receipts_by_billing[$bill['billing_id']] as $receipt): ?>
+                                                <div class="receipt-item" style="padding: 8px 12px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;" 
+                                                     onclick="viewReceipt(<?php echo $receipt['receipt_id']; ?>)"
+                                                     onmouseover="this.style.background='#f8f9fa'" 
+                                                     onmouseout="this.style.background='white'">
+                                                    <div style="font-weight: 600; color: #0077b6; font-size: 0.85rem;">
+                                                        Receipt #<?php echo htmlspecialchars($receipt['receipt_number']); ?>
+                                                    </div>
+                                                    <div style="font-size: 0.75rem; color: #6c757d;">
+                                                        <?php echo date('M d, Y', strtotime($receipt['payment_date'])); ?> • 
+                                                        ₱<?php echo number_format($receipt['net_payment'], 2); ?> • 
+                                                        <?php echo ucfirst($receipt['payment_method']); ?>
+                                                    </div>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -1562,8 +1690,90 @@ try {
             window.open(`invoice_details.php?billing_id=${billingId}`, '_blank', 'width=800,height=600');
         }
 
+        // Universal path function for API calls (works in both local and production)
+        function getApiBasePath() {
+            const currentPath = window.location.pathname;
+            const pathParts = currentPath.split('/');
+            
+            // Find the project root by looking for the pages directory
+            let projectRoot = '';
+            for (let i = 0; i < pathParts.length; i++) {
+                if (pathParts[i] === 'pages') {
+                    projectRoot = pathParts.slice(0, i).join('/') || '/';
+                    break;
+                }
+            }
+            
+            // If no pages directory found, try to find wbhsms-cho-koronadal-1
+            if (!projectRoot && currentPath.includes('wbhsms-cho-koronadal-1')) {
+                const index = currentPath.indexOf('wbhsms-cho-koronadal-1');
+                projectRoot = currentPath.substring(0, index + 'wbhsms-cho-koronadal-1'.length);
+            } else if (!projectRoot) {
+                // Fallback for production environments
+                projectRoot = '';
+            }
+            
+            return projectRoot;
+        }
+
+        // Toggle receipt dropdown for individual receipts
+        function toggleReceiptDropdown(billingId) {
+            const dropdown = document.getElementById('receiptDropdown_' + billingId);
+            const isVisible = dropdown.style.display !== 'none';
+            
+            // Hide all other dropdowns first
+            document.querySelectorAll('.receipt-dropdown').forEach(dd => {
+                dd.style.display = 'none';
+            });
+            
+            // Toggle current dropdown
+            dropdown.style.display = isVisible ? 'none' : 'block';
+            
+            // Close dropdown when clicking outside
+            if (!isVisible) {
+                setTimeout(() => {
+                    document.addEventListener('click', function closeDropdown(e) {
+                        if (!e.target.closest('.btn-group')) {
+                            dropdown.style.display = 'none';
+                            document.removeEventListener('click', closeDropdown);
+                        }
+                    });
+                }, 100);
+            }
+        }
+
+        // View individual receipt in popup window
+        function viewReceipt(receiptId) {
+            console.log('Viewing receipt ID:', receiptId);
+            const basePath = getApiBasePath();
+            const receiptUrl = `${basePath}/api/billing/patient/view_receipt.php?receipt_id=${receiptId}&format=html`;
+            console.log('Receipt URL:', receiptUrl);
+            
+            // Open in popup window with specific dimensions
+            const popup = window.open(
+                receiptUrl, 
+                'ViewReceipt_' + receiptId,
+                'width=900,height=700,scrollbars=yes,resizable=yes,location=no,menubar=no,toolbar=no,status=no'
+            );
+            
+            if (!popup) {
+                alert('Pop-up blocked. Please allow pop-ups for this site to view receipts.');
+            } else {
+                // Focus the popup window
+                popup.focus();
+            }
+            
+            // Hide the dropdown after opening receipt
+            document.querySelectorAll('.receipt-dropdown').forEach(dd => {
+                dd.style.display = 'none';
+            });
+        }
+
+        // Legacy function - now redirects to view individual receipts
         function downloadReceipt(billingId) {
-            window.open(`/wbhsms-cho-koronadal-1/api/billing/patient/download_receipt.php?billing_id=${billingId}&format=html`, '_blank');
+            console.log('Legacy downloadReceipt called for billing ID:', billingId);
+            // This function is kept for backward compatibility but should show first receipt or invoice details
+            viewBillDetails(billingId);
         }
 
         function showPaymentInfo() {

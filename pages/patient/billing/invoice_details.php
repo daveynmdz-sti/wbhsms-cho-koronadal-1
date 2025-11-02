@@ -270,6 +270,63 @@ $patient_id = get_patient_session('patient_id');
             color: white;
         }
 
+        .btn-group {
+            position: relative;
+            display: inline-block;
+            z-index: 100;
+        }
+
+        .dropdown-toggle::after {
+            content: '▼';
+            font-size: 0.7rem;
+            margin-left: 0.5rem;
+            opacity: 0.7;
+        }
+
+        .receipt-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            z-index: 9999;
+            min-width: 220px;
+            margin-top: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: nowrap;
+        }
+
+        .receipt-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .receipt-item:last-child {
+            border-bottom: none;
+        }
+
+        .receipt-item:hover {
+            background: #f8f9fa;
+        }
+
+        .receipt-item div:first-child {
+            font-weight: 600;
+            color: #28a745;
+            font-size: 0.85rem;
+            margin-bottom: 2px;
+        }
+
+        .receipt-item div:last-child {
+            font-size: 0.75rem;
+            color: #6c757d;
+            line-height: 1.3;
+        }
+
         .loading-state {
             text-align: center;
             padding: 3rem;
@@ -355,8 +412,9 @@ $patient_id = get_patient_session('patient_id');
                 const billingId = <?php echo $billing_id; ?>;
                 console.log('Loading invoice details for billing ID:', billingId);
                 
-                // Use relative path from current page location
-                const apiUrl = `../../../api/billing/patient/get_invoice_details.php?billing_id=${billingId}`;
+                // Use universal path function for API calls
+                const basePath = getApiBasePath();
+                const apiUrl = `${basePath}/api/billing/patient/get_invoice_details.php?billing_id=${billingId}`;
                 console.log('API URL:', apiUrl);
                 
                 const response = await fetch(apiUrl, {
@@ -521,21 +579,31 @@ $patient_id = get_patient_session('patient_id');
                             <i class="fas fa-times"></i> Close
                         </button>
                         
-                        ${invoice.has_receipt ? `
-                            <button class="btn btn-primary" onclick="downloadReceipt(${invoice.billing_id})">
-                                <i class="fas fa-download"></i> Download Receipt
-                            </button>
+                        ${invoice.receipts && invoice.receipts.length > 0 ? `
+                            <div class="btn-group" style="position: relative;">
+                                <button class="btn btn-primary dropdown-toggle" onclick="toggleReceiptDropdown(${invoice.billing_id})">
+                                    <i class="fas fa-receipt"></i> View Receipts
+                                </button>
+                                <div id="receiptDropdown${invoice.billing_id}" class="receipt-dropdown" style="display: none;">
+                                    ${invoice.receipts.map(receipt => `
+                                        <div class="receipt-item" onclick="viewReceipt(${receipt.receipt_id})">
+                                            <div>Receipt #${String(receipt.receipt_id).padStart(6, '0')}</div>
+                                            <div>₱${Number(receipt.amount_paid).toLocaleString('en-PH', {minimumFractionDigits: 2})} - ${formatDate(receipt.payment_date)}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
                         ` : ''}
                         
                         <button class="btn btn-outline" onclick="printInvoice()">
                             <i class="fas fa-print"></i> Print
                         </button>
-                        <button class="btn btn-info" onclick="downloadInvoicePDF()">
+                        <!--<button class="btn btn-info" onclick="downloadInvoicePDF()">
                             <i class="fas fa-download"></i> Download PDF
                         </button>
                         <button class="btn btn-secondary" onclick="downloadInvoiceHTML()">
                             <i class="fas fa-file-code"></i> Download HTML
-                        </button>
+                        </button>-->
                         
                         ${invoice.payment_status === 'unpaid' ? `
                             <button class="btn btn-primary" onclick="showPaymentInfo(${invoice.billing_id})">
@@ -561,15 +629,96 @@ $patient_id = get_patient_session('patient_id');
             `;
         }
 
+        // Universal path function for API calls (works in both local and production)
+        function getApiBasePath() {
+            const currentPath = window.location.pathname;
+            const pathParts = currentPath.split('/');
+            
+            // Find the project root by looking for the pages directory
+            let projectRoot = '';
+            for (let i = 0; i < pathParts.length; i++) {
+                if (pathParts[i] === 'pages') {
+                    projectRoot = pathParts.slice(0, i).join('/') || '/';
+                    break;
+                }
+            }
+            
+            // If no pages directory found, try to find wbhsms-cho-koronadal-1
+            if (!projectRoot && currentPath.includes('wbhsms-cho-koronadal-1')) {
+                const index = currentPath.indexOf('wbhsms-cho-koronadal-1');
+                projectRoot = currentPath.substring(0, index + 'wbhsms-cho-koronadal-1'.length);
+            } else if (!projectRoot) {
+                // Fallback for production environments
+                projectRoot = '';
+            }
+            
+            return projectRoot;
+        }
+
         function downloadReceipt(billingId) {
-            window.open(`/wbhsms-cho-koronadal-1/api/billing/patient/download_receipt.php?billing_id=${billingId}&format=html`, '_blank');
+            // Legacy function - redirect to individual receipts
+            console.log('Redirecting to individual receipts for billing ID:', billingId);
+            const dropdown = document.getElementById(`receiptDropdown${billingId}`);
+            if (dropdown) {
+                toggleReceiptDropdown(billingId);
+            }
+        }
+
+        // Toggle receipt dropdown for individual receipts
+        function toggleReceiptDropdown(billingId) {
+            const dropdown = document.getElementById(`receiptDropdown${billingId}`);
+            if (dropdown) {
+                const isVisible = dropdown.style.display === 'block';
+                
+                // Hide all other open dropdowns
+                document.querySelectorAll('.receipt-dropdown').forEach(d => {
+                    d.style.display = 'none';
+                });
+                
+                // Toggle current dropdown
+                dropdown.style.display = isVisible ? 'none' : 'block';
+                
+                // Close dropdown when clicking outside
+                if (!isVisible) {
+                    document.addEventListener('click', function closeDropdown(e) {
+                        if (!e.target.closest('.btn-group')) {
+                            dropdown.style.display = 'none';
+                            document.removeEventListener('click', closeDropdown);
+                        }
+                    });
+                }
+            }
+        }
+
+        // View individual receipt in popup window
+        function viewReceipt(receiptId) {
+            console.log('Opening receipt in popup window:', receiptId);
+            const basePath = getApiBasePath();
+            const receiptUrl = `${basePath}/api/billing/patient/view_receipt.php?receipt_id=${receiptId}`;
+            
+            // Open in popup window optimized for receipts
+            const popup = window.open(
+                receiptUrl, 
+                'receipt_' + receiptId,
+                'width=800,height=900,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no'
+            );
+            
+            if (!popup) {
+                alert('Popup blocked! Please enable popups for this site to view receipts.');
+                return;
+            }
+            
+            // Focus the popup window
+            popup.focus();
         }
 
         function printInvoice() {
             // Use dedicated invoice API for better formatting
             const billingId = new URLSearchParams(window.location.search).get('billing_id');
             if (billingId) {
-                const printUrl = `/wbhsms-cho-koronadal-1/api/billing/patient/view_invoice.php?billing_id=${billingId}&format=html`;
+                const basePath = getApiBasePath();
+                const printUrl = `${basePath}/api/billing/patient/view_invoice.php?billing_id=${billingId}&format=html`;
+                console.log('Print URL:', printUrl);
                 window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
             } else {
                 // Fallback to page print if no billing ID
@@ -580,7 +729,9 @@ $patient_id = get_patient_session('patient_id');
         function downloadInvoicePDF() {
             const billingId = new URLSearchParams(window.location.search).get('billing_id');
             if (billingId) {
-                const downloadUrl = `/wbhsms-cho-koronadal-1/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=pdf`;
+                const basePath = getApiBasePath();
+                const downloadUrl = `${basePath}/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=pdf`;
+                console.log('Download URL:', downloadUrl);
                 
                 // Create a temporary link element to trigger download
                 const link = document.createElement('a');
@@ -595,7 +746,9 @@ $patient_id = get_patient_session('patient_id');
         function downloadInvoiceHTML() {
             const billingId = new URLSearchParams(window.location.search).get('billing_id');
             if (billingId) {
-                const downloadUrl = `/wbhsms-cho-koronadal-1/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=html`;
+                const basePath = getApiBasePath();
+                const downloadUrl = `${basePath}/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=html`;
+                console.log('Download HTML URL:', downloadUrl);
                 
                 // Create a temporary link element to trigger download
                 const link = document.createElement('a');

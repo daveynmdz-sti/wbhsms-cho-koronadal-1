@@ -610,7 +610,7 @@ $patient_name = get_patient_session('first_name') . ' ' . get_patient_session('l
                     ...currentFilters
                 });
 
-                const response = await fetch(`/wbhsms-cho-koronadal-1/api/billing/patient/get_patient_invoices.php?${params}`);
+                const response = await fetch(`../../../api/billing/patient/get_patient_invoices.php?${params}`);
                 const result = await response.json();
 
                 if (result.success) {
@@ -756,14 +756,16 @@ $patient_name = get_patient_session('first_name') . ' ' . get_patient_session('l
 
         // Download receipt
         function downloadReceipt(billingId) {
-            window.open(`/wbhsms-cho-koronadal-1/api/billing/patient/download_receipt.php?billing_id=${billingId}&format=html`, '_blank');
+            console.log('Download receipt for billing ID:', billingId);
+            window.open(`../../../api/billing/patient/download_receipt.php?billing_id=${billingId}&format=html`, '_blank');
         }
 
         // Export history
         function exportHistory() {
             const params = new URLSearchParams(currentFilters);
             params.set('format', 'pdf');
-            window.open(`/wbhsms-cho-koronadal-1/api/billing/patient/get_patient_invoices.php?${params}`, '_blank');
+            console.log('Export history with params:', params.toString());
+            window.open(`../../../api/billing/patient/get_patient_invoices.php?${params}`, '_blank');
         }
 
         // Show error state

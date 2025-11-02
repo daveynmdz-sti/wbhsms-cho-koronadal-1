@@ -104,7 +104,7 @@ try {
             'paid_amount' => floatval($invoice['paid_amount']),
             'discount_amount' => floatval($invoice['discount_amount']),
             'philhealth_coverage' => floatval($invoice['philhealth_coverage']),
-            'balance_due' => floatval($invoice['total_amount'] - $invoice['paid_amount']),
+            'balance_due' => floatval($invoice['net_amount'] - $invoice['paid_amount']), // Fixed: Use net_amount instead of total_amount
             'payment_status' => $invoice['payment_status'],
             'billing_date' => $invoice['billing_date'],
             'due_date' => $invoice['due_date'],
@@ -123,7 +123,7 @@ try {
             COUNT(*) as total_invoices,
             SUM(CASE WHEN payment_status = 'unpaid' THEN 1 ELSE 0 END) as unpaid_count,
             SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paid_count,
-            SUM(CASE WHEN payment_status = 'unpaid' THEN total_amount - paid_amount ELSE 0 END) as total_outstanding,
+            SUM(CASE WHEN payment_status = 'unpaid' THEN net_amount - paid_amount ELSE 0 END) as total_outstanding, -- Fixed: Use net_amount
             SUM(CASE WHEN payment_status = 'paid' AND YEAR(billing_date) = YEAR(CURDATE()) THEN paid_amount ELSE 0 END) as paid_this_year
         FROM billing 
         WHERE patient_id = ?
