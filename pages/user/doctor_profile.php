@@ -18,10 +18,45 @@ $employee_id = $_GET['id'] ?? $_SESSION['employee_id'];
 header('Location: employee_profile.php?id=' . $employee_id);
 exit();
 
-// Fetch employee information
+// Fetch employee information with enhanced activity logging
 $employee_data = [];
 try {
-    $stmt = $conn->prepare("SELECT * FROM employees WHERE employee_id = ?");
+    $stmt = $conn->prepare("
+        SELECT e.*, 
+               -- Get the most recent successful login from activity logs
+               (SELECT ual_login.created_at 
+                FROM user_activity_logs ual_login 
+                WHERE ual_login.employee_id = e.employee_id 
+                AND ual_login.action_type = 'login' 
+                ORDER BY ual_login.created_at DESC 
+                LIMIT 1) as activity_last_login,
+               
+               -- Get login count for today
+               (SELECT COUNT(*) 
+                FROM user_activity_logs ual_today 
+                WHERE ual_today.employee_id = e.employee_id 
+                AND ual_today.action_type = 'login' 
+                AND DATE(ual_today.created_at) = CURDATE()) as today_login_count,
+               
+               -- Get total login count
+               (SELECT COUNT(*) 
+                FROM user_activity_logs ual_total 
+                WHERE ual_total.employee_id = e.employee_id 
+                AND ual_total.action_type = 'login') as total_login_count,
+               
+               -- Enhanced last login with fallback
+               COALESCE(
+                   (SELECT ual_login.created_at
+                    FROM user_activity_logs ual_login 
+                    WHERE ual_login.employee_id = e.employee_id 
+                    AND ual_login.action_type = 'login' 
+                    ORDER BY ual_login.created_at DESC 
+                    LIMIT 1),
+                   e.last_login
+               ) as enhanced_last_login
+        FROM employees e
+        WHERE e.employee_id = ?
+    ");
     $stmt->bind_param("i", $employee_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -347,8 +382,30 @@ $activePage = 'profile';
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">Last Login:</span>
-                        <span class="detail-value"><?= htmlspecialchars($employee_data['last_login'] ? date('M d, Y H:i', strtotime($employee_data['last_login'])) : 'N/A') ?></span>
+                        <span class="detail-value">
+                            <?php 
+                            if ($employee_data['enhanced_last_login']) {
+                                echo htmlspecialchars(date('M d, Y H:i', strtotime($employee_data['enhanced_last_login'])));
+                                if ($employee_data['activity_last_login']) {
+                                    echo '<br><small style="color: #6b7280;"><i class="fas fa-history"></i> From activity logs</small>';
+                                } else {
+                                    echo '<br><small style="color: #6b7280;"><i class="fas fa-database"></i> From system records</small>';
+                                }
+                                if ($employee_data['today_login_count'] > 0) {
+                                    echo '<br><small style="color: #059669;">' . $employee_data['today_login_count'] . ' login' . ($employee_data['today_login_count'] > 1 ? 's' : '') . ' today</small>';
+                                }
+                            } else {
+                                echo 'Never logged in';
+                            }
+                            ?>
+                        </span>
                     </div>
+                    <?php if ($employee_data['total_login_count'] > 0): ?>
+                    <div class="detail-item">
+                        <span class="detail-label">Total Logins:</span>
+                        <span class="detail-value"><?= number_format($employee_data['total_login_count']) ?></span>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
 

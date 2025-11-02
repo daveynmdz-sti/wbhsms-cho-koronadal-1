@@ -163,85 +163,205 @@ try {
 }
 
 try {
-    // Queue Count
-    $stmt = $conn->prepare('SELECT COUNT(*) as count FROM patient_queue WHERE status = "waiting"');
+    // Queue Count - replaced with Active Consultations
+    $stmt = $conn->prepare('SELECT COUNT(*) as count FROM consultations WHERE consultation_status IN ("ongoing", "awaiting_lab_results")');
     if ($stmt) {
         $stmt->execute();
         $result = $stmt->get_result();
         $row = $result->fetch_assoc();
-        $defaults['stats']['queue_count'] = $row['count'] ?? 0;
+        $defaults['stats']['active_consultations'] = $row['count'] ?? 0;
         $stmt->close();
     }
 } catch (mysqli_sql_exception $e) {
     // table might not exist yet; ignore
+    $defaults['stats']['active_consultations'] = 0;
 }
 
-// Recent Activities (latest 5)
+// Recent Activities (latest 5) - Real system activities
 try {
-    $stmt = $conn->prepare('SELECT activity, created_at FROM admin_activity_log WHERE employee_id = ? ORDER BY created_at DESC LIMIT 5');
+    // Get real recent activities from user_activity_logs table if it exists
+    $stmt = $conn->prepare('SELECT action, created_at, employee_id FROM user_activity_logs ORDER BY created_at DESC LIMIT 5');
     if ($stmt) {
-        $stmt->bind_param("i", $employee_id);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($row = $result->fetch_assoc()) {
             $defaults['recent_activities'][] = [
-                'activity' => $row['activity'] ?? '',
+                'activity' => htmlspecialchars($row['action']) . ' (Employee ID: ' . $row['employee_id'] . ')',
                 'date' => date('m/d/Y H:i', strtotime($row['created_at']))
             ];
         }
         $stmt->close();
     }
 } catch (mysqli_sql_exception $e) {
-    // table might not exist yet; add some default activities
-    $defaults['recent_activities'] = [
-        ['activity' => 'Logged into admin dashboard', 'date' => date('m/d/Y H:i')],
-        ['activity' => 'System started', 'date' => date('m/d/Y H:i')]
-    ];
+    // Fallback to recent appointments and consultations
+    try {
+        $recent_activities = [];
+        
+        // Recent appointments
+        $stmt = $conn->prepare('SELECT "New appointment scheduled" as activity, created_at FROM appointments ORDER BY created_at DESC LIMIT 3');
+        if ($stmt) {
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $recent_activities[] = [
+                    'activity' => $row['activity'],
+                    'date' => date('m/d/Y H:i', strtotime($row['created_at']))
+                ];
+            }
+            $stmt->close();
+        }
+        
+        // Recent consultations
+        $stmt = $conn->prepare('SELECT "Patient consultation completed" as activity, created_at FROM consultations WHERE consultation_status = "completed" ORDER BY created_at DESC LIMIT 2');
+        if ($stmt) {
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $recent_activities[] = [
+                    'activity' => $row['activity'],
+                    'date' => date('m/d/Y H:i', strtotime($row['created_at']))
+                ];
+            }
+            $stmt->close();
+        }
+        
+        // Sort by date and take latest 5
+        usort($recent_activities, function($a, $b) {
+            return strtotime($b['date']) - strtotime($a['date']);
+        });
+        $defaults['recent_activities'] = array_slice($recent_activities, 0, 5);
+        
+    } catch (mysqli_sql_exception $e2) {
+        // Final fallback
+        $defaults['recent_activities'] = [
+            ['activity' => 'System monitoring active', 'date' => date('m/d/Y H:i')],
+            ['activity' => 'Database connection established', 'date' => date('m/d/Y H:i')]
+        ];
+    }
 }
 
-// Pending Tasks
+// Appointment Overview - Real appointment statistics
 try {
-    $stmt = $conn->prepare('SELECT task, priority, due_date FROM admin_tasks WHERE employee_id = ? AND status = "pending" ORDER BY due_date ASC LIMIT 5');
+    $appointment_overview = [];
+    
+    // Today's appointments by status
+    $today = date('Y-m-d');
+    $stmt = $conn->prepare('SELECT status, COUNT(*) as count FROM appointments WHERE DATE(scheduled_date) = ? GROUP BY status');
     if ($stmt) {
-        $stmt->bind_param("i", $employee_id);
+        $stmt->bind_param("s", $today);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($row = $result->fetch_assoc()) {
-            $defaults['pending_tasks'][] = [
-                'task' => $row['task'] ?? '',
-                'priority' => $row['priority'] ?? 'normal',
-                'due_date' => date('m/d/Y', strtotime($row['due_date']))
+            $appointment_overview[] = [
+                'metric' => 'Today - ' . ucfirst($row['status']),
+                'value' => $row['count'] . ' appointments',
+                'status' => $row['status']
             ];
         }
         $stmt->close();
     }
-} catch (mysqli_sql_exception $e) {
-    // table might not exist yet; add some default tasks
-    $defaults['pending_tasks'] = [
-        ['task' => 'Review pending patient registrations', 'priority' => 'high', 'due_date' => date('m/d/Y')],
-        ['task' => 'Update system settings', 'priority' => 'normal', 'due_date' => date('m/d/Y', strtotime('+1 day'))]
-    ];
-}
-
-// System Alerts
-try {
-    $stmt = $conn->prepare('SELECT message, type, created_at FROM system_alerts WHERE status = "active" ORDER BY created_at DESC LIMIT 3');
+    
+    // This week's total appointments
+    $week_start = date('Y-m-d', strtotime('monday this week'));
+    $stmt = $conn->prepare('SELECT COUNT(*) as count FROM appointments WHERE scheduled_date >= ?');
+    if ($stmt) {
+        $stmt->bind_param("s", $week_start);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $appointment_overview[] = [
+            'metric' => 'This Week Total',
+            'value' => $row['count'] . ' appointments',
+            'status' => 'info'
+        ];
+        $stmt->close();
+    }
+    
+    // Most common cancellation reason
+    $stmt = $conn->prepare('SELECT cancellation_reason, COUNT(*) as count FROM appointments WHERE status = "cancelled" AND cancellation_reason IS NOT NULL AND cancellation_reason != "" GROUP BY cancellation_reason ORDER BY count DESC LIMIT 1');
     if ($stmt) {
         $stmt->execute();
         $result = $stmt->get_result();
-        while ($row = $result->fetch_assoc()) {
-            $defaults['system_alerts'][] = [
-                'message' => $row['message'] ?? '',
-                'type' => $row['type'] ?? 'info',
-                'date' => date('m/d/Y H:i', strtotime($row['created_at']))
+        if ($row = $result->fetch_assoc()) {
+            $appointment_overview[] = [
+                'metric' => 'Top Cancellation Reason',
+                'value' => $row['cancellation_reason'] . ' (' . $row['count'] . 'x)',
+                'status' => 'warning'
             ];
         }
         $stmt->close();
     }
+    
+    $defaults['appointment_overview'] = $appointment_overview;
+    
 } catch (mysqli_sql_exception $e) {
-    // table might not exist yet; add some default alerts
-    $defaults['system_alerts'] = [
-        ['message' => 'System running normally', 'type' => 'success', 'date' => date('m/d/Y H:i')]
+    // Fallback appointment overview
+    $defaults['appointment_overview'] = [
+        ['metric' => 'System Status', 'value' => 'Appointments module active', 'status' => 'confirmed'],
+        ['metric' => 'Database', 'value' => 'Connected and operational', 'status' => 'confirmed']
+    ];
+}
+
+// Patient Care Insights - Real consultation data
+try {
+    $care_insights = [];
+    
+    // Consultations by status
+    $stmt = $conn->prepare('SELECT consultation_status, COUNT(*) as count FROM consultations GROUP BY consultation_status ORDER BY count DESC');
+    if ($stmt) {
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $care_insights[] = [
+                'insight' => ucfirst(str_replace('_', ' ', $row['consultation_status'])) . ' consultations',
+                'count' => $row['count'],
+                'type' => $row['consultation_status'] == 'completed' ? 'success' : 'info',
+                'date' => 'Current'
+            ];
+        }
+        $stmt->close();
+    }
+    
+    // Recent consultations needing follow-up
+    $stmt = $conn->prepare('SELECT COUNT(*) as count FROM consultations WHERE follow_up_date IS NOT NULL AND follow_up_date >= CURDATE()');
+    if ($stmt) {
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        if ($row['count'] > 0) {
+            $care_insights[] = [
+                'insight' => 'Scheduled follow-ups',
+                'count' => $row['count'],
+                'type' => 'warning',
+                'date' => 'Upcoming'
+            ];
+        }
+        $stmt->close();
+    }
+    
+    // Recent new patients (last 7 days)
+    $week_ago = date('Y-m-d', strtotime('-7 days'));
+    $stmt = $conn->prepare('SELECT COUNT(*) as count FROM patients WHERE created_at >= ?');
+    if ($stmt) {
+        $stmt->bind_param("s", $week_ago);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $care_insights[] = [
+            'insight' => 'New patient registrations',
+            'count' => $row['count'],
+            'type' => 'info',
+            'date' => 'Last 7 days'
+        ];
+        $stmt->close();
+    }
+    
+    $defaults['care_insights'] = $care_insights;
+    
+} catch (mysqli_sql_exception $e) {
+    // Fallback care insights
+    $defaults['care_insights'] = [
+        ['insight' => 'System operational', 'count' => '✓', 'type' => 'success', 'date' => date('m/d/Y H:i')]
     ];
 }
 ?>
@@ -605,11 +725,10 @@ try {
             z-index: 10;
         }
 
-        /* Statistics Grid for Admin - new grid layout */
+        /* Statistics Grid for Admin - updated for 5 cards */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            grid-template-rows: repeat(2, 220px);
             gap: 1rem;
             margin-bottom: 1.5rem;
         }
@@ -643,7 +762,7 @@ try {
             min-height: 0;
         }
 
-        /* Stats card positions */
+        /* Stats card positions - 5 cards in 2x2 layout beside chart */
         .stat-card.appointments {
             grid-column-start: 4;
             grid-row-start: 1;
@@ -666,6 +785,15 @@ try {
             grid-column-start: 5;
             grid-row-start: 2;
             border-left-color: #fa709a;
+        }
+
+        /* Add 5th stat card below the grid */
+        .stat-card.consultations {
+            grid-column: span 5 / span 5;
+            grid-row-start: 3;
+            border-left-color: #a8edea;
+            max-width: 300px;
+            justify-self: center;
         }
 
         .stat-card.patients {
@@ -723,6 +851,10 @@ try {
 
         .stat-card.revenue .stat-icon {
             color: #fa709a;
+        }
+
+        .stat-card.consultations .stat-icon {
+            color: #a8edea;
         }
 
         .stat-card.queue .stat-icon {
@@ -1163,6 +1295,15 @@ try {
                 <div class="stat-number">₱<?php echo number_format($defaults['stats']['monthly_revenue'], 2); ?></div>
                 <div class="stat-label">Monthly Collections</div>
             </div>
+
+            <!-- Active Consultations Card 
+            <div class="stat-card consultations animated-card">
+                <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-stethoscope"></i></div>
+                </div>
+                <div class="stat-number"><?php echo number_format($defaults['stats']['active_consultations']); ?></div>
+                <div class="stat-label">Active Consultations</div>
+            </div>-->
         </section>
 
         <!-- <hr class="section-divider">Quick Actions Section -->
@@ -1244,31 +1385,31 @@ try {
                     <?php endif; ?>
                 </div>
 
-                <!-- Pending Tasks -->
+                <!-- Appointment Overview -->
                 <div class="card-section">
                     <div class="section-header">
-                        <h3><i class="fas fa-tasks"></i> Pending Tasks</h3>
-                        <a href="admin_tasks.php" class="view-more-btn">
+                        <h3><i class="fas fa-calendar-check"></i> Appointment Overview</h3>
+                        <a href="<?= $nav_base ?>appointment/appointments_management.php" class="view-more-btn">
                             <i class="fas fa-chevron-right"></i> View All
                         </a>
                     </div>
 
-                    <?php if (!empty($defaults['pending_tasks'])): ?>
+                    <?php if (!empty($defaults['appointment_overview'])): ?>
                         <div class="table-wrapper">
                             <table class="notification-table">
                                 <thead>
                                     <tr>
-                                        <th>Task</th>
-                                        <th>Priority</th>
-                                        <th>Due Date</th>
+                                        <th>Metric</th>
+                                        <th>Value</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($defaults['pending_tasks'] as $task): ?>
+                                    <?php foreach ($defaults['appointment_overview'] as $overview): ?>
                                         <tr>
-                                            <td><?php echo htmlspecialchars($task['task']); ?></td>
-                                            <td><span class="priority-<?php echo $task['priority']; ?>"><?php echo ucfirst($task['priority']); ?></span></td>
-                                            <td><?php echo htmlspecialchars($task['due_date']); ?></td>
+                                            <td><?php echo htmlspecialchars($overview['metric']); ?></td>
+                                            <td><?php echo htmlspecialchars($overview['value']); ?></td>
+                                            <td><span class="alert-badge alert-<?php echo $overview['status'] == 'confirmed' ? 'success' : ($overview['status'] == 'cancelled' ? 'danger' : 'info'); ?>"><?php echo ucfirst($overview['status']); ?></span></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -1276,8 +1417,8 @@ try {
                         </div>
                     <?php else: ?>
                         <div class="empty-state">
-                            <i class="fas fa-check-circle"></i>
-                            <p>No pending tasks</p>
+                            <i class="fas fa-calendar-times"></i>
+                            <p>No appointment data available</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -1285,31 +1426,31 @@ try {
 
             <!-- Right Column -->
             <div class="right-column">
-                <!-- System Alerts -->
+                <!-- Patient Care Insights -->
                 <div class="card-section">
                     <div class="section-header">
-                        <h3><i class="fas fa-exclamation-triangle"></i> System Alerts</h3>
-                        <a href="../notifications/system_alerts.php" class="view-more-btn">
+                        <h3><i class="fas fa-user-md"></i> Patient Care Insights</h3>
+                        <a href="<?= $nav_base ?>medical-records/medical_records.php" class="view-more-btn">
                             <i class="fas fa-chevron-right"></i> View All
                         </a>
                     </div>
 
-                    <?php if (!empty($defaults['system_alerts'])): ?>
+                    <?php if (!empty($defaults['care_insights'])): ?>
                         <div class="table-wrapper">
                             <table class="notification-table">
                                 <thead>
                                     <tr>
-                                        <th>Date</th>
-                                        <th>Message</th>
-                                        <th>Type</th>
+                                        <th>Period</th>
+                                        <th>Insight</th>
+                                        <th>Count</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($defaults['system_alerts'] as $alert): ?>
+                                    <?php foreach ($defaults['care_insights'] as $insight): ?>
                                         <tr>
-                                            <td><?php echo htmlspecialchars($alert['date']); ?></td>
-                                            <td><?php echo htmlspecialchars($alert['message']); ?></td>
-                                            <td><span class="alert-badge alert-<?php echo $alert['type']; ?>"><?php echo ucfirst($alert['type']); ?></span></td>
+                                            <td><?php echo htmlspecialchars($insight['date']); ?></td>
+                                            <td><?php echo htmlspecialchars($insight['insight']); ?></td>
+                                            <td><span class="alert-badge alert-<?php echo $insight['type']; ?>"><?php echo htmlspecialchars($insight['count']); ?></span></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -1317,8 +1458,8 @@ try {
                         </div>
                     <?php else: ?>
                         <div class="empty-state">
-                            <i class="fas fa-shield-alt"></i>
-                            <p>No system alerts</p>
+                            <i class="fas fa-heart"></i>
+                            <p>No patient care data available</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -1350,6 +1491,79 @@ try {
                         <span class="alert-badge alert-success">Running</span>
                     </div>
                 </div>
+
+                <!-- Employee Management Summary -->
+                <?php /*
+                // Get employee summary data
+                $employee_summary = [];
+                try {
+                    // Employees by role
+                    $stmt = $conn->prepare('SELECT role_id, COUNT(*) as count FROM employees GROUP BY role_id ORDER BY count DESC');
+                    if ($stmt) {
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+                        $role_mapping = [
+                            1 => 'Admins',
+                            2 => 'Doctors', 
+                            3 => 'Nurses',
+                            4 => 'Lab Techs',
+                            5 => 'Pharmacists',
+                            6 => 'Cashiers',
+                            7 => 'Records Officers',
+                            8 => 'BHWs',
+                            9 => 'DHOs'
+                        ];
+                        while ($row = $result->fetch_assoc()) {
+                            $role_name = $role_mapping[$row['role_id']] ?? 'Unknown Role';
+                            $employee_summary[] = [
+                                'role' => $role_name,
+                                'count' => $row['count']
+                            ];
+                        }
+                        $stmt->close();
+                    }
+                } catch (mysqli_sql_exception $e) {
+                    $employee_summary = [
+                        ['role' => 'Total Staff', 'count' => $defaults['stats']['total_employees']]
+                    ];
+                }
+                ?>
+                
+                <div class="card-section">
+                    <div class="section-header">
+                        <h3><i class="fas fa-users-cog"></i> Staff Distribution</h3>
+                        <a href="<?= $nav_base ?>management/admin/user-management/employee_list.php" class="view-more-btn">
+                            <i class="fas fa-chevron-right"></i> Manage Staff
+                        </a>
+                    </div>
+
+                    <?php if (!empty($employee_summary)): ?>
+                        <div class="table-wrapper">
+                            <table class="notification-table">
+                                <thead>
+                                    <tr>
+                                        <th>Role</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($employee_summary as $role_data): ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($role_data['role']); ?></td>
+                                            <td><span class="alert-badge alert-info"><?php echo $role_data['count']; ?></span></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="fas fa-user-friends"></i>
+                            <p>No employee data available</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                */ ?>
             </div>
         </div>
     </main>

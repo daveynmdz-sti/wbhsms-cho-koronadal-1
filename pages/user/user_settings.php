@@ -32,10 +32,41 @@ $error_message = '';
 $validation_errors = [];
 $employee = null;
 
-// Fetch employee data
+// Fetch employee data with enhanced activity logging
 try {
     $stmt = $conn->prepare("
-        SELECT e.*, r.role_name, f.name as facility_name 
+        SELECT e.*, r.role_name, f.name as facility_name,
+               -- Get the most recent successful login from activity logs
+               (SELECT ual_login.created_at 
+                FROM user_activity_logs ual_login 
+                WHERE ual_login.employee_id = e.employee_id 
+                AND ual_login.action_type = 'login' 
+                ORDER BY ual_login.created_at DESC 
+                LIMIT 1) as activity_last_login,
+               
+               -- Get login count for today
+               (SELECT COUNT(*) 
+                FROM user_activity_logs ual_today 
+                WHERE ual_today.employee_id = e.employee_id 
+                AND ual_today.action_type = 'login' 
+                AND DATE(ual_today.created_at) = CURDATE()) as today_login_count,
+               
+               -- Get total login count
+               (SELECT COUNT(*) 
+                FROM user_activity_logs ual_total 
+                WHERE ual_total.employee_id = e.employee_id 
+                AND ual_total.action_type = 'login') as total_login_count,
+               
+               -- Enhanced last login with fallback
+               COALESCE(
+                   (SELECT DATE_FORMAT(ual_login.created_at, '%M %d, %Y at %h:%i %p')
+                    FROM user_activity_logs ual_login 
+                    WHERE ual_login.employee_id = e.employee_id 
+                    AND ual_login.action_type = 'login' 
+                    ORDER BY ual_login.created_at DESC 
+                    LIMIT 1),
+                   DATE_FORMAT(e.last_login, '%M %d, %Y at %h:%i %p')
+               ) as enhanced_last_login_formatted
         FROM employees e 
         LEFT JOIN roles r ON e.role_id = r.role_id 
         LEFT JOIN facilities f ON e.facility_id = f.facility_id 
@@ -52,6 +83,7 @@ try {
 
     $employee = $result->fetch_assoc();
 } catch (Exception $e) {
+    error_log("Error fetching employee data: " . $e->getMessage());
     header('Location: employee_profile.php?error=fetch_failed');
     exit();
 }
@@ -993,10 +1025,13 @@ $sidebar_file = match ($current_user_role) {
 
             <!-- Navigation Tabs -->
             <div class="settings-nav">
+                <button class="nav-tab active" onclick="showTab('overview')">
+                    <i class="fas fa-user-circle"></i> Account Overview
+                </button>
                 <button class="nav-tab" onclick="showTab('photo')">
                     <i class="fas fa-camera"></i> Profile Photo
                 </button>
-                <button class="nav-tab active" onclick="showTab('contact')">
+                <button class="nav-tab" onclick="showTab('contact')">
                     <i class="fas fa-envelope"></i> Contact Information
                 </button>
                 <button class="nav-tab" onclick="showTab('password')">
@@ -1055,8 +1090,90 @@ $sidebar_file = match ($current_user_role) {
                 </div>
             <?php endif; ?>
 
+            <!-- Tab Content: Account Overview -->
+            <div id="overview" class="tab-content active">
+                <div class="form-section">
+                    <h4><i class="fas fa-user-circle"></i> Account Overview</h4>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <div>
+                            <strong>Account Information:</strong> View your account details and login activity.
+                            To make changes, use the other tabs above.
+                        </div>
+                    </div>
+
+                    <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                        <div class="info-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;">
+                            <div class="info-label" style="font-size: 0.875rem; font-weight: 500; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Last Login</div>
+                            <div class="info-value" style="font-size: 1rem; font-weight: 600; color: #1f2937;">
+                                <?= $employee['enhanced_last_login_formatted'] ?: 'Never logged in' ?>
+                            </div>
+                            <?php if (!empty($employee['today_login_count']) && $employee['today_login_count'] > 0): ?>
+                            <div style="font-size: 0.8rem; color: #059669; margin-top: 4px;">
+                                <i class="fas fa-sign-in-alt"></i> <?= $employee['today_login_count'] ?> login<?= $employee['today_login_count'] > 1 ? 's' : '' ?> today
+                            </div>
+                            <?php endif; ?>
+                            <?php if (!empty($employee['activity_last_login'])): ?>
+                            <div style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;">
+                                <i class="fas fa-history"></i> From activity logs
+                            </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="info-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;">
+                            <div class="info-label" style="font-size: 0.875rem; font-weight: 500; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Total Logins</div>
+                            <div class="info-value" style="font-size: 1rem; font-weight: 600; color: #1f2937;">
+                                <?= number_format($employee['total_login_count'] ?? 0) ?>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #6b7280; margin-top: 4px;">
+                                Since account creation
+                            </div>
+                        </div>
+
+                        <div class="info-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;">
+                            <div class="info-label" style="font-size: 0.875rem; font-weight: 500; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Employee Number</div>
+                            <div class="info-value" style="font-size: 1rem; font-weight: 600; color: #1f2937;">
+                                <?= htmlspecialchars($employee['employee_number']) ?>
+                            </div>
+                        </div>
+
+                        <div class="info-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;">
+                            <div class="info-label" style="font-size: 0.875rem; font-weight: 500; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Email Address</div>
+                            <div class="info-value" style="font-size: 1rem; font-weight: 600; color: #1f2937;">
+                                <?= htmlspecialchars($employee['email']) ?>
+                            </div>
+                        </div>
+
+                        <div class="info-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;">
+                            <div class="info-label" style="font-size: 0.875rem; font-weight: 500; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Contact Number</div>
+                            <div class="info-value" style="font-size: 1rem; font-weight: 600; color: #1f2937;">
+                                <?= htmlspecialchars($employee['contact_num'] ?? 'Not provided') ?>
+                            </div>
+                        </div>
+
+                        <div class="info-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;">
+                            <div class="info-label" style="font-size: 0.875rem; font-weight: 500; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Account Status</div>
+                            <div class="info-value" style="font-size: 1rem; font-weight: 600; color: #1f2937;">
+                                <?php if ($employee['status'] === 'active'): ?>
+                                    <span style="color: #059669;"><i class="fas fa-check-circle"></i> Active</span>
+                                <?php else: ?>
+                                    <span style="color: #dc2626;"><i class="fas fa-times-circle"></i> <?= ucfirst($employee['status']) ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 30px; text-align: center;">
+                        <a href="employee_profile.php" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Profile
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             <!-- Tab Content: Contact Information -->
-            <div id="contact" class="tab-content active">
+            <div id="contact" class="tab-content">
                 <form method="POST" novalidate>
                     <input type="hidden" name="action" value="update_contact">
 

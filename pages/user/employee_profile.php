@@ -35,25 +35,120 @@ $activity_logs = [];
 $station_assignments = [];
 $role_specific_stats = [];
 
-// Fetch comprehensive employee data
+// Fetch comprehensive employee data with enhanced last login from activity logs
 try {
     $stmt = $conn->prepare("
         SELECT e.*, r.role_name, r.description as role_description, 
                f.name as facility_name, f.type as facility_type,
                TIMESTAMPDIFF(YEAR, e.birth_date, CURDATE()) as age,
                DATE_FORMAT(e.created_at, '%M %d, %Y at %h:%i %p') as date_hired,
-               DATE_FORMAT(e.last_login, '%M %d, %Y at %h:%i %p') as last_login_formatted,
+               
+               -- Get the most recent successful login from activity logs
+               (SELECT ual_login.created_at 
+                FROM user_activity_logs ual_login 
+                WHERE ual_login.employee_id = e.employee_id 
+                AND ual_login.action_type = 'login' 
+                ORDER BY ual_login.created_at DESC 
+                LIMIT 1) as activity_last_login,
+               
+               -- Format the activity log last login
+               (SELECT DATE_FORMAT(ual_login.created_at, '%M %d, %Y at %h:%i %p')
+                FROM user_activity_logs ual_login 
+                WHERE ual_login.employee_id = e.employee_id 
+                AND ual_login.action_type = 'login' 
+                ORDER BY ual_login.created_at DESC 
+                LIMIT 1) as activity_last_login_formatted,
+               
+               -- Get login count for today
+               (SELECT COUNT(*) 
+                FROM user_activity_logs ual_today 
+                WHERE ual_today.employee_id = e.employee_id 
+                AND ual_today.action_type = 'login' 
+                AND DATE(ual_today.created_at) = CURDATE()) as today_login_count,
+               
+               -- Get total login count
+               (SELECT COUNT(*) 
+                FROM user_activity_logs ual_total 
+                WHERE ual_total.employee_id = e.employee_id 
+                AND ual_total.action_type = 'login') as total_login_count,
+               
+               -- Fallback to old last_login field if activity logs don't exist
+               COALESCE(
+                   (SELECT DATE_FORMAT(ual_login.created_at, '%M %d, %Y at %h:%i %p')
+                    FROM user_activity_logs ual_login 
+                    WHERE ual_login.employee_id = e.employee_id 
+                    AND ual_login.action_type = 'login' 
+                    ORDER BY ual_login.created_at DESC 
+                    LIMIT 1),
+                   DATE_FORMAT(e.last_login, '%M %d, %Y at %h:%i %p')
+               ) as last_login_formatted,
+               
+               -- Activity status based on activity logs or fallback to last_login
                CASE 
-                   WHEN e.last_login IS NULL THEN 'Never logged in'
-                   WHEN e.last_login < DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 'Inactive (30+ days)'
-                   WHEN e.last_login < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 'Less active (7+ days)'
-                   WHEN e.last_login < DATE_SUB(NOW(), INTERVAL 1 DAY) THEN 'Recently active'
+                   WHEN (SELECT ual_login.created_at 
+                         FROM user_activity_logs ual_login 
+                         WHERE ual_login.employee_id = e.employee_id 
+                         AND ual_login.action_type = 'login' 
+                         ORDER BY ual_login.created_at DESC 
+                         LIMIT 1) IS NULL 
+                        AND e.last_login IS NULL THEN 'Never logged in'
+                   WHEN COALESCE(
+                            (SELECT ual_login.created_at 
+                             FROM user_activity_logs ual_login 
+                             WHERE ual_login.employee_id = e.employee_id 
+                             AND ual_login.action_type = 'login' 
+                             ORDER BY ual_login.created_at DESC 
+                             LIMIT 1),
+                            e.last_login
+                        ) < DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 'Inactive (30+ days)'
+                   WHEN COALESCE(
+                            (SELECT ual_login.created_at 
+                             FROM user_activity_logs ual_login 
+                             WHERE ual_login.employee_id = e.employee_id 
+                             AND ual_login.action_type = 'login' 
+                             ORDER BY ual_login.created_at DESC 
+                             LIMIT 1),
+                            e.last_login
+                        ) < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 'Less active (7+ days)'
+                   WHEN COALESCE(
+                            (SELECT ual_login.created_at 
+                             FROM user_activity_logs ual_login 
+                             WHERE ual_login.employee_id = e.employee_id 
+                             AND ual_login.action_type = 'login' 
+                             ORDER BY ual_login.created_at DESC 
+                             LIMIT 1),
+                            e.last_login
+                        ) < DATE_SUB(NOW(), INTERVAL 1 DAY) THEN 'Recently active'
                    ELSE 'Currently active'
                END as activity_status,
+               
+               -- Activity badge color
                CASE 
-                   WHEN e.last_login IS NULL THEN 'danger'
-                   WHEN e.last_login < DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 'warning'
-                   WHEN e.last_login < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 'info'
+                   WHEN (SELECT ual_login.created_at 
+                         FROM user_activity_logs ual_login 
+                         WHERE ual_login.employee_id = e.employee_id 
+                         AND ual_login.action_type = 'login' 
+                         ORDER BY ual_login.created_at DESC 
+                         LIMIT 1) IS NULL 
+                        AND e.last_login IS NULL THEN 'danger'
+                   WHEN COALESCE(
+                            (SELECT ual_login.created_at 
+                             FROM user_activity_logs ual_login 
+                             WHERE ual_login.employee_id = e.employee_id 
+                             AND ual_login.action_type = 'login' 
+                             ORDER BY ual_login.created_at DESC 
+                             LIMIT 1),
+                            e.last_login
+                        ) < DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 'warning'
+                   WHEN COALESCE(
+                            (SELECT ual_login.created_at 
+                             FROM user_activity_logs ual_login 
+                             WHERE ual_login.employee_id = e.employee_id 
+                             AND ual_login.action_type = 'login' 
+                             ORDER BY ual_login.created_at DESC 
+                             LIMIT 1),
+                            e.last_login
+                        ) < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 'info'
                    ELSE 'success'
                END as activity_badge
         FROM employees e 
@@ -72,6 +167,7 @@ try {
 
     $employee = $result->fetch_assoc();
 } catch (Exception $e) {
+    error_log("Error fetching employee data: " . $e->getMessage());
     header('Location: employee_profile.php?id=' . $_SESSION['employee_id'] . '&error=fetch_failed');
     exit();
 }
@@ -858,10 +954,22 @@ $sidebar_file = match($current_user_role) {
                             <div class="info-card">
                                 <div class="info-label">Last Login</div>
                                 <div class="info-value"><?= $employee['last_login_formatted'] ?: 'Never logged in' ?></div>
+                                <?php if (!empty($employee['today_login_count']) && $employee['today_login_count'] > 0): ?>
+                                <div style="font-size: 0.8rem; color: #6b7280; margin-top: 4px;">
+                                    <?= $employee['today_login_count'] ?> login<?= $employee['today_login_count'] > 1 ? 's' : '' ?> today
+                                </div>
+                                <?php endif; ?>
                             </div>
                             <div class="info-card">
                                 <div class="info-label">Employment Status</div>
                                 <div class="info-value"><?= ucfirst(str_replace('_', ' ', $employee['status'])) ?></div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-label">Total Logins</div>
+                                <div class="info-value"><?= number_format($employee['total_login_count'] ?? 0) ?></div>
+                                <div style="font-size: 0.8rem; color: #6b7280; margin-top: 4px;">
+                                    Since account creation
+                                </div>
                             </div>
                             <div class="info-card">
                                 <div class="info-label">Role Description</div>
@@ -942,6 +1050,15 @@ $sidebar_file = match($current_user_role) {
                             <div class="info-card">
                                 <div class="info-label">Last Login</div>
                                 <div class="info-value"><?= $employee['last_login_formatted'] ?: 'Never logged in' ?></div>
+                                <?php if (!empty($employee['activity_last_login'])): ?>
+                                <div style="font-size: 0.8rem; color: #6b7280; margin-top: 4px;">
+                                    <i class="fas fa-history"></i> From activity logs
+                                </div>
+                                <?php elseif (!empty($employee['last_login_formatted'])): ?>
+                                <div style="font-size: 0.8rem; color: #6b7280; margin-top: 4px;">
+                                    <i class="fas fa-database"></i> From system records
+                                </div>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <?php if (!empty($employee['role_description'])): ?>
