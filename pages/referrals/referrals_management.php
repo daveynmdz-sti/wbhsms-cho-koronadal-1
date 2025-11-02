@@ -432,7 +432,6 @@ try {
 
         /* Layout */
         .content-wrapper {
-            margin-left: 300px;
             padding: 2rem;
             transition: margin-left 0.3s;
         }
@@ -1890,418 +1889,420 @@ try {
     includeDynamicSidebar('referrals', $root_path);
     ?>
 
-    <section class="content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb mt-50">
-            <a href="<?php echo getRoleDashboardUrl(); ?>"><i class="fas fa-home"></i> Dashboard</a>
-            <i class="fas fa-chevron-right"></i>
-            <span>Referrals Management</span>
-        </div>
+    <section class="homepage">
+        <div class="content-wrapper">
+            <!-- Breadcrumb Navigation -->
+            <div class="breadcrumb mt-50">
+                <a href="<?php echo getRoleDashboardUrl(); ?>"><i class="fas fa-home"></i> Dashboard</a>
+                <i class="fas fa-chevron-right"></i>
+                <span>Referrals Management</span>
+            </div>
 
-        <div class="page-header">
-            <h1><i class="fas fa-share"></i> Referrals Management</h1>
-            <?php if ($canCreateReferrals): ?>
-                <a href="create_referrals.php" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Create Referral
-                </a>
-            <?php endif; ?>
-        </div>
-
-        <!-- Informational Notice about Edit Policy -->
-        <?php if (!empty($message)): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if (!empty($error)): ?>
-            <div class="alert alert-error">
-                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($notice === 'edit_deprecated'): ?>
-            <div class="alert alert-warning" style="border-left: 4px solid #ff9800;">
-                <i class="fas fa-exclamation-triangle"></i> <strong>Edit Feature Unavailable:</strong>
-                Referral editing has been disabled. To modify a referral, please <strong>cancel the existing referral</strong> and <strong>create a new one</strong> with the correct information.
-            </div>
-        <?php endif; ?>
-
-        <?php if (isset($_GET['reactivated']) && isset($_GET['id'])): ?>
-            <div class="alert alert-success" style="border-left: 4px solid #4caf50;">
-                <i class="fas fa-check-circle"></i> <strong>Success:</strong>
-                Referral #<?php echo htmlspecialchars($_GET['id']); ?> has been successfully reactivated and is now active.
-                <button type="button" class="btn-close" onclick="this.parentElement.remove();" style="float: right; background: none; border: none; font-size: 18px; cursor: pointer;">&times;</button>
-            </div>
-        <?php endif; ?>
-
-        <!-- Statistics Notice -->
-        <div style="background: #e3f2fd; border: 1px solid #1976d2; border-radius: 8px; padding: 12px 16px; margin-bottom: 1.5rem; color: #0d47a1;">
-            <i class="fas fa-info-circle" style="margin-right: 8px; color: #1976d2;"></i>
-            <strong>Current Month Filter:</strong> The statistics and table below show only referrals you issued in <?php echo date('F Y'); ?>.
-        </div>
-
-        <!-- Statistics -->
-        <div class="stats-grid">
-            <div class="stat-card total">
-                <div class="stat-number"><?php echo number_format($stats['total']); ?></div>
-                <div class="stat-label">Total Referrals</div>
-            </div>
-            <div class="stat-card active">
-                <div class="stat-number"><?php echo number_format($stats['active'] ?? 0); ?></div>
-                <div class="stat-label">Active</div>
-            </div>
-            <div class="stat-card completed">
-                <div class="stat-number"><?php echo number_format($stats['issued'] ?? 0); ?></div>
-                <div class="stat-label">Issued</div>
-            </div>
-            <div class="stat-card accepted">
-                <div class="stat-number"><?php echo number_format($stats['accepted'] ?? 0); ?></div>
-                <div class="stat-label">Accepted</div>
-            </div>
-            <div class="stat-card canceled">
-                <div class="stat-number"><?php echo number_format($stats['cancelled'] ?? 0); ?></div>
-                <div class="stat-label">Cancelled</div>
-            </div>
-        </div>
-
-        <!-- Filters -->
-        <div class="filters-container">
-            <div class="section-header">
-                <h4>
-                    <i class="fas fa-filter"></i> Search & Filter Options
-                </h4>
-            </div>
-            <form method="GET" class="filters-grid">
-                <div class="form-group">
-                    <label for="patient_search">Patient Search</label>
-                    <input type="text" id="patient_search" name="patient_search" value="<?php echo htmlspecialchars($patient_search); ?>"
-                        placeholder="Search by Patient ID, First Name, or Last Name...">
-                </div>
-                <div class="form-group">
-                    <label for="barangay">Barangay</label>
-                    <select id="barangay" name="barangay">
-                        <option value="">All Barangays</option>
-                        <?php foreach ($barangays as $brgy): ?>
-                            <option value="<?php echo htmlspecialchars($brgy['barangay_name']); ?>"
-                                <?php echo $barangay === $brgy['barangay_name'] ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($brgy['barangay_name']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="status">Status</label>
-                    <select id="status" name="status">
-                        <option value="">All Statuses</option>
-                        <option value="active" <?php echo $status_filter === 'active' ? 'selected' : ''; ?>>Active</option>
-                        <option value="accepted" <?php echo $status_filter === 'accepted' ? 'selected' : ''; ?>>Accepted</option>
-                        <option value="cancelled" <?php echo $status_filter === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
-                        <option value="issued" <?php echo $status_filter === 'issued' ? 'selected' : ''; ?>>Issued</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                </div>
-                <div class="form-group">
-                    <a href="?" class="btn btn-secondary mt-05">
-                        <i class="fas fa-times"></i> Clear
+            <div class="page-header">
+                <h1><i class="fas fa-share"></i> Referrals Management</h1>
+                <?php if ($canCreateReferrals): ?>
+                    <a href="create_referrals.php" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Referral
                     </a>
-                </div>
-            </form>
-        </div>
-
-        <!-- Referrals Table -->
-        <div class="card-container">
-            <div class="section-header">
-                <h4>
-                    <i class="fas fa-table"></i> Referrals Issued
-                </h4>
-            </div>
-            <div class="table-container">
-                <?php if (empty($referrals)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-share"></i>
-                        <h3>No Referrals Found</h3>
-                        <p>No referrals match your current search criteria.</p>
-                        <?php if ($canCreateReferrals): ?>
-                            <a href="create_referrals.php" class="btn btn-primary" style="margin-top: 20px;">Create First Referral</a>
-                        <?php endif; ?>
-                    </div>
-                <?php else: ?>
-                    <!-- Desktop/Tablet Table View -->
-                    <div class="table-wrapper">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Referral #</th>
-                                    <th>Patient</th>
-                                    <th>Barangay</th>
-                                    <th>Reason for Referral</th>
-                                    <th>Referred Facility</th>
-                                    <th>Status</th>
-                                    <th>Issued Date</th>
-                                    <th>Issued By</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($referrals as $referral):
-                                    $patient_name = trim($referral['first_name'] . ' ' . ($referral['middle_name'] ? $referral['middle_name'] . ' ' : '') . $referral['last_name']);
-                                    $issuer_name = trim($referral['issuer_first_name'] . ' ' . $referral['issuer_last_name']);
-
-                                    // Determine destination based on destination_type
-                                    if ($referral['destination_type'] === 'external') {
-                                        $destination = $referral['external_facility_name'] ?: 'External Facility';
-                                    } else {
-                                        $destination = $referral['referred_facility_name'] ?: 'Internal Facility';
-                                    }
-
-                                    // Determine badge class based on status
-                                    $badge_class = 'badge-secondary';
-                                    switch ($referral['status']) {
-                                        case 'active':
-                                            $badge_class = 'badge-success';
-                                            break;
-                                        case 'accepted':
-                                            $badge_class = 'badge-info';
-                                            break;
-                                        case 'completed':
-                                            $badge_class = 'badge-primary';
-                                            break;
-                                        case 'cancelled':
-                                            $badge_class = 'badge-danger';
-                                            break;
-                                        default:
-                                            $badge_class = 'badge-secondary';
-                                            break;
-                                    }
-                                ?>
-                                    <tr>
-                                        <td><strong><?php echo htmlspecialchars($referral['referral_num']); ?></strong></td>
-                                        <td>
-                                            <div class="patient-info-cell">
-                                                <div class="patient-name"><?php echo htmlspecialchars($patient_name); ?></div>
-                                                <small class="patient-id"><?php echo htmlspecialchars($referral['patient_number']); ?></small>
-                                            </div>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($referral['barangay'] ?? 'N/A'); ?></td>
-                                        <td>
-                                            <div class="reason-cell">
-                                                <?php echo htmlspecialchars($referral['referral_reason']); ?>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="facility-cell">
-                                                <?php echo htmlspecialchars($destination); ?>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span class="badge <?php echo $badge_class; ?>">
-                                                <?php echo ucfirst($referral['status']); ?>
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <div class="date-cell">
-                                                <?php echo date('M j, Y', strtotime($referral['referral_date'])); ?>
-                                                <br><small><?php echo date('g:i A', strtotime($referral['referral_date'])); ?></small>
-                                            </div>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($issuer_name); ?></td>
-                                        <td>
-                                            <div class="actions-group">
-                                                <button type="button" class="btn btn-primary btn-sm" onclick="viewReferral(<?php echo $referral['referral_id']; ?>)" title="View Details">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                <?php if ($referral['status'] === 'voided'): ?>
-                                                    <form method="POST" class="inline-form">
-                                                        <input type="hidden" name="action" value="reactivate">
-                                                        <input type="hidden" name="referral_id" value="<?php echo $referral['referral_id']; ?>">
-                                                        <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Reactivate this referral?')" title="Reactivate">
-                                                            <i class="fas fa-redo"></i>
-                                                        </button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Mobile Card View (for very small screens) -->
-                    <div class="mobile-cards mobile-cards-hidden">
-                        <?php foreach ($referrals as $referral):
-                            $patient_name = trim($referral['first_name'] . ' ' . ($referral['middle_name'] ? $referral['middle_name'] . ' ' : '') . $referral['last_name']);
-                            $issuer_name = trim($referral['issuer_first_name'] . ' ' . $referral['issuer_last_name']);
-
-                            // Determine destination based on destination_type
-                            if ($referral['destination_type'] === 'external') {
-                                $destination = $referral['external_facility_name'] ?: 'External Facility';
-                            } else {
-                                $destination = $referral['referred_facility_name'] ?: 'Internal Facility';
-                            }
-
-                            // Determine badge class based on status
-                            $badge_class = 'badge-secondary';
-                            switch ($referral['status']) {
-                                case 'active':
-                                    $badge_class = 'badge-success';
-                                    break;
-                                case 'accepted':
-                                    $badge_class = 'badge-info';
-                                    break;
-                                case 'completed':
-                                    $badge_class = 'badge-primary';
-                                    break;
-                                case 'cancelled':
-                                    $badge_class = 'badge-danger';
-                                    break;
-                                default:
-                                    $badge_class = 'badge-secondary';
-                                    break;
-                            }
-                        ?>
-                            <div class="mobile-card">
-                                <div class="mobile-card-header">
-                                    <strong><?php echo htmlspecialchars($referral['referral_num']); ?></strong>
-                                    <span class="badge <?php echo $badge_class; ?>"><?php echo ucfirst($referral['status']); ?></span>
-                                </div>
-                                <div class="mobile-card-body">
-                                    <div class="mobile-card-field">
-                                        <span class="mobile-card-label">Patient:</span>
-                                        <?php echo htmlspecialchars($patient_name); ?> (<?php echo htmlspecialchars($referral['patient_number']); ?>)
-                                    </div>
-                                    <div class="mobile-card-field">
-                                        <span class="mobile-card-label">Barangay:</span>
-                                        <?php echo htmlspecialchars($referral['barangay'] ?? 'N/A'); ?>
-                                    </div>
-                                    <div class="mobile-card-field">
-                                        <span class="mobile-card-label">Referral Reason:</span>
-                                        <?php echo htmlspecialchars($referral['referral_reason']); ?>
-                                    </div>
-                                    <div class="mobile-card-field">
-                                        <span class="mobile-card-label">Destination:</span>
-                                        <?php echo htmlspecialchars($destination); ?>
-                                    </div>
-                                    <div class="mobile-card-field">
-                                        <span class="mobile-card-label">Date:</span>
-                                        <?php echo date('M j, Y g:i A', strtotime($referral['referral_date'])); ?>
-                                    </div>
-                                    <div class="mobile-card-field">
-                                        <span class="mobile-card-label">Issued By:</span>
-                                        <?php echo htmlspecialchars($issuer_name); ?>
-                                    </div>
-                                    <div class="actions-group mt-075">
-                                        <button type="button" class="btn btn-primary btn-sm" onclick="viewReferral(<?php echo $referral['referral_id']; ?>)">
-                                            <i class="fas fa-eye"></i> View Details
-                                        </button>
-                                        <?php if ($referral['status'] === 'cancelled'): ?>
-                                            <form method="POST" class="inline-form">
-                                                <input type="hidden" name="action" value="reactivate">
-                                                <input type="hidden" name="referral_id" value="<?php echo $referral['referral_id']; ?>">
-                                                <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Reactivate this referral?')">
-                                                    <i class="fas fa-redo"></i> Reactivate
-                                                </button>
-                                            </form>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
                 <?php endif; ?>
+            </div>
 
-                <!-- Pagination Container -->
-                <?php if ($total_records > 0): ?>
-                    <div class="pagination-container">
-                        <div class="pagination-info">
-                            <div class="records-info">
-                                Showing <strong><?php echo (($page - 1) * $per_page) + 1; ?></strong> to
-                                <strong><?php echo min($page * $per_page, $total_records); ?></strong> of
-                                <strong><?php echo $total_records; ?></strong> referrals
-                            </div>
+            <!-- Informational Notice about Edit Policy -->
+            <?php if (!empty($message)): ?>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?>
+                </div>
+            <?php endif; ?>
 
-                            <div class="page-size-selector">
-                                <label for="perPageSelect">Show:</label>
-                                <select id="perPageSelect" onchange="changePageSize(this.value)">
-                                    <option value="10" <?php echo $per_page == 10 ? 'selected' : ''; ?>>10</option>
-                                    <option value="25" <?php echo $per_page == 25 ? 'selected' : ''; ?>>25</option>
-                                    <option value="50" <?php echo $per_page == 50 ? 'selected' : ''; ?>>50</option>
-                                    <option value="100" <?php echo $per_page == 100 ? 'selected' : ''; ?>>100</option>
-                                </select>
-                            </div>
+            <?php if (!empty($error)): ?>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($notice === 'edit_deprecated'): ?>
+                <div class="alert alert-warning" style="border-left: 4px solid #ff9800;">
+                    <i class="fas fa-exclamation-triangle"></i> <strong>Edit Feature Unavailable:</strong>
+                    Referral editing has been disabled. To modify a referral, please <strong>cancel the existing referral</strong> and <strong>create a new one</strong> with the correct information.
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['reactivated']) && isset($_GET['id'])): ?>
+                <div class="alert alert-success" style="border-left: 4px solid #4caf50;">
+                    <i class="fas fa-check-circle"></i> <strong>Success:</strong>
+                    Referral #<?php echo htmlspecialchars($_GET['id']); ?> has been successfully reactivated and is now active.
+                    <button type="button" class="btn-close" onclick="this.parentElement.remove();" style="float: right; background: none; border: none; font-size: 18px; cursor: pointer;">&times;</button>
+                </div>
+            <?php endif; ?>
+
+            <!-- Statistics Notice -->
+            <div style="background: #e3f2fd; border: 1px solid #1976d2; border-radius: 8px; padding: 12px 16px; margin-bottom: 1.5rem; color: #0d47a1;">
+                <i class="fas fa-info-circle" style="margin-right: 8px; color: #1976d2;"></i>
+                <strong>Current Month Filter:</strong> The statistics and table below show only referrals you issued in <?php echo date('F Y'); ?>.
+            </div>
+
+            <!-- Statistics -->
+            <div class="stats-grid">
+                <div class="stat-card total">
+                    <div class="stat-number"><?php echo number_format($stats['total']); ?></div>
+                    <div class="stat-label">Total Referrals</div>
+                </div>
+                <div class="stat-card active">
+                    <div class="stat-number"><?php echo number_format($stats['active'] ?? 0); ?></div>
+                    <div class="stat-label">Active</div>
+                </div>
+                <div class="stat-card completed">
+                    <div class="stat-number"><?php echo number_format($stats['issued'] ?? 0); ?></div>
+                    <div class="stat-label">Issued</div>
+                </div>
+                <div class="stat-card accepted">
+                    <div class="stat-number"><?php echo number_format($stats['accepted'] ?? 0); ?></div>
+                    <div class="stat-label">Accepted</div>
+                </div>
+                <div class="stat-card canceled">
+                    <div class="stat-number"><?php echo number_format($stats['cancelled'] ?? 0); ?></div>
+                    <div class="stat-label">Cancelled</div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="filters-container">
+                <div class="section-header">
+                    <h4>
+                        <i class="fas fa-filter"></i> Search & Filter Options
+                    </h4>
+                </div>
+                <form method="GET" class="filters-grid">
+                    <div class="form-group">
+                        <label for="patient_search">Patient Search</label>
+                        <input type="text" id="patient_search" name="patient_search" value="<?php echo htmlspecialchars($patient_search); ?>"
+                            placeholder="Search by Patient ID, First Name, or Last Name...">
+                    </div>
+                    <div class="form-group">
+                        <label for="barangay">Barangay</label>
+                        <select id="barangay" name="barangay">
+                            <option value="">All Barangays</option>
+                            <?php foreach ($barangays as $brgy): ?>
+                                <option value="<?php echo htmlspecialchars($brgy['barangay_name']); ?>"
+                                    <?php echo $barangay === $brgy['barangay_name'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($brgy['barangay_name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select id="status" name="status">
+                            <option value="">All Statuses</option>
+                            <option value="active" <?php echo $status_filter === 'active' ? 'selected' : ''; ?>>Active</option>
+                            <option value="accepted" <?php echo $status_filter === 'accepted' ? 'selected' : ''; ?>>Accepted</option>
+                            <option value="cancelled" <?php echo $status_filter === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                            <option value="issued" <?php echo $status_filter === 'issued' ? 'selected' : ''; ?>>Issued</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <a href="?" class="btn btn-secondary mt-05">
+                            <i class="fas fa-times"></i> Clear
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Referrals Table -->
+            <div class="card-container">
+                <div class="section-header">
+                    <h4>
+                        <i class="fas fa-table"></i> Referrals Issued
+                    </h4>
+                </div>
+                <div class="table-container">
+                    <?php if (empty($referrals)): ?>
+                        <div class="empty-state">
+                            <i class="fas fa-share"></i>
+                            <h3>No Referrals Found</h3>
+                            <p>No referrals match your current search criteria.</p>
+                            <?php if ($canCreateReferrals): ?>
+                                <a href="create_referrals.php" class="btn btn-primary" style="margin-top: 20px;">Create First Referral</a>
+                            <?php endif; ?>
+                        </div>
+                    <?php else: ?>
+                        <!-- Desktop/Tablet Table View -->
+                        <div class="table-wrapper">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Referral #</th>
+                                        <th>Patient</th>
+                                        <th>Barangay</th>
+                                        <th>Reason for Referral</th>
+                                        <th>Referred Facility</th>
+                                        <th>Status</th>
+                                        <th>Issued Date</th>
+                                        <th>Issued By</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($referrals as $referral):
+                                        $patient_name = trim($referral['first_name'] . ' ' . ($referral['middle_name'] ? $referral['middle_name'] . ' ' : '') . $referral['last_name']);
+                                        $issuer_name = trim($referral['issuer_first_name'] . ' ' . $referral['issuer_last_name']);
+
+                                        // Determine destination based on destination_type
+                                        if ($referral['destination_type'] === 'external') {
+                                            $destination = $referral['external_facility_name'] ?: 'External Facility';
+                                        } else {
+                                            $destination = $referral['referred_facility_name'] ?: 'Internal Facility';
+                                        }
+
+                                        // Determine badge class based on status
+                                        $badge_class = 'badge-secondary';
+                                        switch ($referral['status']) {
+                                            case 'active':
+                                                $badge_class = 'badge-success';
+                                                break;
+                                            case 'accepted':
+                                                $badge_class = 'badge-info';
+                                                break;
+                                            case 'completed':
+                                                $badge_class = 'badge-primary';
+                                                break;
+                                            case 'cancelled':
+                                                $badge_class = 'badge-danger';
+                                                break;
+                                            default:
+                                                $badge_class = 'badge-secondary';
+                                                break;
+                                        }
+                                    ?>
+                                        <tr>
+                                            <td><strong><?php echo htmlspecialchars($referral['referral_num']); ?></strong></td>
+                                            <td>
+                                                <div class="patient-info-cell">
+                                                    <div class="patient-name"><?php echo htmlspecialchars($patient_name); ?></div>
+                                                    <small class="patient-id"><?php echo htmlspecialchars($referral['patient_number']); ?></small>
+                                                </div>
+                                            </td>
+                                            <td><?php echo htmlspecialchars($referral['barangay'] ?? 'N/A'); ?></td>
+                                            <td>
+                                                <div class="reason-cell">
+                                                    <?php echo htmlspecialchars($referral['referral_reason']); ?>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="facility-cell">
+                                                    <?php echo htmlspecialchars($destination); ?>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?php echo $badge_class; ?>">
+                                                    <?php echo ucfirst($referral['status']); ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="date-cell">
+                                                    <?php echo date('M j, Y', strtotime($referral['referral_date'])); ?>
+                                                    <br><small><?php echo date('g:i A', strtotime($referral['referral_date'])); ?></small>
+                                                </div>
+                                            </td>
+                                            <td><?php echo htmlspecialchars($issuer_name); ?></td>
+                                            <td>
+                                                <div class="actions-group">
+                                                    <button type="button" class="btn btn-primary btn-sm" onclick="viewReferral(<?php echo $referral['referral_id']; ?>)" title="View Details">
+                                                        <i class="fas fa-eye"></i>
+                                                    </button>
+                                                    <?php if ($referral['status'] === 'voided'): ?>
+                                                        <form method="POST" class="inline-form">
+                                                            <input type="hidden" name="action" value="reactivate">
+                                                            <input type="hidden" name="referral_id" value="<?php echo $referral['referral_id']; ?>">
+                                                            <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Reactivate this referral?')" title="Reactivate">
+                                                                <i class="fas fa-redo"></i>
+                                                            </button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
                         </div>
 
-                        <?php if ($total_pages > 1): ?>
-                            <div class="pagination-controls">
-                                <!-- Previous button -->
-                                <?php if ($page > 1): ?>
-                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>"
-                                        class="pagination-btn prev">
-                                        <i class="fas fa-chevron-left"></i> Previous
-                                    </a>
-                                <?php else: ?>
-                                    <span class="pagination-btn prev disabled">
-                                        <i class="fas fa-chevron-left"></i> Previous
-                                    </span>
-                                <?php endif; ?>
+                        <!-- Mobile Card View (for very small screens) -->
+                        <div class="mobile-cards mobile-cards-hidden">
+                            <?php foreach ($referrals as $referral):
+                                $patient_name = trim($referral['first_name'] . ' ' . ($referral['middle_name'] ? $referral['middle_name'] . ' ' : '') . $referral['last_name']);
+                                $issuer_name = trim($referral['issuer_first_name'] . ' ' . $referral['issuer_last_name']);
 
-                                <?php
-                                // Calculate page numbers to show
-                                $start_page = max(1, $page - 2);
-                                $end_page = min($total_pages, $page + 2);
+                                // Determine destination based on destination_type
+                                if ($referral['destination_type'] === 'external') {
+                                    $destination = $referral['external_facility_name'] ?: 'External Facility';
+                                } else {
+                                    $destination = $referral['referred_facility_name'] ?: 'Internal Facility';
+                                }
 
-                                // Show first page if not in range
-                                if ($start_page > 1): ?>
-                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>"
-                                        class="pagination-btn page-num">1</a>
-                                    <?php if ($start_page > 2): ?>
-                                        <span class="pagination-ellipsis">...</span>
-                                    <?php endif; ?>
-                                <?php endif; ?>
+                                // Determine badge class based on status
+                                $badge_class = 'badge-secondary';
+                                switch ($referral['status']) {
+                                    case 'active':
+                                        $badge_class = 'badge-success';
+                                        break;
+                                    case 'accepted':
+                                        $badge_class = 'badge-info';
+                                        break;
+                                    case 'completed':
+                                        $badge_class = 'badge-primary';
+                                        break;
+                                    case 'cancelled':
+                                        $badge_class = 'badge-danger';
+                                        break;
+                                    default:
+                                        $badge_class = 'badge-secondary';
+                                        break;
+                                }
+                            ?>
+                                <div class="mobile-card">
+                                    <div class="mobile-card-header">
+                                        <strong><?php echo htmlspecialchars($referral['referral_num']); ?></strong>
+                                        <span class="badge <?php echo $badge_class; ?>"><?php echo ucfirst($referral['status']); ?></span>
+                                    </div>
+                                    <div class="mobile-card-body">
+                                        <div class="mobile-card-field">
+                                            <span class="mobile-card-label">Patient:</span>
+                                            <?php echo htmlspecialchars($patient_name); ?> (<?php echo htmlspecialchars($referral['patient_number']); ?>)
+                                        </div>
+                                        <div class="mobile-card-field">
+                                            <span class="mobile-card-label">Barangay:</span>
+                                            <?php echo htmlspecialchars($referral['barangay'] ?? 'N/A'); ?>
+                                        </div>
+                                        <div class="mobile-card-field">
+                                            <span class="mobile-card-label">Referral Reason:</span>
+                                            <?php echo htmlspecialchars($referral['referral_reason']); ?>
+                                        </div>
+                                        <div class="mobile-card-field">
+                                            <span class="mobile-card-label">Destination:</span>
+                                            <?php echo htmlspecialchars($destination); ?>
+                                        </div>
+                                        <div class="mobile-card-field">
+                                            <span class="mobile-card-label">Date:</span>
+                                            <?php echo date('M j, Y g:i A', strtotime($referral['referral_date'])); ?>
+                                        </div>
+                                        <div class="mobile-card-field">
+                                            <span class="mobile-card-label">Issued By:</span>
+                                            <?php echo htmlspecialchars($issuer_name); ?>
+                                        </div>
+                                        <div class="actions-group mt-075">
+                                            <button type="button" class="btn btn-primary btn-sm" onclick="viewReferral(<?php echo $referral['referral_id']; ?>)">
+                                                <i class="fas fa-eye"></i> View Details
+                                            </button>
+                                            <?php if ($referral['status'] === 'cancelled'): ?>
+                                                <form method="POST" class="inline-form">
+                                                    <input type="hidden" name="action" value="reactivate">
+                                                    <input type="hidden" name="referral_id" value="<?php echo $referral['referral_id']; ?>">
+                                                    <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Reactivate this referral?')">
+                                                        <i class="fas fa-redo"></i> Reactivate
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
 
-                                <!-- Page numbers -->
-                                <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
-                                    <?php if ($i == $page): ?>
-                                        <span class="pagination-btn active page-num"><?php echo $i; ?></span>
-                                    <?php else: ?>
-                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>"
-                                            class="pagination-btn page-num"><?php echo $i; ?></a>
-                                    <?php endif; ?>
-                                <?php endfor; ?>
+                    <!-- Pagination Container -->
+                    <?php if ($total_records > 0): ?>
+                        <div class="pagination-container">
+                            <div class="pagination-info">
+                                <div class="records-info">
+                                    Showing <strong><?php echo (($page - 1) * $per_page) + 1; ?></strong> to
+                                    <strong><?php echo min($page * $per_page, $total_records); ?></strong> of
+                                    <strong><?php echo $total_records; ?></strong> referrals
+                                </div>
 
-                                <!-- Show last page if not in range -->
-                                <?php if ($end_page < $total_pages): ?>
-                                    <?php if ($end_page < $total_pages - 1): ?>
-                                        <span class="pagination-ellipsis">...</span>
-                                    <?php endif; ?>
-                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>"
-                                        class="pagination-btn page-num"><?php echo $total_pages; ?></a>
-                                <?php endif; ?>
-
-                                <!-- Next button -->
-                                <?php if ($page < $total_pages): ?>
-                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>"
-                                        class="pagination-btn next">
-                                        Next <i class="fas fa-chevron-right"></i>
-                                    </a>
-                                <?php else: ?>
-                                    <span class="pagination-btn next disabled">
-                                        Next <i class="fas fa-chevron-right"></i>
-                                    </span>
-                                <?php endif; ?>
+                                <div class="page-size-selector">
+                                    <label for="perPageSelect">Show:</label>
+                                    <select id="perPageSelect" onchange="changePageSize(this.value)">
+                                        <option value="10" <?php echo $per_page == 10 ? 'selected' : ''; ?>>10</option>
+                                        <option value="25" <?php echo $per_page == 25 ? 'selected' : ''; ?>>25</option>
+                                        <option value="50" <?php echo $per_page == 50 ? 'selected' : ''; ?>>50</option>
+                                        <option value="100" <?php echo $per_page == 100 ? 'selected' : ''; ?>>100</option>
+                                    </select>
+                                </div>
                             </div>
-                        <?php endif; ?>
-                    </div>
-                <?php endif; ?>
+
+                            <?php if ($total_pages > 1): ?>
+                                <div class="pagination-controls">
+                                    <!-- Previous button -->
+                                    <?php if ($page > 1): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>"
+                                            class="pagination-btn prev">
+                                            <i class="fas fa-chevron-left"></i> Previous
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="pagination-btn prev disabled">
+                                            <i class="fas fa-chevron-left"></i> Previous
+                                        </span>
+                                    <?php endif; ?>
+
+                                    <?php
+                                    // Calculate page numbers to show
+                                    $start_page = max(1, $page - 2);
+                                    $end_page = min($total_pages, $page + 2);
+
+                                    // Show first page if not in range
+                                    if ($start_page > 1): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>"
+                                            class="pagination-btn page-num">1</a>
+                                        <?php if ($start_page > 2): ?>
+                                            <span class="pagination-ellipsis">...</span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+
+                                    <!-- Page numbers -->
+                                    <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                                        <?php if ($i == $page): ?>
+                                            <span class="pagination-btn active page-num"><?php echo $i; ?></span>
+                                        <?php else: ?>
+                                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>"
+                                                class="pagination-btn page-num"><?php echo $i; ?></a>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+
+                                    <!-- Show last page if not in range -->
+                                    <?php if ($end_page < $total_pages): ?>
+                                        <?php if ($end_page < $total_pages - 1): ?>
+                                            <span class="pagination-ellipsis">...</span>
+                                        <?php endif; ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>"
+                                            class="pagination-btn page-num"><?php echo $total_pages; ?></a>
+                                    <?php endif; ?>
+
+                                    <!-- Next button -->
+                                    <?php if ($page < $total_pages): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>"
+                                            class="pagination-btn next">
+                                            Next <i class="fas fa-chevron-right"></i>
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="pagination-btn next disabled">
+                                            Next <i class="fas fa-chevron-right"></i>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
+
+
         </div>
-
-
     </section>
 
     <!-- Void Referral Modal -->

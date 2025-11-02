@@ -113,7 +113,7 @@ switch ($employee_role) {
             $param_types .= 'iii';
         }
         break;
-        
+
     case 'nurse':
         // Nurse: Can view all consultations (broader access for patient care coordination)
         // No additional filtering - nurses need to see all patient consultations for care coordination
@@ -486,7 +486,7 @@ try {
 
 <head>
     <meta charset="UTF-8" />
-        <!-- Favicon -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
@@ -499,7 +499,6 @@ try {
     <style>
         /* Layout Styles */
         .content-wrapper {
-            margin-left: 300px;
             padding: 2rem;
             transition: margin-left 0.3s;
         }
@@ -1870,553 +1869,553 @@ try {
     include $root_path . '/includes/sidebar_' . $employee_role . '.php';
     ?>
 
-    <section class="content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb" style="margin-top: 50px;">
-            <a href="../management/dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
-            <i class="fas fa-chevron-right"></i>
-            <span>Clinical Encounter Management</span>
-        </div>
-
-        <div class="page-header">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-                <h1><i class="fas fa-stethoscope"></i> Clinical Encounter Management</h1>
-                <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse', 'pharmacist'])): ?>
-                    <div class="header-actions">
-                        <a href="new_consultation_standalone.php" class="btn btn-primary" style="background: #28a745; border-color: #28a745;">
-                            <i class="fas fa-plus-circle"></i> New Consultation
-                        </a>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Notifications and Messages Container -->
-        <div class="notifications-container">
-            <?php
-            $scope_message = '';
-            switch ($employee_role) {
-                case 'bhw':
-                    $barangay_name = $employee_details['barangay_id'] ?? 'your assigned barangay';
-                    $scope_message = "You are viewing consultations for patients in your assigned barangay.";
-                    break;
-                case 'dho':
-                    $district_name = $employee_details['district_id'] ?? 'your assigned district';
-                    $scope_message = "You are viewing consultations for patients in your assigned district.";
-                    break;
-                case 'doctor':
-                case 'nurse':
-                    $scope_message = "You are viewing consultations assigned to you. Use search to view other consultations.";
-                    break;
-                case 'admin':
-                case 'records_officer':
-                    $scope_message = "You have access to view all consultations system-wide.";
-                    break;
-            }
-            ?>
-            <?php if ($scope_message): ?>
-                <div style="background: #e3f2fd; padding: 0.75rem; border-radius: 6px; margin-top: 1rem; font-size: 0.9rem; color: #1976d2;">
-                    <i class="fas fa-info-circle"></i> <?= htmlspecialchars($scope_message) ?>
-                </div>
-            <?php endif; ?>
-
-            <?php
-            // Handle success messages
-            if (isset($_GET['success'])) {
-                $success_message = '';
-                switch ($_GET['success']) {
-                    case 'consultation_created':
-                        $success_message = 'Consultation created successfully!';
-                        break;
-                    case 'consultation_updated':
-                        $success_message = isset($_GET['message']) ? $_GET['message'] : 'Consultation updated successfully!';
-                        break;
-                    default:
-                        $success_message = 'Action completed successfully!';
-                }
-            ?>
-                <div class="alert alert-success" id="successAlert">
-                    <i class="fas fa-check-circle"></i>
-                    <span><?= htmlspecialchars($success_message) ?></span>
-                    <button type="button" class="alert-close" onclick="this.parentElement.remove();">&times;</button>
-                </div>
-                <script>
-                    // Auto-dismiss success after 5 seconds
-                    setTimeout(function() {
-                        const successAlert = document.getElementById('successAlert');
-                        if (successAlert) {
-                            successAlert.style.opacity = '0';
-                            successAlert.style.transform = 'translateY(-20px)';
-                            setTimeout(() => successAlert.remove(), 300);
-                        }
-                    }, 5000);
-                </script>
-            <?php } ?>
-
-            <?php
-            // Handle error messages
-            if (isset($_GET['error'])) {
-                $error_message = '';
-                switch ($_GET['error']) {
-                    case 'database_error':
-                        $error_message = 'Database error occurred. Please try again or contact administrator.';
-                        break;
-                    case 'invalid_consultation':
-                        $error_message = 'Invalid consultation ID. Please select a valid consultation.';
-                        break;
-                    default:
-                        $error_message = 'An error occurred. Please try again.';
-                }
-            ?>
-                <div class="alert alert-warning" id="errorAlert">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span><?= htmlspecialchars($error_message) ?></span>
-                    <button type="button" class="alert-close" onclick="this.parentElement.remove();">&times;</button>
-                </div>
-                <script>
-                    // Auto-dismiss error after 8 seconds
-                    setTimeout(function() {
-                        const errorAlert = document.getElementById('errorAlert');
-                        if (errorAlert) {
-                            errorAlert.style.opacity = '0';
-                            errorAlert.style.transform = 'translateY(-20px)';
-                            setTimeout(() => errorAlert.remove(), 300);
-                        }
-                    }, 8000);
-                </script>
-            <?php } ?>
-        </div>
-
-        <!-- Statistics Cards -->
-        <div class="stats-grid">
-            <div class="stat-card total">
-                <div class="stat-header">
-                    <div class="stat-icon">
-                        <i class="fas fa-clipboard-list"></i>
-                    </div>
-                </div>
-                <div class="stat-value"><?= number_format($stats['total_encounters']) ?></div>
-                <div class="stat-label">Total Encounters</div>
+    <section class="homepage">
+        <div class="content-wrapper">
+            <!-- Breadcrumb Navigation -->
+            <div class="breadcrumb" style="margin-top: 50px;">
+                <a href="../management/dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+                <i class="fas fa-chevron-right"></i>
+                <span>Clinical Encounter Management</span>
             </div>
 
-            <div class="stat-card completed">
-                <div class="stat-header">
-                    <div class="stat-icon">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                </div>
-                <div class="stat-value"><?= number_format($stats['completed_today']) ?></div>
-                <div class="stat-label">Completed Today</div>
-            </div>
-
-            <div class="stat-card follow-up">
-                <div class="stat-header">
-                    <div class="stat-icon">
-                        <i class="fas fa-calendar-check"></i>
-                    </div>
-                </div>
-                <div class="stat-value"><?= number_format($stats['follow_ups_needed']) ?></div>
-                <div class="stat-label">Follow-ups Needed</div>
-            </div>
-
-            <div class="stat-card referred">
-                <div class="stat-header">
-                    <div class="stat-icon">
-                        <i class="fas fa-share-alt"></i>
-                    </div>
-                </div>
-                <div class="stat-value"><?= number_format($stats['referred_cases']) ?></div>
-                <div class="stat-label">Referred Cases</div>
-            </div>
-        </div>
-
-        <!-- Filters -->
-        <div class="filters-container">
-            <div class="section-header" style="margin-bottom: 15px;">
-                <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
-                    <i class="fas fa-search"></i> Patient Search & Filter Options
-                </h4>
-            </div>
-            <form method="GET" class="filters-grid">
-                <div class="form-group">
-                    <label for="patient_id">Patient ID</label>
-                    <input type="text" id="patient_id" name="patient_id" value="<?= htmlspecialchars($_GET['patient_id'] ?? '') ?>"
-                        placeholder="Enter Patient ID...">
-                </div>
-
-                <div class="form-group">
-                    <label for="first_name">First Name</label>
-                    <input type="text" id="first_name" name="first_name" value="<?= htmlspecialchars($_GET['first_name'] ?? '') ?>"
-                        placeholder="Enter first name...">
-                </div>
-
-                <div class="form-group">
-                    <label for="last_name">Last Name</label>
-                    <input type="text" id="last_name" name="last_name" value="<?= htmlspecialchars($_GET['last_name'] ?? '') ?>"
-                        placeholder="Enter last name...">
-                </div>
-
-                <div class="form-group">
-                    <label for="status">Status</label>
-                    <select id="status" name="status">
-                        <option value="">All Statuses</option>
-                        <option value="ongoing" <?= $status_filter === 'ongoing' ? 'selected' : '' ?>>Ongoing</option>
-                        <option value="completed" <?= $status_filter === 'completed' ? 'selected' : '' ?>>Completed</option>
-                        <option value="awaiting_lab_results" <?= $status_filter === 'awaiting_lab_results' ? 'selected' : '' ?>>Awaiting Lab Results</option>
-                        <option value="awaiting_followup" <?= $status_filter === 'awaiting_followup' ? 'selected' : '' ?>>Awaiting Follow-up</option>
-                        <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="date_from">Date From</label>
-                    <input type="date" id="date_from" name="date_from" value="<?= htmlspecialchars($date_from) ?>">
-                </div>
-
-                <div class="form-group">
-                    <label for="date_to">Date To</label>
-                    <input type="date" id="date_to" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
-                </div>
-
-                <div class="form-group">
-                    <label for="doctor">Doctor</label>
-                    <select id="doctor" name="doctor">
-                        <option value="">All Doctors</option>
-                        <?php foreach ($doctors as $doctor): ?>
-                            <option value="<?= $doctor['employee_id'] ?>" <?= $doctor_filter == $doctor['employee_id'] ? 'selected' : '' ?>>
-                                Dr. <?= htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <?php if (in_array($employee_role, ['admin', 'records_officer', 'dho'])): ?>
-                    <div class="form-group">
-                        <label for="barangay">Barangay</label>
-                        <select id="barangay" name="barangay">
-                            <option value="">All Barangays</option>
-                            <?php foreach ($barangays as $barangay): ?>
-                                <option value="<?= $barangay['barangay_id'] ?>" <?= $barangay_filter == $barangay['barangay_id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($barangay['barangay_name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                <?php endif; ?>
-
-                <?php if (in_array($employee_role, ['admin', 'records_officer'])): ?>
-                    <div class="form-group">
-                        <label for="district">District</label>
-                        <select id="district" name="district">
-                            <option value="">All Districts</option>
-                            <?php foreach ($districts as $district): ?>
-                                <option value="<?= $district['district_id'] ?>" <?= $district_filter == $district['district_id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($district['district_name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                <?php endif; ?>
-            </form>
-
-            <div class="form-group">
-                <label>&nbsp;</label>
-                <div class="filter-actions">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-search"></i> Search Consultations
-                    </button>
-                    <a href="?" class="btn btn-secondary">
-                        <i class="fas fa-refresh"></i> Reset Filters
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Encounters Table -->
-         <div class="card-container">
-        <div class="encounters-card">
-            <div class="encounters-header">
-                <div class="encounters-title">
-                    <i class="fas fa-stethoscope"></i>
-                    <h3>Clinical Encounters</h3>
-                    <span class="encounters-count"><?= count($encounters) ?> records</span>
-                </div>
-                <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse'])): ?>
-                <a href="new_consultation_standalone.php" class="btn-new-consultation">
-                    <i class="fas fa-plus"></i>
-                    <span>New Consultation</span>
-                </a>
-                <?php endif; ?>
-            </div>
-
-            <div class="encounters-table-container">
-                <?php if (!empty($encounters)): ?>
-                    <div class="table-responsive">
-                        <table class="encounters-table">
-                            <thead>
-                                <tr>
-                                    <th class="col-date">
-                                        <i class="fas fa-calendar-alt"></i>
-                                        Date & Time
-                                    </th>
-                                    <th class="col-patient">
-                                        <i class="fas fa-user"></i>
-                                        Patient Information
-                                    </th>
-                                    <th class="col-doctor">
-                                        <i class="fas fa-user-md"></i>
-                                        Doctor
-                                    </th>
-                                    <th class="col-service">
-                                        <i class="fas fa-medical-plus"></i>
-                                        Service
-                                    </th>
-                                    <th class="col-complaint">
-                                        <i class="fas fa-clipboard-list"></i>
-                                        Chief Complaint
-                                    </th>
-                                    <th class="col-diagnosis">
-                                        <i class="fas fa-diagnoses"></i>
-                                        Diagnosis
-                                    </th>
-                                    <th class="col-status">
-                                        <i class="fas fa-info-circle"></i>
-                                        Status
-                                    </th>
-                                    <th class="col-vitals">
-                                        <i class="fas fa-heartbeat"></i>
-                                        Vitals
-                                    </th>
-                                    <th class="col-actions">
-                                        <i class="fas fa-cog"></i>
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($encounters as $encounter): ?>
-                                    <tr class="encounter-row">
-                                        <td class="date-cell">
-                                            <div class="date-primary">
-                                                <?= date('M j, Y', strtotime($encounter['consultation_date'])) ?>
-                                            </div>
-                                            <div class="date-secondary">
-                                                <?= date('g:i A', strtotime($encounter['consultation_date'])) ?>
-                                            </div>
-                                            <div class="consultation-id">
-                                                ID: <?= $encounter['encounter_id'] ?>
-                                            </div>
-                                        </td>
-
-                                        <td class="patient-cell">
-                                            <div class="patient-name">
-                                                <i class="fas fa-user-circle"></i>
-                                                <?= htmlspecialchars($encounter['first_name'] . ' ' . $encounter['last_name']) ?>
-                                            </div>
-                                            <div class="patient-meta">
-                                                <span class="patient-id">ID: <?= htmlspecialchars($encounter['patient_id_display']) ?></span>
-                                                <span class="patient-demographics">
-                                                    <?= htmlspecialchars($encounter['age']) ?>y/o <?= htmlspecialchars($encounter['sex']) ?>
-                                                </span>
-                                            </div>
-                                            <?php if ($encounter['barangay_name'] && in_array($employee_role, ['admin', 'records_officer', 'dho'])): ?>
-                                                <div class="patient-location">
-                                                    <i class="fas fa-map-marker-alt"></i>
-                                                    <?= htmlspecialchars($encounter['barangay_name']) ?>
-                                                    <?php if ($encounter['district_name'] && in_array($employee_role, ['admin', 'records_officer'])): ?>
-                                                        <span class="district">, <?= htmlspecialchars($encounter['district_name']) ?></span>
-                                                    <?php endif; ?>
-                                                </div>
-                                            <?php endif; ?>
-                                        </td>
-
-                                        <td class="doctor-cell">
-                                            <?php if ($encounter['doctor_first_name']): ?>
-                                                <div class="doctor-assigned">
-                                                    <i class="fas fa-user-md"></i>
-                                                    <span>Dr. <?= htmlspecialchars($encounter['doctor_first_name'] . ' ' . $encounter['doctor_last_name']) ?></span>
-                                                </div>
-                                            <?php else: ?>
-                                                <div class="doctor-unassigned">
-                                                    <i class="fas fa-user-times"></i>
-                                                    <span>Not assigned</span>
-                                                </div>
-                                            <?php endif; ?>
-                                        </td>
-
-                                        <td class="service-cell">
-                                            <?php if ($encounter['service_name']): ?>
-                                                <div class="service-badge">
-                                                    <i class="fas fa-medical-plus"></i>
-                                                    <span class="service-name"><?= htmlspecialchars($encounter['service_name']) ?></span>
-                                                </div>
-                                                <div class="service-id">ID: <?= $encounter['service_id'] ?></div>
-                                            <?php else: ?>
-                                                <div class="service-empty">
-                                                    <i class="fas fa-question-circle"></i>
-                                                    <span>Not specified</span>
-                                                </div>
-                                            <?php endif; ?>
-                                        </td>
-
-                                        <td class="complaint-cell">
-                                            <div class="complaint-text" title="<?= htmlspecialchars($encounter['chief_complaint']) ?>">
-                                                <?= htmlspecialchars(substr($encounter['chief_complaint'], 0, 60)) ?>
-                                                <?= strlen($encounter['chief_complaint']) > 60 ? '...' : '' ?>
-                                            </div>
-                                        </td>
-
-                                        <td class="diagnosis-cell">
-                                            <div class="diagnosis-text" title="<?= htmlspecialchars($encounter['diagnosis'] ?? 'No assessment yet') ?>">
-                                                <?php if ($encounter['diagnosis']): ?>
-                                                    <?= htmlspecialchars(substr($encounter['diagnosis'], 0, 50)) ?>
-                                                    <?= strlen($encounter['diagnosis']) > 50 ? '...' : '' ?>
-                                                <?php else: ?>
-                                                    <span class="diagnosis-pending">
-                                                        <i class="fas fa-hourglass-half"></i>
-                                                        Pending assessment
-                                                    </span>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-
-                                        <td class="status-cell">
-                                            <div class="status-wrapper">
-                                                <span class="status-badge-new status-<?= htmlspecialchars($encounter['status']) ?>">
-                                                    <i class="fas fa-circle"></i>
-                                                    <?= htmlspecialchars(ucwords(str_replace('_', ' ', $encounter['status']))) ?>
-                                                </span>
-
-                                                <?php if ($encounter['prescription_count'] > 0 || $encounter['lab_test_count'] > 0 || $encounter['referral_count'] > 0): ?>
-                                                    <div class="encounter-indicators">
-                                                        <?php if ($encounter['prescription_count'] > 0): ?>
-                                                            <div class="indicator-item prescription" title="<?= $encounter['prescription_count'] ?> prescription(s)">
-                                                                <i class="fas fa-pills"></i>
-                                                                <span><?= $encounter['prescription_count'] ?></span>
-                                                            </div>
-                                                        <?php endif; ?>
-                                                        <?php if ($encounter['lab_test_count'] > 0): ?>
-                                                            <div class="indicator-item lab-test" title="<?= $encounter['lab_test_count'] ?> lab test(s)">
-                                                                <i class="fas fa-vial"></i>
-                                                                <span><?= $encounter['lab_test_count'] ?></span>
-                                                            </div>
-                                                        <?php endif; ?>
-                                                        <?php if ($encounter['referral_count'] > 0): ?>
-                                                            <div class="indicator-item referral" title="<?= $encounter['referral_count'] ?> referral(s)">
-                                                                <i class="fas fa-share-alt"></i>
-                                                                <span><?= $encounter['referral_count'] ?></span>
-                                                            </div>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-
-                                        <td class="vitals-cell">
-                                            <?php if ($encounter['vitals_id']): ?>
-                                                <div class="vitals-container">
-                                                    <div class="vitals-id">
-                                                        <i class="fas fa-heartbeat"></i>
-                                                        ID: <?= $encounter['vitals_id'] ?>
-                                                    </div>
-                                                    <div class="vitals-readings">
-                                                        <?php if ($encounter['blood_pressure']): ?>
-                                                            <div class="vital-item bp">
-                                                                <i class="fas fa-heart"></i>
-                                                                <?= htmlspecialchars($encounter['blood_pressure']) ?>
-                                                            </div>
-                                                        <?php endif; ?>
-                                                        <?php if ($encounter['temperature']): ?>
-                                                            <div class="vital-item temp">
-                                                                <i class="fas fa-thermometer-half"></i>
-                                                                <?= htmlspecialchars($encounter['temperature']) ?>°C
-                                                            </div>
-                                                        <?php endif; ?>
-                                                        <?php if ($encounter['heart_rate']): ?>
-                                                            <div class="vital-item hr">
-                                                                <i class="fas fa-heartbeat"></i>
-                                                                <?= htmlspecialchars($encounter['heart_rate']) ?> bpm
-                                                            </div>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </div>
-                                            <?php else: ?>
-                                                <div class="vitals-empty">
-                                                    <i class="fas fa-ban"></i>
-                                                    <span>No vitals recorded</span>
-                                                </div>
-                                            <?php endif; ?>
-                                        </td>
-
-                                        <td class="actions-cell">
-                                            <div class="action-buttons">
-                                                <button onclick="openConsultationModal(<?= $encounter['encounter_id'] ?>)"
-                                                    class="action-btn view-btn"
-                                                    title="View consultation details">
-                                                    <i class="fas fa-eye"></i>
-                                                    <span>View</span>
-                                                </button>
-                                                <?php if (
-                                                    in_array($employee_role, ['doctor', 'admin']) ||
-                                                    ($encounter['status'] == 'ongoing' && $employee_role == 'nurse')
-                                                ): ?>
-                                                    <a href="edit_consultation_new.php?id=<?= $encounter['encounter_id'] ?>"
-                                                        class="action-btn edit-btn"
-                                                        title="Edit consultation">
-                                                        <i class="fas fa-edit"></i>
-                                                        <span>Edit</span>
-                                                    </a>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php else: ?>
-                    <div class="empty-state-new">
-                        <div class="empty-state-icon">
-                            <i class="fas fa-stethoscope"></i>
-                        </div>
-                        <div class="empty-state-content">
-                            <h3>No Clinical Encounters Found</h3>
-                            <p>No consultations match your current search criteria. Try adjusting your filters or create a new consultation.</p>
-                            <a href="new_consultation_standalone.php" class="btn-new-consultation">
-                                <i class="fas fa-plus"></i>
-                                <span>Create New Consultation</span>
+            <div class="page-header">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                    <h1><i class="fas fa-stethoscope"></i> Clinical Encounter Management</h1>
+                    <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse', 'pharmacist'])): ?>
+                        <div class="header-actions">
+                            <a href="new_consultation_standalone.php" class="btn btn-primary" style="background: #28a745; border-color: #28a745;">
+                                <i class="fas fa-plus-circle"></i> New Consultation
                             </a>
                         </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Notifications and Messages Container -->
+            <div class="notifications-container">
+                <?php
+                $scope_message = '';
+                switch ($employee_role) {
+                    case 'bhw':
+                        $barangay_name = $employee_details['barangay_id'] ?? 'your assigned barangay';
+                        $scope_message = "You are viewing consultations for patients in your assigned barangay.";
+                        break;
+                    case 'dho':
+                        $district_name = $employee_details['district_id'] ?? 'your assigned district';
+                        $scope_message = "You are viewing consultations for patients in your assigned district.";
+                        break;
+                    case 'doctor':
+                    case 'nurse':
+                        $scope_message = "You are viewing consultations assigned to you. Use search to view other consultations.";
+                        break;
+                    case 'admin':
+                    case 'records_officer':
+                        $scope_message = "You have access to view all consultations system-wide.";
+                        break;
+                }
+                ?>
+                <?php if ($scope_message): ?>
+                    <div style="background: #e3f2fd; padding: 0.75rem; border-radius: 6px; margin-top: 1rem; font-size: 0.9rem; color: #1976d2;">
+                        <i class="fas fa-info-circle"></i> <?= htmlspecialchars($scope_message) ?>
                     </div>
                 <?php endif; ?>
+
+                <?php
+                // Handle success messages
+                if (isset($_GET['success'])) {
+                    $success_message = '';
+                    switch ($_GET['success']) {
+                        case 'consultation_created':
+                            $success_message = 'Consultation created successfully!';
+                            break;
+                        case 'consultation_updated':
+                            $success_message = isset($_GET['message']) ? $_GET['message'] : 'Consultation updated successfully!';
+                            break;
+                        default:
+                            $success_message = 'Action completed successfully!';
+                    }
+                ?>
+                    <div class="alert alert-success" id="successAlert">
+                        <i class="fas fa-check-circle"></i>
+                        <span><?= htmlspecialchars($success_message) ?></span>
+                        <button type="button" class="alert-close" onclick="this.parentElement.remove();">&times;</button>
+                    </div>
+                    <script>
+                        // Auto-dismiss success after 5 seconds
+                        setTimeout(function() {
+                            const successAlert = document.getElementById('successAlert');
+                            if (successAlert) {
+                                successAlert.style.opacity = '0';
+                                successAlert.style.transform = 'translateY(-20px)';
+                                setTimeout(() => successAlert.remove(), 300);
+                            }
+                        }, 5000);
+                    </script>
+                <?php } ?>
+
+                <?php
+                // Handle error messages
+                if (isset($_GET['error'])) {
+                    $error_message = '';
+                    switch ($_GET['error']) {
+                        case 'database_error':
+                            $error_message = 'Database error occurred. Please try again or contact administrator.';
+                            break;
+                        case 'invalid_consultation':
+                            $error_message = 'Invalid consultation ID. Please select a valid consultation.';
+                            break;
+                        default:
+                            $error_message = 'An error occurred. Please try again.';
+                    }
+                ?>
+                    <div class="alert alert-warning" id="errorAlert">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span><?= htmlspecialchars($error_message) ?></span>
+                        <button type="button" class="alert-close" onclick="this.parentElement.remove();">&times;</button>
+                    </div>
+                    <script>
+                        // Auto-dismiss error after 8 seconds
+                        setTimeout(function() {
+                            const errorAlert = document.getElementById('errorAlert');
+                            if (errorAlert) {
+                                errorAlert.style.opacity = '0';
+                                errorAlert.style.transform = 'translateY(-20px)';
+                                setTimeout(() => errorAlert.remove(), 300);
+                            }
+                        }, 8000);
+                    </script>
+                <?php } ?>
             </div>
-        </div>
+
+            <!-- Statistics Cards -->
+            <div class="stats-grid">
+                <div class="stat-card total">
+                    <div class="stat-header">
+                        <div class="stat-icon">
+                            <i class="fas fa-clipboard-list"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value"><?= number_format($stats['total_encounters']) ?></div>
+                    <div class="stat-label">Total Encounters</div>
                 </div>
-        <!-- Pagination -->
-        <?php if ($total_pages > 1): ?>
-            <div class="pagination">
-                <?php if ($page > 1): ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>">
-                        <i class="fas fa-chevron-left"></i> Previous
-                    </a>
-                <?php endif; ?>
 
-                <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
-                    <?php if ($i == $page): ?>
-                        <span class="current"><?= $i ?></span>
-                    <?php else: ?>
-                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"><?= $i ?></a>
-                    <?php endif; ?>
-                <?php endfor; ?>
+                <div class="stat-card completed">
+                    <div class="stat-header">
+                        <div class="stat-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value"><?= number_format($stats['completed_today']) ?></div>
+                    <div class="stat-label">Completed Today</div>
+                </div>
 
-                <?php if ($page < $total_pages): ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>">
-                        Next <i class="fas fa-chevron-right"></i>
-                    </a>
-                <?php endif; ?>
+                <div class="stat-card follow-up">
+                    <div class="stat-header">
+                        <div class="stat-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value"><?= number_format($stats['follow_ups_needed']) ?></div>
+                    <div class="stat-label">Follow-ups Needed</div>
+                </div>
+
+                <div class="stat-card referred">
+                    <div class="stat-header">
+                        <div class="stat-icon">
+                            <i class="fas fa-share-alt"></i>
+                        </div>
+                    </div>
+                    <div class="stat-value"><?= number_format($stats['referred_cases']) ?></div>
+                    <div class="stat-label">Referred Cases</div>
+                </div>
             </div>
-        <?php endif; ?>
-        </div>
+
+            <!-- Filters -->
+            <div class="filters-container">
+                <div class="section-header" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0;color: var(--primary-dark);font-size: 18px;font-weight: 600;">
+                        <i class="fas fa-search"></i> Patient Search & Filter Options
+                    </h4>
+                </div>
+                <form method="GET" class="filters-grid">
+                    <div class="form-group">
+                        <label for="patient_id">Patient ID</label>
+                        <input type="text" id="patient_id" name="patient_id" value="<?= htmlspecialchars($_GET['patient_id'] ?? '') ?>"
+                            placeholder="Enter Patient ID...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="first_name">First Name</label>
+                        <input type="text" id="first_name" name="first_name" value="<?= htmlspecialchars($_GET['first_name'] ?? '') ?>"
+                            placeholder="Enter first name...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="last_name">Last Name</label>
+                        <input type="text" id="last_name" name="last_name" value="<?= htmlspecialchars($_GET['last_name'] ?? '') ?>"
+                            placeholder="Enter last name...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select id="status" name="status">
+                            <option value="">All Statuses</option>
+                            <option value="ongoing" <?= $status_filter === 'ongoing' ? 'selected' : '' ?>>Ongoing</option>
+                            <option value="completed" <?= $status_filter === 'completed' ? 'selected' : '' ?>>Completed</option>
+                            <option value="awaiting_lab_results" <?= $status_filter === 'awaiting_lab_results' ? 'selected' : '' ?>>Awaiting Lab Results</option>
+                            <option value="awaiting_followup" <?= $status_filter === 'awaiting_followup' ? 'selected' : '' ?>>Awaiting Follow-up</option>
+                            <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="date_from">Date From</label>
+                        <input type="date" id="date_from" name="date_from" value="<?= htmlspecialchars($date_from) ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="date_to">Date To</label>
+                        <input type="date" id="date_to" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="doctor">Doctor</label>
+                        <select id="doctor" name="doctor">
+                            <option value="">All Doctors</option>
+                            <?php foreach ($doctors as $doctor): ?>
+                                <option value="<?= $doctor['employee_id'] ?>" <?= $doctor_filter == $doctor['employee_id'] ? 'selected' : '' ?>>
+                                    Dr. <?= htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <?php if (in_array($employee_role, ['admin', 'records_officer', 'dho'])): ?>
+                        <div class="form-group">
+                            <label for="barangay">Barangay</label>
+                            <select id="barangay" name="barangay">
+                                <option value="">All Barangays</option>
+                                <?php foreach ($barangays as $barangay): ?>
+                                    <option value="<?= $barangay['barangay_id'] ?>" <?= $barangay_filter == $barangay['barangay_id'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($barangay['barangay_name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (in_array($employee_role, ['admin', 'records_officer'])): ?>
+                        <div class="form-group">
+                            <label for="district">District</label>
+                            <select id="district" name="district">
+                                <option value="">All Districts</option>
+                                <?php foreach ($districts as $district): ?>
+                                    <option value="<?= $district['district_id'] ?>" <?= $district_filter == $district['district_id'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($district['district_name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    <?php endif; ?>
+                </form>
+
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div class="filter-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search Consultations
+                        </button>
+                        <a href="?" class="btn btn-secondary">
+                            <i class="fas fa-refresh"></i> Reset Filters
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Encounters Table -->
+            <div class="card-container">
+                <div class="encounters-card">
+                    <div class="encounters-header">
+                        <div class="encounters-title">
+                            <i class="fas fa-stethoscope"></i>
+                            <h3>Clinical Encounters</h3>
+                            <span class="encounters-count"><?= count($encounters) ?> records</span>
+                        </div>
+                        <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse'])): ?>
+                            <a href="new_consultation_standalone.php" class="btn-new-consultation">
+                                <i class="fas fa-plus"></i>
+                                <span>New Consultation</span>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="encounters-table-container">
+                        <?php if (!empty($encounters)): ?>
+                            <div class="table-responsive">
+                                <table class="encounters-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-date">
+                                                <i class="fas fa-calendar-alt"></i>
+                                                Date & Time
+                                            </th>
+                                            <th class="col-patient">
+                                                <i class="fas fa-user"></i>
+                                                Patient Information
+                                            </th>
+                                            <th class="col-doctor">
+                                                <i class="fas fa-user-md"></i>
+                                                Doctor
+                                            </th>
+                                            <th class="col-service">
+                                                <i class="fas fa-medical-plus"></i>
+                                                Service
+                                            </th>
+                                            <th class="col-complaint">
+                                                <i class="fas fa-clipboard-list"></i>
+                                                Chief Complaint
+                                            </th>
+                                            <th class="col-diagnosis">
+                                                <i class="fas fa-diagnoses"></i>
+                                                Diagnosis
+                                            </th>
+                                            <th class="col-status">
+                                                <i class="fas fa-info-circle"></i>
+                                                Status
+                                            </th>
+                                            <th class="col-vitals">
+                                                <i class="fas fa-heartbeat"></i>
+                                                Vitals
+                                            </th>
+                                            <th class="col-actions">
+                                                <i class="fas fa-cog"></i>
+                                                Actions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($encounters as $encounter): ?>
+                                            <tr class="encounter-row">
+                                                <td class="date-cell">
+                                                    <div class="date-primary">
+                                                        <?= date('M j, Y', strtotime($encounter['consultation_date'])) ?>
+                                                    </div>
+                                                    <div class="date-secondary">
+                                                        <?= date('g:i A', strtotime($encounter['consultation_date'])) ?>
+                                                    </div>
+                                                    <div class="consultation-id">
+                                                        ID: <?= $encounter['encounter_id'] ?>
+                                                    </div>
+                                                </td>
+
+                                                <td class="patient-cell">
+                                                    <div class="patient-name">
+                                                        <i class="fas fa-user-circle"></i>
+                                                        <?= htmlspecialchars($encounter['first_name'] . ' ' . $encounter['last_name']) ?>
+                                                    </div>
+                                                    <div class="patient-meta">
+                                                        <span class="patient-id">ID: <?= htmlspecialchars($encounter['patient_id_display']) ?></span>
+                                                        <span class="patient-demographics">
+                                                            <?= htmlspecialchars($encounter['age']) ?>y/o <?= htmlspecialchars($encounter['sex']) ?>
+                                                        </span>
+                                                    </div>
+                                                    <?php if ($encounter['barangay_name'] && in_array($employee_role, ['admin', 'records_officer', 'dho'])): ?>
+                                                        <div class="patient-location">
+                                                            <i class="fas fa-map-marker-alt"></i>
+                                                            <?= htmlspecialchars($encounter['barangay_name']) ?>
+                                                            <?php if ($encounter['district_name'] && in_array($employee_role, ['admin', 'records_officer'])): ?>
+                                                                <span class="district">, <?= htmlspecialchars($encounter['district_name']) ?></span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </td>
+
+                                                <td class="doctor-cell">
+                                                    <?php if ($encounter['doctor_first_name']): ?>
+                                                        <div class="doctor-assigned">
+                                                            <i class="fas fa-user-md"></i>
+                                                            <span>Dr. <?= htmlspecialchars($encounter['doctor_first_name'] . ' ' . $encounter['doctor_last_name']) ?></span>
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <div class="doctor-unassigned">
+                                                            <i class="fas fa-user-times"></i>
+                                                            <span>Not assigned</span>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </td>
+
+                                                <td class="service-cell">
+                                                    <?php if ($encounter['service_name']): ?>
+                                                        <div class="service-badge">
+                                                            <i class="fas fa-medical-plus"></i>
+                                                            <span class="service-name"><?= htmlspecialchars($encounter['service_name']) ?></span>
+                                                        </div>
+                                                        <div class="service-id">ID: <?= $encounter['service_id'] ?></div>
+                                                    <?php else: ?>
+                                                        <div class="service-empty">
+                                                            <i class="fas fa-question-circle"></i>
+                                                            <span>Not specified</span>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </td>
+
+                                                <td class="complaint-cell">
+                                                    <div class="complaint-text" title="<?= htmlspecialchars($encounter['chief_complaint']) ?>">
+                                                        <?= htmlspecialchars(substr($encounter['chief_complaint'], 0, 60)) ?>
+                                                        <?= strlen($encounter['chief_complaint']) > 60 ? '...' : '' ?>
+                                                    </div>
+                                                </td>
+
+                                                <td class="diagnosis-cell">
+                                                    <div class="diagnosis-text" title="<?= htmlspecialchars($encounter['diagnosis'] ?? 'No assessment yet') ?>">
+                                                        <?php if ($encounter['diagnosis']): ?>
+                                                            <?= htmlspecialchars(substr($encounter['diagnosis'], 0, 50)) ?>
+                                                            <?= strlen($encounter['diagnosis']) > 50 ? '...' : '' ?>
+                                                        <?php else: ?>
+                                                            <span class="diagnosis-pending">
+                                                                <i class="fas fa-hourglass-half"></i>
+                                                                Pending assessment
+                                                            </span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </td>
+
+                                                <td class="status-cell">
+                                                    <div class="status-wrapper">
+                                                        <span class="status-badge-new status-<?= htmlspecialchars($encounter['status']) ?>">
+                                                            <i class="fas fa-circle"></i>
+                                                            <?= htmlspecialchars(ucwords(str_replace('_', ' ', $encounter['status']))) ?>
+                                                        </span>
+
+                                                        <?php if ($encounter['prescription_count'] > 0 || $encounter['lab_test_count'] > 0 || $encounter['referral_count'] > 0): ?>
+                                                            <div class="encounter-indicators">
+                                                                <?php if ($encounter['prescription_count'] > 0): ?>
+                                                                    <div class="indicator-item prescription" title="<?= $encounter['prescription_count'] ?> prescription(s)">
+                                                                        <i class="fas fa-pills"></i>
+                                                                        <span><?= $encounter['prescription_count'] ?></span>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                                <?php if ($encounter['lab_test_count'] > 0): ?>
+                                                                    <div class="indicator-item lab-test" title="<?= $encounter['lab_test_count'] ?> lab test(s)">
+                                                                        <i class="fas fa-vial"></i>
+                                                                        <span><?= $encounter['lab_test_count'] ?></span>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                                <?php if ($encounter['referral_count'] > 0): ?>
+                                                                    <div class="indicator-item referral" title="<?= $encounter['referral_count'] ?> referral(s)">
+                                                                        <i class="fas fa-share-alt"></i>
+                                                                        <span><?= $encounter['referral_count'] ?></span>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </td>
+
+                                                <td class="vitals-cell">
+                                                    <?php if ($encounter['vitals_id']): ?>
+                                                        <div class="vitals-container">
+                                                            <div class="vitals-id">
+                                                                <i class="fas fa-heartbeat"></i>
+                                                                ID: <?= $encounter['vitals_id'] ?>
+                                                            </div>
+                                                            <div class="vitals-readings">
+                                                                <?php if ($encounter['blood_pressure']): ?>
+                                                                    <div class="vital-item bp">
+                                                                        <i class="fas fa-heart"></i>
+                                                                        <?= htmlspecialchars($encounter['blood_pressure']) ?>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                                <?php if ($encounter['temperature']): ?>
+                                                                    <div class="vital-item temp">
+                                                                        <i class="fas fa-thermometer-half"></i>
+                                                                        <?= htmlspecialchars($encounter['temperature']) ?>°C
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                                <?php if ($encounter['heart_rate']): ?>
+                                                                    <div class="vital-item hr">
+                                                                        <i class="fas fa-heartbeat"></i>
+                                                                        <?= htmlspecialchars($encounter['heart_rate']) ?> bpm
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <div class="vitals-empty">
+                                                            <i class="fas fa-ban"></i>
+                                                            <span>No vitals recorded</span>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </td>
+
+                                                <td class="actions-cell">
+                                                    <div class="action-buttons">
+                                                        <button onclick="openConsultationModal(<?= $encounter['encounter_id'] ?>)"
+                                                            class="action-btn view-btn"
+                                                            title="View consultation details">
+                                                            <i class="fas fa-eye"></i>
+                                                            <span>View</span>
+                                                        </button>
+                                                        <?php if (
+                                                            in_array($employee_role, ['doctor', 'admin']) ||
+                                                            ($encounter['status'] == 'ongoing' && $employee_role == 'nurse')
+                                                        ): ?>
+                                                            <a href="edit_consultation_new.php?id=<?= $encounter['encounter_id'] ?>"
+                                                                class="action-btn edit-btn"
+                                                                title="Edit consultation">
+                                                                <i class="fas fa-edit"></i>
+                                                                <span>Edit</span>
+                                                            </a>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php else: ?>
+                            <div class="empty-state-new">
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-stethoscope"></i>
+                                </div>
+                                <div class="empty-state-content">
+                                    <h3>No Clinical Encounters Found</h3>
+                                    <p>No consultations match your current search criteria. Try adjusting your filters or create a new consultation.</p>
+                                    <a href="new_consultation_standalone.php" class="btn-new-consultation">
+                                        <i class="fas fa-plus"></i>
+                                        <span>Create New Consultation</span>
+                                    </a>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <!-- Pagination -->
+            <?php if ($total_pages > 1): ?>
+                <div class="pagination">
+                    <?php if ($page > 1): ?>
+                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>">
+                            <i class="fas fa-chevron-left"></i> Previous
+                        </a>
+                    <?php endif; ?>
+
+                    <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
+                        <?php if ($i == $page): ?>
+                            <span class="current"><?= $i ?></span>
+                        <?php else: ?>
+                            <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"><?= $i ?></a>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+
+                    <?php if ($page < $total_pages): ?>
+                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>">
+                            Next <i class="fas fa-chevron-right"></i>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         </div>
     </section>
 
@@ -2721,7 +2720,7 @@ try {
                     <p>Loading consultation details...</p>
                 </div>
             `;
-            
+
             // Hide action buttons safely
             if (editBtn) editBtn.style.display = 'none';
             if (printBtn) printBtn.style.display = 'none';

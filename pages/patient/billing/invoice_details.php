@@ -353,17 +353,64 @@ $patient_id = get_patient_session('patient_id');
         async function loadInvoiceDetails() {
             try {
                 const billingId = <?php echo $billing_id; ?>;
-                const response = await fetch(`/wbhsms-cho-koronadal-1/api/billing/patient/get_invoice_details.php?billing_id=${billingId}`);
-                const result = await response.json();
+                console.log('Loading invoice details for billing ID:', billingId);
+                
+                // Use relative path from current page location
+                const apiUrl = `../../../api/billing/patient/get_invoice_details.php?billing_id=${billingId}`;
+                console.log('API URL:', apiUrl);
+                
+                const response = await fetch(apiUrl, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Response error text:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const responseText = await response.text();
+                console.log('Raw response:', responseText);
+                
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('JSON parse error:', parseError);
+                    console.error('Response was not valid JSON:', responseText);
+                    throw new Error('Invalid JSON response from server');
+                }
 
                 if (result.success) {
+                    console.log('Invoice data loaded successfully:', result.data);
                     displayInvoiceDetails(result.data);
                 } else {
-                    showError(result.message);
+                    console.error('API returned error:', result.message);
+                    showError(result.message || 'Unable to load invoice details');
                 }
             } catch (error) {
                 console.error('Error loading invoice details:', error);
-                showError('Unable to load invoice details. Please try again later.');
+                
+                // Show detailed error information for debugging
+                if (error.message.includes('HTTP 404')) {
+                    showError('API endpoint not found. Please check the server configuration.');
+                } else if (error.message.includes('HTTP 401')) {
+                    showError('Authentication required. Please log in again.');
+                } else if (error.message.includes('HTTP 500')) {
+                    showError('Server error occurred. Please try again later.');
+                } else if (error.message.includes('Failed to fetch')) {
+                    showError('Network error. Please check your connection and try again.');
+                } else {
+                    showError(`Error: ${error.message}`);
+                }
             }
         }
 

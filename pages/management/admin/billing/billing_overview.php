@@ -1215,25 +1215,48 @@ try {
             window.location.href = window.location.pathname;
         }
         
-        // View invoice details in modal with fallback API paths
+        // View invoice details in modal with simplified API path
         function viewInvoice(billingId) {
             try {
                 // Show loading state
                 showInvoiceModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading invoice details...</p></div>');
                 
-                // Try multiple API path strategies
-                const apiPaths = [
-                    `${API_BASE_PATH}/api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
-                    `../../../../api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
-                    `/api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
-                    `../../../api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
-                    `api/billing/management/get_invoice_details.php?billing_id=${billingId}`,
-                    `./api/billing/management/get_invoice_details.php?billing_id=${billingId}`
-                ];
+                // Use simple relative path from current location
+                const apiUrl = `../../../../api/billing/management/get_invoice_details.php?billing_id=${billingId}`;
+                console.log('API URL:', apiUrl);
                 
-                console.log('Trying API paths:', apiPaths);
-                
-                tryApiPaths(apiPaths, 0, billingId);
+                fetch(apiUrl, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Invoice data loaded:', data);
+                    if (data.success) {
+                        displayInvoiceDetails(data.invoice);
+                    } else {
+                        throw new Error(data.message || 'Failed to load invoice details');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading invoice details:', error);
+                    showInvoiceModal(`
+                        <div style="padding: 2rem; text-align: center; color: #dc3545;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                            <p>Error loading invoice details:</p>
+                            <p style="font-size: 0.9em; color: #666;">${error.message}</p>
+                        </div>
+                    `);
+                });
                 
             } catch (error) {
                 console.error('Error in viewInvoice:', error);
@@ -1242,110 +1265,42 @@ try {
         }
         
         // Recursive function to try different API paths
-        function tryApiPaths(paths, index, billingId) {
-            if (index >= paths.length) {
-                showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>Unable to load invoice details. All API paths failed.</p></div>');
-                return;
-            }
-            
-            const apiUrl = paths[index];
-            console.log(`Trying API path ${index + 1}/${paths.length}:`, apiUrl);
-            
-            fetch(apiUrl, {
-                method: 'GET',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => {
-                console.log(`API path ${index + 1} response status:`, response.status);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    displayInvoiceDetails(data.invoice);
-                } else {
-                    showInvoiceModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>' + (data.message || 'Failed to load invoice details') + '</p></div>');
-                }
-            })
-            .catch(error => {
-                console.error(`API path ${index + 1} failed:`, error);
-                // Try next path
-                tryApiPaths(paths, index + 1, billingId);
-            });
-        }
-        
-        // Print invoice using dedicated API with fallback paths
+        // Print invoice using simplified API path
         function printInvoice(billingId) {
             try {
-                const printPaths = [
-                    `${API_BASE_PATH}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
-                    `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
-                    `/api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
-                    `../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
-                    `api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`,
-                    `./api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`
-                ];
+                const printUrl = `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=html`;
+                console.log('Print URL:', printUrl);
                 
-                console.log('Trying print paths:', printPaths);
+                // Open in new window for printing
+                const printWindow = window.open(printUrl, 'PrintInvoice', 'width=800,height=600,scrollbars=yes');
                 
-                // Try each path until one works
-                for (let i = 0; i < printPaths.length; i++) {
-                    const printUrl = printPaths[i];
-                    console.log(`Trying print URL ${i + 1}/${printPaths.length}:`, printUrl);
-                    
-                    // Test if the path exists by attempting to open it
-                    const testWindow = window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
-                    
-                    // If window opened successfully, break the loop
-                    if (testWindow) {
-                        break;
-                    }
+                if (!printWindow) {
+                    alert('Pop-up blocked. Please allow pop-ups for this site to print invoices.');
                 }
+                
             } catch (error) {
-                console.error('Error printing invoice:', error);
-                alert('Error printing invoice. Please try again.');
+                console.error('Error opening print window:', error);
+                alert('Error opening print window. Please try again.');
             }
         }
 
-        // Download invoice as PDF with fallback paths
+        // Download invoice as PDF using simplified API path
         function downloadInvoice(billingId) {
             try {
-                const downloadPaths = [
-                    `${API_BASE_PATH}/api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
-                    `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
-                    `/api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
-                    `../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
-                    `api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`,
-                    `./api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`
-                ];
+                const downloadUrl = `../../../../api/billing/management/print_invoice.php?billing_id=${billingId}&format=pdf`;
+                console.log('Download URL:', downloadUrl);
                 
-                console.log('Trying download paths:', downloadPaths);
+                // Create temporary link for download
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = `invoice_${billingId}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
                 
-                // Try each path until one works
-                for (let i = 0; i < downloadPaths.length; i++) {
-                    const downloadUrl = downloadPaths[i];
-                    console.log(`Trying download URL ${i + 1}/${downloadPaths.length}:`, downloadUrl);
-                    
-                    // Create a temporary link and click it
-                    const link = document.createElement('a');
-                    link.href = downloadUrl;
-                    link.target = '_blank';
-                    link.download = `invoice_${billingId}.pdf`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    
-                    // Only try one download at a time
-                    break;
-                }
             } catch (error) {
-                console.error('Error downloading invoice:', error);
-                alert('Error downloading invoice. Please try again.');
+                console.error('Error downloading PDF:', error);
+                alert('Error downloading PDF. Please try again.');
             }
         }
         

@@ -1000,20 +1000,34 @@ try {
                 itemsHtml = '<tr><td colspan="5" style="text-align: center; color: #666;">No items found</td></tr>';
             }
 
-            // Build payments HTML
+            // Build payments HTML with receipt viewing functionality
             let paymentsHtml = '';
             if (invoice.payments && invoice.payments.length > 0) {
                 for (let i = 0; i < invoice.payments.length; i++) {
                     const payment = invoice.payments[i];
                     const paymentDate = new Date(payment.date).toLocaleDateString();
-                    paymentsHtml += '<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #f8f9fa; margin-bottom: 0.5rem; border-radius: 4px;">' +
-                        '<div>' +
-                        '<span style="font-weight: 600; text-transform: uppercase;">' + payment.payment_method + '</span>' +
-                        '<small style="display: block; color: #666;">' + paymentDate + '</small>' +
+                    const hasReceipt = payment.receipt_number && payment.receipt_number !== 'N/A';
+                    
+                    paymentsHtml += '<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #f8f9fa; margin-bottom: 0.5rem; border-radius: 4px; border-left: 3px solid #28a745;">' +
+                        '<div style="flex: 1;">' +
+                        '<span style="font-weight: 600; text-transform: uppercase; color: #495057;">' + payment.payment_method + '</span>' +
+                        '<small style="display: block; color: #666; margin-top: 2px;">' + paymentDate + '</small>' +
                         '</div>' +
-                        '<div style="text-align: right;">' +
-                        '<strong>₱' + parseFloat(payment.amount).toFixed(2) + '</strong>' +
-                        '<small style="display: block; color: #666;">' + (payment.receipt_number || 'N/A') + '</small>' +
+                        '<div style="flex: 1; text-align: center;">' +
+                        '<strong style="color: #28a745; font-size: 1.1em;">₱' + parseFloat(payment.amount).toFixed(2) + '</strong>' +
+                        '<small style="display: block; color: #666; margin-top: 2px;">Receipt: ' + (payment.receipt_number || 'N/A') + '</small>' +
+                        '</div>' +
+                        '<div style="flex: 0 0 auto; text-align: right;">' +
+                        (hasReceipt ? 
+                            '<button class="btn btn-sm btn-info" onclick="viewReceipt(\'' + payment.receipt_number + '\')" title="View Receipt" style="margin-right: 5px; padding: 4px 8px; font-size: 0.75em;">' +
+                                '<i class="fas fa-receipt"></i> View' +
+                            '</button>' +
+                            '<button class="btn btn-sm btn-secondary" onclick="printReceipt(\'' + payment.receipt_number + '\')" title="Print Receipt" style="padding: 4px 8px; font-size: 0.75em;">' +
+                                '<i class="fas fa-print"></i>' +
+                            '</button>' 
+                            : 
+                            '<span style="color: #6c757d; font-size: 0.8em; font-style: italic;">No receipt available</span>'
+                        ) +
                         '</div>' +
                         '</div>';
                 }
@@ -1114,6 +1128,215 @@ try {
             window.location.href = 'billing_reports.php';
         }
 
+        // View individual receipt in modal
+        function viewReceipt(receiptNumber) {
+            try {
+                console.log('Viewing receipt:', receiptNumber);
+                
+                // Show loading state
+                showReceiptModal('<div style="padding: 3rem; text-align: center; color: #666;"><i class="fas fa-spinner fa-spin"></i><p>Loading receipt details...</p></div>');
+
+                const apiUrl = `${API_BASE_PATH}/api/get_receipt_details.php?receipt_number=${receiptNumber}`;
+                console.log('Fetching receipt from:', apiUrl);
+
+                fetch(apiUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success) {
+                            displayReceiptDetails(data.receipt);
+                        } else {
+                            showReceiptModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>' + (data.message || 'Failed to load receipt details') + '</p></div>');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching receipt:', error);
+                        showReceiptModal('<div style="padding: 2rem; text-align: center; color: #dc3545;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem;"></i><p>Error loading receipt details</p></div>');
+                    });
+            } catch (error) {
+                console.error('Error in viewReceipt:', error);
+                alert('Error loading receipt details. Please try again.');
+            }
+        }
+
+        // Print individual receipt
+        function printReceipt(receiptNumber) {
+            try {
+                const printUrl = `${API_BASE_PATH}/api/print_receipt.php?receipt_number=${receiptNumber}&format=html`;
+                console.log('Opening receipt print URL:', printUrl);
+                window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
+            } catch (error) {
+                console.error('Error printing receipt:', error);
+                alert('Error printing receipt. Please try again.');
+            }
+        }
+
+        // Receipt modal functions
+        function showReceiptModal(content) {
+            // Create receipt modal if it doesn't exist
+            let receiptModal = document.getElementById('receipt-modal');
+            if (!receiptModal) {
+                receiptModal = document.createElement('div');
+                receiptModal.id = 'receipt-modal';
+                receiptModal.className = 'modal-overlay';
+                receiptModal.style.display = 'none';
+                receiptModal.innerHTML = `
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3><i class="fas fa-receipt"></i> Receipt Details</h3>
+                            <button class="modal-close" onclick="closeReceiptModal()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="receipt-content"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="closeReceiptModal()">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                            <button class="btn btn-info" id="print-modal-receipt" onclick="printModalReceipt()" style="display: none;">
+                                <i class="fas fa-print"></i> Print
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(receiptModal);
+            }
+            
+            document.getElementById('receipt-content').innerHTML = content;
+            receiptModal.style.display = 'flex';
+        }
+
+        function closeReceiptModal() {
+            const receiptModal = document.getElementById('receipt-modal');
+            if (receiptModal) {
+                receiptModal.style.display = 'none';
+            }
+        }
+
+        function displayReceiptDetails(receipt) {
+            console.log('Receipt data received:', receipt);
+            
+            const receiptDate = new Date(receipt.payment_date).toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            const receiptTime = new Date(receipt.payment_date).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            const receiptHtml = `
+                <div style="max-width: 600px; margin: 0 auto; padding: 2rem; font-family: 'Courier New', monospace; background: white; border: 1px solid #ddd;">
+                    <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 1rem; margin-bottom: 1.5rem;">
+                        <h2 style="margin: 0; color: #000;">CHO KORONADAL</h2>
+                        <p style="margin: 0.25rem 0; font-size: 14px;">City Health Office</p>
+                        <p style="margin: 0.25rem 0; font-size: 14px;">Koronadal City, South Cotabato</p>
+                        <h3 style="margin: 1rem 0 0.5rem 0; color: #000;">OFFICIAL RECEIPT</h3>
+                        <p style="margin: 0; font-weight: bold; font-size: 16px;">Receipt #: ${receipt.receipt_number}</p>
+                    </div>
+
+                    <div style="margin-bottom: 1.5rem; font-size: 14px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Date:</span>
+                            <span>${receiptDate}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Time:</span>
+                            <span>${receiptTime}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Patient:</span>
+                            <span>${receipt.patient_name || 'N/A'}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Patient ID:</span>
+                            <span>${receipt.patient_id || 'N/A'}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Invoice #:</span>
+                            <span>${receipt.billing_id}</span>
+                        </div>
+                    </div>
+
+                    <div style="border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 1rem 0; margin-bottom: 1.5rem; font-size: 14px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Payment Method:</span>
+                            <span style="text-transform: uppercase;">${receipt.payment_method || 'CASH'}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Amount Paid:</span>
+                            <span style="font-weight: bold;">₱${parseFloat(receipt.amount_paid).toFixed(2)}</span>
+                        </div>
+                        ${receipt.change_amount > 0 ? `
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span>Change:</span>
+                                <span style="font-weight: bold;">₱${parseFloat(receipt.change_amount).toFixed(2)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div style="margin-bottom: 1.5rem; font-size: 14px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Received by:</span>
+                            <span>${receipt.cashier_name || 'N/A'}</span>
+                        </div>
+                        ${receipt.notes ? `
+                            <div style="margin-top: 1rem;">
+                                <span>Notes:</span>
+                                <p style="margin: 0.25rem 0; font-style: italic;">${receipt.notes}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div style="text-align: center; border-top: 1px solid #000; padding-top: 1rem; font-size: 12px;">
+                        <p style="margin: 0;">Thank you for your payment!</p>
+                        <p style="margin: 0.5rem 0 0 0;">This is an official receipt.</p>
+                    </div>
+                </div>
+            `;
+
+            showReceiptModal(receiptHtml);
+            document.getElementById('print-modal-receipt').style.display = 'inline-block';
+        }
+
+        function printModalReceipt() {
+            const receiptContent = document.getElementById('receipt-content').innerHTML;
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Receipt</title>
+                    <style>
+                        body { margin: 0; padding: 20px; }
+                        @media print {
+                            body { margin: 0; padding: 0; }
+                        }
+                    </style>
+                </head>
+                <body>${receiptContent}</body>
+                </html>
+            `);
+            printWindow.document.close();
+            printWindow.onload = function() {
+                printWindow.print();
+                printWindow.onafterprint = function() {
+                    printWindow.close();
+                };
+            };
+        }
+
+        // Navigate to reports page
+        function openReportsModal() {
+            window.location.href = 'billing_reports.php';
+        }
+
         // Helper function to get role dashboard URL
         function getRoleDashboardUrl() {
             // Get role from session via a safer method
@@ -1131,6 +1354,10 @@ try {
         window.clearFilters = clearFilters;
         window.closeInvoiceModal = closeInvoiceModal;
         window.printModalInvoice = printModalInvoice;
+        window.viewReceipt = viewReceipt;
+        window.printReceipt = printReceipt;
+        window.closeReceiptModal = closeReceiptModal;
+        window.printModalReceipt = printModalReceipt;
     </script>
 
 </body>

@@ -117,9 +117,15 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'dashboard' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-home"></i> Dashboard
         </a>
+        <!-- OLD PATIENT RECORDS - COMMENTED OUT FOR NEW IMPLEMENTATION
         <a href="<?= $nav_base ?>management/records_officer/patient_records_management.php"
+            class="<?= $activePage === 'patients' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-users"></i> Patient Records
+        </a>
+        -->
+        <a href="<?= $nav_base ?>medical-records/patient_records_management.php"
             class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
-            <i class="fas fa-user-injured"></i> Patient Records
+            <i class="fas fa-users"></i> Patient Records
         </a>
         <a href="<?= $nav_base ?>medical-records/medical_records.php"
             class="<?= $activePage === 'medical_records' ? 'active' : '' ?>" role="menuitem">

@@ -156,13 +156,15 @@ if ($show_search_results) {
             SELECT DISTINCT p.patient_id, p.username, p.first_name, p.last_name, 
                    bg.barangay_name, b.billing_id, b.billing_date, b.net_amount, 
                    b.paid_amount, b.payment_status, b.created_by,
-                   e.first_name as created_by_first_name, e.last_name as created_by_last_name
+                   e.first_name as created_by_first_name, e.last_name as created_by_last_name,
+                   (b.net_amount - b.paid_amount) as outstanding_balance
             FROM patients p 
             LEFT JOIN barangay bg ON p.barangay_id = bg.barangay_id
             INNER JOIN billing b ON p.patient_id = b.patient_id 
             INNER JOIN employees e ON b.created_by = e.employee_id
             WHERE b.payment_status IN ('unpaid', 'partial')
             AND p.status = 'active'
+            AND (b.net_amount - b.paid_amount) > 0.01
             $where_clause
             ORDER BY b.billing_date DESC, p.last_name, p.first_name
             LIMIT 20
@@ -187,14 +189,17 @@ try {
 
 if ($billing_id) {
     try {
-        // Get invoice details
+        // Get invoice details with enhanced validation
         $stmt = $pdo->prepare("SELECT b.*, p.first_name, p.last_name, p.username as patient_username, 
-                                      v.visit_date, e.first_name as created_by_first_name, e.last_name as created_by_last_name
+                                      v.visit_date, e.first_name as created_by_first_name, e.last_name as created_by_last_name,
+                                      p.status as patient_status,
+                                      (b.net_amount - b.paid_amount) as outstanding_balance
                                FROM billing b
                                JOIN patients p ON b.patient_id = p.patient_id  
                                JOIN employees e ON b.created_by = e.employee_id
                                LEFT JOIN visits v ON b.visit_id = v.visit_id
-                               WHERE b.billing_id = ? AND b.payment_status IN ('unpaid', 'partial')");
+                               WHERE b.billing_id = ? AND b.payment_status IN ('unpaid', 'partial') 
+                               AND (b.net_amount - b.paid_amount) > 0.01");
         $stmt->execute([$billing_id]);
         $invoice_data = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -234,33 +239,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $payment_method = $_POST['payment_method'] ?? 'cash';
             $notes = trim($_POST['notes'] ?? '');
 
-            // Validation
+            // Enhanced validation with detailed error messages
             if (!$billing_id) {
-                throw new Exception('Invalid invoice ID.');
+                throw new Exception('Invalid invoice ID provided.');
             }
             if ($amount_paid <= 0) {
-                throw new Exception('Payment amount must be greater than zero.');
+                throw new Exception('Payment amount must be greater than zero. Amount received: ' . $amount_paid);
+            }
+            if (!in_array($payment_method, ['cash', 'card', 'online', 'check'])) {
+                throw new Exception('Invalid payment method provided: ' . $payment_method);
             }
 
-            // Get billing details for validation
-            $stmt = $pdo->prepare("SELECT b.*, p.status as patient_status FROM billing b 
+            // Get billing details for validation with enhanced query
+            $stmt = $pdo->prepare("SELECT b.*, p.status as patient_status, 
+                                          p.first_name, p.last_name, p.username as patient_username
+                                   FROM billing b 
                                    JOIN patients p ON b.patient_id = p.patient_id 
-                                   WHERE b.billing_id = ? AND b.payment_status IN ('unpaid', 'partial')");
+                                   WHERE b.billing_id = ?");
             $stmt->execute([$billing_id]);
             $billing = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$billing) {
-                throw new Exception('Invoice not found or already paid.');
+                throw new Exception('Invoice not found with ID: ' . $billing_id);
+            }
+            
+            // Check payment status - allow both unpaid and partial payments
+            if (!in_array($billing['payment_status'], ['unpaid', 'partial'])) {
+                throw new Exception('Invoice is already paid or has invalid status: ' . $billing['payment_status']);
             }
 
             // Validate patient is active before allowing payment processing
             if ($billing['patient_status'] !== 'active') {
-                throw new Exception('Payments can only be processed for active patients.');
+                throw new Exception('Payments can only be processed for active patients. Patient status: ' . $billing['patient_status']);
             }
 
-            // Calculate remaining balance and change
-            $remaining_amount = $billing['net_amount'] - $billing['paid_amount'];
+            // Calculate remaining balance and change with detailed logging
+            $remaining_amount = floatval($billing['net_amount']) - floatval($billing['paid_amount']);
+            error_log("Payment calculation - Net amount: {$billing['net_amount']}, Already paid: {$billing['paid_amount']}, Remaining: {$remaining_amount}, Amount received: {$amount_paid}");
             
+            // Validate minimum payment (allow partial payments)
+            if ($amount_paid > $remaining_amount + 10000) { // Allow reasonable overpayment for change
+                throw new Exception('Payment amount is too large. Maximum allowed: ₱' . number_format($remaining_amount + 10000, 2));
+            }
+
             // Allow overpayments and calculate change (real-world scenario)
             $change_amount = 0;
             $actual_payment_amount = $amount_paid;
@@ -269,40 +290,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Customer overpaid - calculate change
                 $change_amount = $amount_paid - $remaining_amount;
                 $actual_payment_amount = $remaining_amount; // Only apply the remaining balance
+                error_log("Overpayment detected - Change amount: {$change_amount}, Actual payment applied: {$actual_payment_amount}");
             }
 
             // Calculate new totals
-            $new_paid_amount = $billing['paid_amount'] + $actual_payment_amount;
+            $new_paid_amount = floatval($billing['paid_amount']) + $actual_payment_amount;
+            error_log("New paid amount calculation: {$billing['paid_amount']} + {$actual_payment_amount} = {$new_paid_amount}");
 
-            // Determine new payment status
+            // Determine new payment status with tolerance for floating point precision
             $new_status = 'paid';
-            if ($new_paid_amount < $billing['net_amount'] - 0.01) {
+            if ($new_paid_amount < (floatval($billing['net_amount']) - 0.01)) {
                 $new_status = 'partial';
             }
+            error_log("Payment status determination - New status: {$new_status}");
 
-            // Generate receipt number
-            $receipt_number = 'RCP-' . date('Ymd') . '-' . str_pad($billing_id, 6, '0', STR_PAD_LEFT);
+            // Generate receipt number with timestamp to ensure uniqueness
+            $receipt_number = 'RCP-' . date('Ymd') . '-' . str_pad($billing_id, 6, '0', STR_PAD_LEFT) . '-' . time();
+            error_log("Generated receipt number: {$receipt_number}");
 
             // Insert payment record (including change amount) - for payment processing
             $stmt = $pdo->prepare("INSERT INTO payments (billing_id, amount_paid, change_amount, payment_method, cashier_id, receipt_number, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$billing_id, $amount_paid, $change_amount, $payment_method, $employee_id, $receipt_number, $notes]);
+            $payment_result = $stmt->execute([$billing_id, $amount_paid, $change_amount, $payment_method, $employee_id, $receipt_number, $notes]);
+            
+            if (!$payment_result) {
+                throw new Exception('Failed to insert payment record: ' . implode(', ', $stmt->errorInfo()));
+            }
 
             $payment_id = $pdo->lastInsertId();
+            error_log("Payment record created - Payment ID: {$payment_id}");
 
             // Insert receipt record for audit trail - for formal receipt tracking
             $stmt = $pdo->prepare("INSERT INTO receipts (billing_id, receipt_number, amount_paid, change_amount, payment_method, received_by_employee_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$billing_id, $receipt_number, $amount_paid, $change_amount, $payment_method, $employee_id, $notes]);
+            $receipt_result = $stmt->execute([$billing_id, $receipt_number, $amount_paid, $change_amount, $payment_method, $employee_id, $notes]);
+            
+            if (!$receipt_result) {
+                throw new Exception('Failed to insert receipt record: ' . implode(', ', $stmt->errorInfo()));
+            }
 
             $receipt_id = $pdo->lastInsertId();
-            error_log("Receipt record created - Receipt ID: $receipt_id");
+            error_log("Receipt record created - Receipt ID: {$receipt_id}");
 
             // Update billing record
             $stmt = $pdo->prepare("UPDATE billing SET paid_amount = ?, payment_status = ? WHERE billing_id = ?");
-            $stmt->execute([$new_paid_amount, $new_status, $billing_id]);
+            $billing_result = $stmt->execute([$new_paid_amount, $new_status, $billing_id]);
+            
+            if (!$billing_result) {
+                throw new Exception('Failed to update billing record: ' . implode(', ', $stmt->errorInfo()));
+            }
 
             $pdo->commit();
-            error_log("Payment processed successfully - Payment ID: $payment_id, Receipt ID: $receipt_id, Receipt: $receipt_number");
-            error_log("Dual receipt architecture: payments table (ID: $payment_id) + receipts table (ID: $receipt_id) both linked by receipt_number: $receipt_number");
+            error_log("Payment processed successfully - Payment ID: {$payment_id}, Receipt ID: {$receipt_id}, Receipt: {$receipt_number}");
+            error_log("Dual receipt architecture: payments table (ID: {$payment_id}) + receipts table (ID: {$receipt_id}) both linked by receipt_number: {$receipt_number}");
 
             // Set success data for receipt display
             $_SESSION['payment_success'] = [
@@ -313,28 +351,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'amount_paid' => $amount_paid,
                 'change_amount' => $change_amount,
                 'payment_status' => $new_status,
-                'patient_name' => $billing['first_name'] . ' ' . $billing['last_name'],
+                'patient_name' => trim(($billing['first_name'] ?? '') . ' ' . ($billing['last_name'] ?? '')),
                 'patient_id' => $billing['patient_username'] ?? 'N/A',
                 'net_amount' => $billing['net_amount'],
-                'total_paid' => $new_paid_amount
+                'total_paid' => $new_paid_amount,
+                'remaining_balance' => max(0, floatval($billing['net_amount']) - $new_paid_amount)
             ];
 
-            $success_message = 'Payment processed successfully!';
+            $success_message = 'Payment processed successfully! Receipt #: ' . $receipt_number;
+            
+            // If this was a full payment, redirect to success page
+            if ($new_status === 'paid') {
+                header('Location: process_payment.php?success=1&receipt=' . urlencode($receipt_number));
+                exit();
+            }
+            
         } catch (Exception $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollback();
             }
             error_log("Payment processing error: " . $e->getMessage());
             error_log("Error trace: " . $e->getTraceAsString());
+            error_log("POST data during error: " . print_r($_POST, true));
             $error_message = 'Error processing payment: ' . $e->getMessage();
         }
     }
 }
 
-// Check for payment success from session
+// Check for payment success from session or URL parameters
 $payment_success_data = $_SESSION['payment_success'] ?? null;
 if ($payment_success_data) {
     unset($_SESSION['payment_success']); // Clear after use
+}
+
+// Also check for URL-based success indication (for redirects)
+if (isset($_GET['success']) && $_GET['success'] == '1' && isset($_GET['receipt'])) {
+    $success_message = 'Payment processed successfully! Receipt #: ' . htmlspecialchars($_GET['receipt']);
 }
 ?>
 
@@ -2245,15 +2297,51 @@ if ($payment_success_data) {
             document.getElementById('payment-confirmation-modal').style.display = 'none';
         }
 
-        // Submit payment form
+        // Submit payment form with enhanced debugging
         function submitPayment() {
             console.log('submitPayment called');
             const form = document.getElementById('payment-form');
             if (form) {
                 console.log('Form found, submitting...');
-                console.log('Form data:', new FormData(form));
+                
+                // Debug form data before submission
+                const formData = new FormData(form);
+                console.log('Form data being submitted:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(`${key}: ${value}`);
+                }
+                
+                // Validate required fields
+                const billingId = formData.get('billing_id');
+                const amountPaid = formData.get('amount_paid');
+                const paymentMethod = formData.get('payment_method');
+                
+                if (!billingId || !amountPaid || !paymentMethod) {
+                    console.error('Missing required fields:', {
+                        billing_id: billingId,
+                        amount_paid: amountPaid,
+                        payment_method: paymentMethod
+                    });
+                    alert('Missing required payment information. Please refresh and try again.');
+                    return;
+                }
+                
+                if (parseFloat(amountPaid) <= 0) {
+                    console.error('Invalid payment amount:', amountPaid);
+                    alert('Payment amount must be greater than zero.');
+                    return;
+                }
+                
                 document.getElementById('payment-confirmation-modal').style.display = 'none';
                 document.getElementById('loading-modal').style.display = 'block';
+                
+                // Add timestamp to prevent caching issues
+                const timestampInput = document.createElement('input');
+                timestampInput.type = 'hidden';
+                timestampInput.name = 'timestamp';
+                timestampInput.value = Date.now();
+                form.appendChild(timestampInput);
+                
                 form.submit();
             } else {
                 console.error('Payment form not found!');

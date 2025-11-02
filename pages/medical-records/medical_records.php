@@ -336,7 +336,18 @@ try {
         }
         $stmt->close();
     } else {
-        // Admin, Doctor, Nurse, Records Officer: Get all barangays in their facility's district
+        // Admin, Doctor, Nurse, Records Officer: Get ALL barangays for comprehensive patient search
+        $barangay_stmt = $conn->prepare("
+            SELECT barangay_id, barangay_name 
+            FROM barangay 
+            ORDER BY barangay_name ASC
+        ");
+        $barangay_stmt->execute();
+        $barangay_result = $barangay_stmt->get_result();
+        $barangays = $barangay_result->fetch_all(MYSQLI_ASSOC);
+        $barangay_stmt->close();
+        
+        // Still get their district for other potential uses
         $stmt = $conn->prepare("
             SELECT f.district_id
             FROM employees e 
@@ -348,19 +359,6 @@ try {
         $result = $stmt->get_result();
         if ($row = $result->fetch_assoc()) {
             $user_district_id = $row['district_id'];
-            
-            // Get all barangays in this district
-            $barangay_stmt = $conn->prepare("
-                SELECT barangay_id, barangay_name 
-                FROM barangay 
-                WHERE district_id = ? 
-                ORDER BY barangay_name ASC
-            ");
-            $barangay_stmt->bind_param("i", $user_district_id);
-            $barangay_stmt->execute();
-            $barangay_result = $barangay_stmt->get_result();
-            $barangays = $barangay_result->fetch_all(MYSQLI_ASSOC);
-            $barangay_stmt->close();
         }
         $stmt->close();
     }
