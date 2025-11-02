@@ -44,13 +44,14 @@ try {
     $sql = "
         SELECT r.referral_id, r.referral_num, r.patient_id, r.referral_reason, 
                r.destination_type, r.referred_to_facility_id, r.external_facility_name, 
-               r.referral_date, r.status, r.referred_by, r.service_id,
+               r.referral_date, r.status, r.referred_by, r.service_id, r.referring_facility_id,
                p.first_name, p.middle_name, p.last_name, p.username as patient_number, 
                p.date_of_birth, p.sex, p.contact_number,
                b.barangay_name as barangay,
                e.first_name as issuer_first_name, e.last_name as issuer_last_name,
                ro.role_name as issuer_position,
                f.name as referred_facility_name,
+               rf.name as referring_facility_name,
                s.name as service_name
         FROM referrals r
         LEFT JOIN patients p ON r.patient_id = p.patient_id
@@ -58,6 +59,7 @@ try {
         LEFT JOIN employees e ON r.referred_by = e.employee_id
         LEFT JOIN roles ro ON e.role_id = ro.role_id
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
+        LEFT JOIN facilities rf ON r.referring_facility_id = rf.facility_id
         LEFT JOIN services s ON r.service_id = s.service_id
         WHERE r.referral_id = ?
     ";
@@ -144,6 +146,7 @@ try {
         'referral_reason' => $referral['referral_reason'],
         'status' => $referral['status'],
         'facility_name' => $facility_name,
+        'referring_facility_name' => $referral['referring_facility_name'] ?? 'N/A',
         'external_facility_name' => $referral['external_facility_name'],
         'referral_date' => $referral['referral_date'],
         'issuer_name' => $issuer_name,

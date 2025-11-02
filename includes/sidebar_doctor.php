@@ -208,6 +208,10 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'patient_records' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-users"></i> Patient Records
         </a>
+        <a href="<?= $nav_base ?>medical-records/medical_records.php"
+            class="<?= $activePage === 'medical_records' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-file-medical"></i> Medical Records
+        </a>
         <!-- MEDICAL RECORD PRINTING - COMMENTED OUT FOR DEPLOYMENT
         <a href="<?= $nav_base ?>public/medical_record_print.php"
             class="<?= $activePage === 'medical_print' ? 'active' : '' ?>" role="menuitem">
