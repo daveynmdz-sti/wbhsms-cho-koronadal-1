@@ -76,6 +76,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'
             $search_sql = "
                 SELECT DISTINCT 
                     p.patient_id,
+                    p.username,
                     CONCAT(p.first_name, ' ', p.last_name) as full_name,
                     p.date_of_birth,
                     p.contact_number,
@@ -94,7 +95,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'
                     p.first_name LIKE ? OR 
                     p.last_name LIKE ? OR 
                     CONCAT(p.first_name, ' ', p.last_name) LIKE ? OR
-                    p.patient_id LIKE ?
+                    p.username LIKE ?
                 )";
                 $search_params = [
                     "%{$search_term}%",
@@ -921,9 +922,7 @@ function getSortIcon($column, $current_sort, $current_direction)
             padding: 0;
             border: none;
             border-radius: 12px;
-            width: 90%;
             max-width: 800px;
-            max-height: 90vh;
             overflow: hidden;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             animation: modalSlideIn 0.3s ease-out;
@@ -1510,7 +1509,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                         <label for="patient">Search Patient</label>
                         <input type="text" name="patient" id="patient"
                             value="<?php echo htmlspecialchars($patient_filter); ?>"
-                            placeholder="Search by Patient ID, Name...">
+                            placeholder="Search by Username, Name...">
                     </div>
 
                     <div class="form-group">
@@ -1567,9 +1566,9 @@ function getSortIcon($column, $current_sort, $current_direction)
                             <thead>
                                 <tr>
                                     <th style="width: 50px;">Select</th>
-                                    <th class="sortable" onclick="sortPatientTable('patient_id')">
+                                    <th class="sortable" onclick="sortPatientTable('username')">
                                         Patient ID
-                                        <i class="fas fa-sort sort-icon" id="sort-patient_id"></i>
+                                        <i class="fas fa-sort sort-icon" id="sort-username"></i>
                                     </th>
                                     <th class="sortable" onclick="sortPatientTable('full_name')">
                                         Patient Name
@@ -2419,7 +2418,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                         <input type="radio" name="selected_patient" value="${patient.patient_id}" 
                                class="patient-radio" onchange="selectPatientFromRadio(this, '${patient.patient_id}', '${patient.full_name}')">
                     </td>
-                    <td>${patient.patient_id}</td>
+                    <td>${patient.username || 'N/A'}</td>
                     <td>${patient.full_name}</td>
                     <td>${patient.date_of_birth}</td>
                     <td>${patient.contact_number || 'N/A'}</td>
@@ -2462,10 +2461,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                 let valueB = b[column] || '';
                 
                 // Handle different data types
-                if (column === 'patient_id') {
-                    valueA = parseInt(valueA) || 0;
-                    valueB = parseInt(valueB) || 0;
-                } else if (column === 'date_of_birth') {
+                if (column === 'date_of_birth') {
                     valueA = new Date(valueA);
                     valueB = new Date(valueB);
                 } else {
@@ -2618,6 +2614,7 @@ function getSortIcon($column, $current_sort, $current_direction)
             // Filter to show only selected patient
             const selectedPatients = [{
                 patient_id: patientId,
+                username: row.cells[1].textContent,
                 full_name: patientName,
                 date_of_birth: row.cells[3].textContent,
                 contact_number: row.cells[4].textContent,
