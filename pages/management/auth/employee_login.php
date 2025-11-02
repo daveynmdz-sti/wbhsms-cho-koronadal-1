@@ -25,6 +25,9 @@ require_once $root_path . '/config/session/employee_session.php';
 
 include_once $root_path . '/config/db.php';
 
+// Include activity logger for comprehensive session tracking
+require_once $root_path . '/utils/UserActivityLogger.php';
+
 // Enhanced session validation and redirect logic
 if (!empty($_SESSION['employee_id'])) {
     $role = strtolower(trim($_SESSION['role'] ?? ''));
@@ -232,6 +235,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (!$isPasswordValid) {
                 $_SESSION[$rate_limit_key]++;
+                
+                // Log failed login attempt
+                activity_logger()->logFailedLogin($employee_number, 'employee');
+                
                 usleep(500000); // Delay for failed authentication
                 throw new RuntimeException("Invalid employee number or password.");
             }
@@ -295,6 +302,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['login_time'] = time();
             $_SESSION['user_type'] = $role;
             $_SESSION['user_id'] = $row['employee_id'];
+
+            // Log successful login and session start
+            $user_type = ($role === 'admin') ? 'admin' : 'employee';
+            activity_logger()->logLogin($row['employee_id'], $user_type, $employee_number);
+            activity_logger()->logSessionStart($row['employee_id'], $user_type);
 
             // Check for station assignment (for queue management roles)
             $queue_roles = ['doctor', 'nurse', 'pharmacist', 'laboratory_tech', 'cashier', 'records_officer', 'bhw'];
@@ -366,6 +378,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
         } else {
             $_SESSION[$rate_limit_key]++;
+            
+            // Log failed login attempt for non-existent user
+            activity_logger()->logFailedLogin($employee_number, 'employee');
+            
             usleep(500000); // Delay for non-existent user
             throw new RuntimeException("Invalid employee number or password.");
         }

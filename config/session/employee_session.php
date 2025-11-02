@@ -112,6 +112,18 @@ function set_employee_session($key, $value) {
  * Clear employee session
  */
 function clear_employee_session() {
+    // Log session end before clearing if user was logged in
+    if (is_employee_logged_in()) {
+        $employee_id = get_employee_session('employee_id');
+        $role = get_employee_session('role');
+        $user_type = ($role === 'admin') ? 'admin' : 'employee';
+        
+        // Include activity logger if not already included
+        if (class_exists('UserActivityLogger')) {
+            activity_logger()->logSessionEnd($employee_id, $user_type, 'manual');
+        }
+    }
+    
     session_unset();
     session_destroy();
     
@@ -221,6 +233,16 @@ function check_employee_timeout($timeout_minutes = 30) {
     
     $last_activity = get_employee_session('last_activity');
     if ($last_activity && (time() - $last_activity) > ($timeout_minutes * 60)) {
+        // Log session timeout before clearing
+        $employee_id = get_employee_session('employee_id');
+        $role = get_employee_session('role');
+        $user_type = ($role === 'admin') ? 'admin' : 'employee';
+        
+        // Include activity logger if available
+        if (class_exists('UserActivityLogger')) {
+            activity_logger()->logSessionEnd($employee_id, $user_type, 'timeout');
+        }
+        
         clear_employee_session();
         return true; // Session expired
     }

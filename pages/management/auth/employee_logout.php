@@ -17,6 +17,9 @@ if (ob_get_level() === 0) {
 // Include employee session configuration
 require_once __DIR__ . '/../../../config/session/employee_session.php';
 
+// Include activity logger for logout tracking
+require_once __DIR__ . '/../../../utils/UserActivityLogger.php';
+
 // Security headers
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
@@ -60,6 +63,16 @@ if (empty($_SESSION['employee_id'])) {
 
 // If this is a POST request (form submission) or GET with valid token
 if ($_SERVER['REQUEST_METHOD'] === 'POST' || (!empty($provided_token) && hash_equals($expected_token, $provided_token))) {
+    
+    // Log the logout event before clearing session
+    $employee_id = $_SESSION['employee_id'] ?? null;
+    $role = $_SESSION['role'] ?? 'employee';
+    $user_type = ($role === 'admin') ? 'admin' : 'employee';
+    
+    if ($employee_id) {
+        activity_logger()->logLogout($employee_id, $user_type);
+        activity_logger()->logSessionEnd($employee_id, $user_type, 'normal');
+    }
     
     // Log the logout event (optional - for audit trails)
     if (!empty($_SESSION['employee_username'])) {

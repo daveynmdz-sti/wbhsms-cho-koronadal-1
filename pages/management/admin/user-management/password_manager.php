@@ -8,6 +8,9 @@ $root_path = dirname(dirname(dirname(dirname(__DIR__))));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
+// Include activity logger for password management tracking
+require_once $root_path . '/utils/UserActivityLogger.php';
+
 // Check if user is logged in and has admin permissions
 if (!isset($_SESSION['employee_id']) || $_SESSION['role'] !== 'admin') {
     ob_end_clean();
@@ -74,16 +77,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmt->bind_param("si", $hashed_password, $employee_id);
                     $stmt->execute();
                     
-                    // Log activity
+                    // Log activity using new activity logger
+                    $description = "Password reset via bulk operation - New password: $new_password";
+                    
+                    // Legacy logging for backward compatibility
                     $log_stmt = $conn->prepare("
                         INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
                         VALUES (?, ?, 'password_reset', ?)
                     ");
-                    
-                    $description = "Password reset via bulk operation - New password: $new_password";
-                    
                     $log_stmt->bind_param("iis", $_SESSION['employee_id'], $employee_id, $description);
                     $log_stmt->execute();
+                    
+                    // New comprehensive logging
+                    activity_logger()->logPasswordReset($employee_id, 'employee', $_SESSION['employee_id']);
                     
                     $reset_count++;
                     
@@ -135,16 +141,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $token_stmt->bind_param("issi", $employee_id, $token, $expires_at, $_SESSION['employee_id']);
             $token_stmt->execute();
             
-            // Log activity
+            // Log activity using new activity logger
+            $description = "Password reset with secure token - Employee must verify identity";
+            
+            // Legacy logging for backward compatibility
             $log_stmt = $conn->prepare("
                 INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
                 VALUES (?, ?, 'password_reset', ?)
             ");
-            
-            $description = "Password reset with secure token - Employee must verify identity";
-            
             $log_stmt->bind_param("iis", $_SESSION['employee_id'], $employee_id, $description);
             $log_stmt->execute();
+            
+            // New comprehensive logging
+            activity_logger()->logPasswordReset($employee_id, 'employee', $_SESSION['employee_id']);
             
             $conn->commit();
             
@@ -167,14 +176,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt->bind_param("i", $employee_id);
             $stmt->execute();
             
-            // Log activity
+            // Log activity using new activity logger
+            
+            // Legacy logging for backward compatibility
             $log_stmt = $conn->prepare("
                 INSERT INTO user_activity_logs (admin_id, employee_id, action_type, description) 
                 VALUES (?, ?, 'unlock', 'Account unlocked by admin')
             ");
-            
             $log_stmt->bind_param("ii", $_SESSION['employee_id'], $employee_id);
             $log_stmt->execute();
+            
+            // New comprehensive logging
+            activity_logger()->logAccountLockUnlock($employee_id, 'employee', 'unlock', $_SESSION['employee_id']);
             
             $success_message = "Account unlocked successfully!";
         }

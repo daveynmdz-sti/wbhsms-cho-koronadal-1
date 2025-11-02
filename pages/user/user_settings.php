@@ -12,6 +12,9 @@ $root_path = dirname(dirname(__DIR__));
 require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/db.php';
 
+// Include activity logger for user settings tracking
+require_once $root_path . '/utils/UserActivityLogger.php';
+
 // Authentication check - use session management function
 if (!is_employee_logged_in()) {
     redirect_to_employee_login();
@@ -293,22 +296,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $stmt->bind_param("si", $hashed_password, $employee_id);
 
                                 if ($stmt->execute()) {
-                                    // Log password change
+                                    // Log password change using new activity logger
+                                    $role = $_SESSION['role'] ?? 'employee';
+                                    $user_type = ($role === 'admin') ? 'admin' : 'employee';
+                                    
+                                    // Legacy logging for backward compatibility
                                     $log_stmt = $conn->prepare("
                                         INSERT INTO user_activity_logs (
                                             admin_id, employee_id, action_type, description
                                         ) VALUES (?, ?, 'update', ?)
                                     ");
-
                                     $description = "Self-changed password";
-
-                                    $log_stmt->bind_param(
-                                        "iis",
-                                        $employee_id,
-                                        $employee_id,
-                                        $description
-                                    );
+                                    $log_stmt->bind_param("iis", $employee_id, $employee_id, $description);
                                     $log_stmt->execute();
+                                    
+                                    // New comprehensive logging
+                                    activity_logger()->logPasswordChange($employee_id, $user_type);
 
                                     $success_message = "Password changed successfully!";
                                 } else {
