@@ -90,25 +90,25 @@ try {
         FROM services s
         LEFT JOIN (
             SELECT 
-                ref_data.service_id, 
+                ref_table.service_id, 
                 COUNT(*) as referral_count 
-            FROM referrals ref_data
-            JOIN services s_ref ON ref_data.service_id = s_ref.service_id
-            WHERE ref_data.referral_date BETWEEN ? AND ?
+            FROM referrals ref_table
+            JOIN services s_ref ON ref_table.service_id = s_ref.service_id
+            WHERE ref_table.referral_date BETWEEN ? AND ?
             AND s_ref.name != 'General Service'
-            " . ($facility_filter ? " AND ref_data.facility_id = ?" : "") . "
-            GROUP BY ref_data.service_id
+            " . ($facility_filter ? " AND ref_table.facility_id = ?" : "") . "
+            GROUP BY ref_table.service_id
         ) ref_data ON s.service_id = ref_data.service_id
         LEFT JOIN (
             SELECT 
-                cons_data.service_id, 
+                cons_table.service_id, 
                 COUNT(*) as consultation_count 
-            FROM consultations cons_data
-            JOIN services s_cons ON cons_data.service_id = s_cons.service_id
-            WHERE cons_data.consultation_date BETWEEN ? AND ?
+            FROM consultations cons_table
+            JOIN services s_cons ON cons_table.service_id = s_cons.service_id
+            WHERE cons_table.consultation_date BETWEEN ? AND ?
             AND s_cons.name != 'General Service'
-            " . ($facility_filter ? " AND cons_data.facility_id = ?" : "") . "
-            GROUP BY cons_data.service_id
+            " . ($facility_filter ? " AND cons_table.facility_id = ?" : "") . "
+            GROUP BY cons_table.service_id
         ) cons_data ON s.service_id = cons_data.service_id
         WHERE s.name != 'General Service'
         " . ($service_filter ? " AND s.service_id = ?" : "") . "
@@ -194,22 +194,22 @@ try {
             COALESCE(SUM(ref_data.referral_count), 0) + COALESCE(SUM(cons_data.consultation_count), 0) as total_service_demand
         FROM services s
         LEFT JOIN (
-            SELECT sum_ref.service_id, COUNT(*) as referral_count 
-            FROM referrals sum_ref
-            JOIN services s_ref ON sum_ref.service_id = s_ref.service_id
-            WHERE sum_ref.referral_date BETWEEN ? AND ?
+            SELECT sum_ref_table.service_id, COUNT(*) as referral_count 
+            FROM referrals sum_ref_table
+            JOIN services s_ref ON sum_ref_table.service_id = s_ref.service_id
+            WHERE sum_ref_table.referral_date BETWEEN ? AND ?
             AND s_ref.name != 'General Service'
-            " . ($facility_filter ? " AND sum_ref.facility_id = ?" : "") . "
-            GROUP BY sum_ref.service_id
+            " . ($facility_filter ? " AND sum_ref_table.facility_id = ?" : "") . "
+            GROUP BY sum_ref_table.service_id
         ) ref_data ON s.service_id = ref_data.service_id
         LEFT JOIN (
-            SELECT sum_cons.service_id, COUNT(*) as consultation_count 
-            FROM consultations sum_cons
-            JOIN services s_cons ON sum_cons.service_id = s_cons.service_id
-            WHERE sum_cons.consultation_date BETWEEN ? AND ?
+            SELECT sum_cons_table.service_id, COUNT(*) as consultation_count 
+            FROM consultations sum_cons_table
+            JOIN services s_cons ON sum_cons_table.service_id = s_cons.service_id
+            WHERE sum_cons_table.consultation_date BETWEEN ? AND ?
             AND s_cons.name != 'General Service'
-            " . ($facility_filter ? " AND sum_cons.facility_id = ?" : "") . "
-            GROUP BY sum_cons.service_id
+            " . ($facility_filter ? " AND sum_cons_table.facility_id = ?" : "") . "
+            GROUP BY sum_cons_table.service_id
         ) cons_data ON s.service_id = cons_data.service_id
         WHERE s.name != 'General Service'
         " . ($service_filter ? " AND s.service_id = ?" : "") . "
