@@ -108,7 +108,8 @@ try {
         LEFT JOIN facilities rf ON r.referring_facility_id = rf.facility_id
         LEFT JOIN facilities tf ON r.referred_to_facility_id = tf.facility_id
         WHERE $where_clause
-        GROUP BY r.referring_facility_id, rf.name, r.referred_to_facility_id, tf.name, r.external_facility_name
+        GROUP BY r.referring_facility_id, rf.name, r.referred_to_facility_id, tf.name, r.external_facility_name, 
+                 COALESCE(tf.name, r.external_facility_name, 'External Facility')
         ORDER BY total_referrals DESC
     ";
 
@@ -152,7 +153,14 @@ try {
             COUNT(*) as count
         FROM referrals r
         WHERE $where_clause AND r.referral_reason IS NOT NULL
-        GROUP BY reason_category
+        GROUP BY CASE 
+                WHEN LOWER(r.referral_reason) LIKE '%consultation%' THEN 'Consultation'
+                WHEN LOWER(r.referral_reason) LIKE '%check%up%' OR LOWER(r.referral_reason) LIKE '%checkup%' THEN 'Check-up'
+                WHEN LOWER(r.referral_reason) LIKE '%lab%' OR LOWER(r.referral_reason) LIKE '%laboratory%' THEN 'Laboratory'
+                WHEN LOWER(r.referral_reason) LIKE '%mri%' OR LOWER(r.referral_reason) LIKE '%ct%scan%' THEN 'Imaging'
+                WHEN LOWER(r.referral_reason) LIKE '%emergency%' OR LOWER(r.referral_reason) LIKE '%urgent%' THEN 'Emergency'
+                ELSE 'Other'
+            END
         ORDER BY count DESC
         LIMIT 5
     ";
@@ -235,7 +243,7 @@ try {
         FROM referrals r
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         WHERE $where_clause
-        GROUP BY r.referred_to_facility_id, f.name
+        GROUP BY r.referred_to_facility_id, f.name, COALESCE(f.name, 'External Facilities')
         ORDER BY referral_count DESC
         LIMIT 1
     ";
