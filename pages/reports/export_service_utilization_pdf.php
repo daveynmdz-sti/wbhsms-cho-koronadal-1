@@ -55,15 +55,13 @@ try {
                       FROM (
                           SELECT 
                               s2.service_id,
-                              COUNT(DISTINCT r2.referral_id) as ref_cnt,
-                              COUNT(DISTINCT c2.consultation_id) as cons_cnt
+                              COUNT(DISTINCT perc_ref.referral_id) as ref_cnt,
+                              COUNT(DISTINCT perc_cons.consultation_id) as cons_cnt
                           FROM services s2
-                          LEFT JOIN referrals r2 ON s2.service_id = r2.service_id 
-                              AND r2.referral_date BETWEEN ? AND ?
-                              " . ($facility_filter ? " AND r2.facility_id = ?" : "") . "
-                          LEFT JOIN consultations c2 ON s2.service_id = c2.service_id 
-                              AND c2.consultation_date BETWEEN ? AND ?
-                              " . ($facility_filter ? " AND c2.facility_id = ?" : "") . "
+                          LEFT JOIN referrals perc_ref ON s2.service_id = perc_ref.service_id 
+                              AND perc_ref.referral_date BETWEEN ? AND ?
+                          LEFT JOIN consultations perc_cons ON s2.service_id = perc_cons.service_id 
+                              AND perc_cons.consultation_date BETWEEN ? AND ?
                           WHERE s2.name != 'General Service'
                           GROUP BY s2.service_id
                       ) total_calc
@@ -72,18 +70,16 @@ try {
                       (SELECT SUM(COALESCE(ref_cnt, 0) + COALESCE(cons_cnt, 0)) 
                        FROM (
                            SELECT 
-                               s2.service_id,
-                               COUNT(DISTINCT r2.referral_id) as ref_cnt,
-                               COUNT(DISTINCT c2.consultation_id) as cons_cnt
-                           FROM services s2
-                           LEFT JOIN referrals r2 ON s2.service_id = r2.service_id 
-                               AND r2.referral_date BETWEEN ? AND ?
-                               " . ($facility_filter ? " AND r2.facility_id = ?" : "") . "
-                           LEFT JOIN consultations c2 ON s2.service_id = c2.service_id 
-                               AND c2.consultation_date BETWEEN ? AND ?
-                               " . ($facility_filter ? " AND c2.facility_id = ?" : "") . "
-                           WHERE s2.name != 'General Service'
-                           GROUP BY s2.service_id
+                               s3.service_id,
+                               COUNT(DISTINCT perc2_ref.referral_id) as ref_cnt,
+                               COUNT(DISTINCT perc2_cons.consultation_id) as cons_cnt
+                           FROM services s3
+                           LEFT JOIN referrals perc2_ref ON s3.service_id = perc2_ref.service_id 
+                               AND perc2_ref.referral_date BETWEEN ? AND ?
+                           LEFT JOIN consultations perc2_cons ON s3.service_id = perc2_cons.service_id 
+                               AND perc2_cons.consultation_date BETWEEN ? AND ?
+                           WHERE s3.name != 'General Service'
+                           GROUP BY s3.service_id
                        ) total_calc
                       )) * 100
             END as demand_percentage
@@ -96,7 +92,6 @@ try {
             JOIN services s_ref ON ref_table.service_id = s_ref.service_id
             WHERE ref_table.referral_date BETWEEN ? AND ?
             AND s_ref.name != 'General Service'
-            " . ($facility_filter ? " AND ref_table.facility_id = ?" : "") . "
             GROUP BY ref_table.service_id
         ) ref_data ON s.service_id = ref_data.service_id
         LEFT JOIN (
@@ -107,7 +102,6 @@ try {
             JOIN services s_cons ON cons_table.service_id = s_cons.service_id
             WHERE cons_table.consultation_date BETWEEN ? AND ?
             AND s_cons.name != 'General Service'
-            " . ($facility_filter ? " AND cons_table.facility_id = ?" : "") . "
             GROUP BY cons_table.service_id
         ) cons_data ON s.service_id = cons_data.service_id
         WHERE s.name != 'General Service'
@@ -119,21 +113,15 @@ try {
     $params = [];
     // Parameters for percentage calculation subqueries (2 sets)
     $params[] = $start_date; $params[] = $end_date;
-    if ($facility_filter) { $params[] = $facility_filter; }
     $params[] = $start_date; $params[] = $end_date;
-    if ($facility_filter) { $params[] = $facility_filter; }
     
     // Parameters for second percentage calculation subqueries (2 sets)
     $params[] = $start_date; $params[] = $end_date;
-    if ($facility_filter) { $params[] = $facility_filter; }
     $params[] = $start_date; $params[] = $end_date;
-    if ($facility_filter) { $params[] = $facility_filter; }
     
     // Parameters for main LEFT JOIN subqueries
     $params[] = $start_date; $params[] = $end_date;
-    if ($facility_filter) { $params[] = $facility_filter; }
     $params[] = $start_date; $params[] = $end_date;
-    if ($facility_filter) { $params[] = $facility_filter; }
     
     if ($service_filter) { $params[] = $service_filter; }
 
@@ -149,7 +137,6 @@ try {
         FROM services s
         LEFT JOIN referrals r ON s.service_id = r.service_id 
             AND r.referral_date BETWEEN ? AND ?
-            " . ($facility_filter ? " AND r.facility_id = ?" : "") . "
         WHERE s.name != 'General Service'
         " . ($service_filter ? " AND s.service_id = ?" : "") . "
         GROUP BY s.service_id, s.name
@@ -158,7 +145,6 @@ try {
     ");
 
     $ref_params = [$start_date, $end_date];
-    if ($facility_filter) $ref_params[] = $facility_filter;
     if ($service_filter) $ref_params[] = $service_filter;
 
     $stmt->execute($ref_params);
@@ -173,7 +159,6 @@ try {
         FROM services s
         LEFT JOIN consultations c ON s.service_id = c.service_id 
             AND c.consultation_date BETWEEN ? AND ?
-            " . ($facility_filter ? " AND c.facility_id = ?" : "") . "
         WHERE s.name != 'General Service'
         " . ($service_filter ? " AND s.service_id = ?" : "") . "
         GROUP BY s.service_id, s.name
@@ -199,7 +184,6 @@ try {
             JOIN services s_ref ON sum_ref_table.service_id = s_ref.service_id
             WHERE sum_ref_table.referral_date BETWEEN ? AND ?
             AND s_ref.name != 'General Service'
-            " . ($facility_filter ? " AND sum_ref_table.facility_id = ?" : "") . "
             GROUP BY sum_ref_table.service_id
         ) ref_data ON s.service_id = ref_data.service_id
         LEFT JOIN (
@@ -208,7 +192,6 @@ try {
             JOIN services s_cons ON sum_cons_table.service_id = s_cons.service_id
             WHERE sum_cons_table.consultation_date BETWEEN ? AND ?
             AND s_cons.name != 'General Service'
-            " . ($facility_filter ? " AND sum_cons_table.facility_id = ?" : "") . "
             GROUP BY sum_cons_table.service_id
         ) cons_data ON s.service_id = cons_data.service_id
         WHERE s.name != 'General Service'
@@ -216,9 +199,7 @@ try {
     ");
 
     $summary_params = [$start_date, $end_date];
-    if ($facility_filter) $summary_params[] = $facility_filter;
     $summary_params[] = $start_date; $summary_params[] = $end_date;
-    if ($facility_filter) $summary_params[] = $facility_filter;
     if ($service_filter) $summary_params[] = $service_filter;
 
     $stmt->execute($summary_params);
