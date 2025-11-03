@@ -417,6 +417,16 @@ $error = '';
                     <span class="report-status status-available">Available</span>
                 </div>
 
+                <!-- Service Utilization -->
+                <div class="report-card" onclick="handleReportClick('service_utilization')">
+                    <i class="fas fa-stethoscope report-icon"></i>
+                    <h3 class="report-title">Service Utilization</h3>
+                    <p class="report-description">
+                        Comprehensive analysis of healthcare service usage patterns, demand trends, and resource allocation.
+                    </p>
+                    <span class="report-status status-available">Available</span>
+                </div>
+
                 <!-- Morbidity Report -->
                 <div class="report-card" onclick="handleReportClick('morbidity_report')">
                     <i class="fas fa-heartbeat report-icon"></i>
@@ -457,15 +467,6 @@ $error = '';
                     <span class="report-status status-available">Available</span>
                 </div>
 
-                <!-- Service Utilization -->
-                <div class="report-card" onclick="handleReportClick('service_utilization')">
-                    <i class="fas fa-stethoscope report-icon"></i>
-                    <h3 class="report-title">Service Utilization</h3>
-                    <p class="report-description">
-                        Comprehensive analysis of healthcare service usage patterns, demand trends, and resource allocation.
-                    </p>
-                    <span class="report-status status-available">Available</span>
-                </div>
             </div>
         </div>
     </section>
