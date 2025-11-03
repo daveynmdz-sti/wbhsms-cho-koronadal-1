@@ -1733,10 +1733,13 @@ try {
             let relevantReferrals = activeReferrals.filter(referral => {
                 let matches = false;
                 if (selectedFacility === 'dho') {
+                    // DHO accepts district office referrals and external referrals
                     matches = referral.destination_type === 'district_office' || referral.destination_type === 'external';
                 } else if (selectedFacility === 'cho') {
-                    matches = referral.destination_type === 'city_office' || referral.destination_type === 'external';
+                    // CHO accepts city office referrals, district office referrals (escalation), and external referrals
+                    matches = referral.destination_type === 'city_office' || referral.destination_type === 'district_office' || referral.destination_type === 'external';
                 } else if (selectedFacility === 'bhc') {
+                    // BHC accepts barangay center referrals and external referrals
                     matches = referral.destination_type === 'barangay_center' || referral.destination_type === 'external';
                 }
                 
