@@ -1,0 +1,163 @@
+<?php
+// Ultimate PDF Export Solution - Multiple fallback approaches
+// This file tries different methods and uses the first one that works
+
+// Database and session setup
+$root_path = dirname(__DIR__, 2);
+require_once $root_path . '/config/session/employee_session.php';
+require_once $root_path . '/config/db.php';
+
+// Authentication check
+if (!is_employee_logged_in()) {
+    header('Location: ' . $root_path . '/pages/management/auth/login.php');
+    exit();
+}
+
+// Role-based access control  
+$allowed_roles = ['admin', 'dho', 'cashier', 'records_officer'];
+if (!in_array($_SESSION['role'], $allowed_roles)) {
+    header('Location: ' . $root_path . '/pages/management/dashboard.php');
+    exit();
+}
+
+// Get filter parameters
+$filter_type = $_GET['filter_type'] ?? $_POST['filter_type'] ?? 'month_range';
+$date_from = $_GET['date_from'] ?? $_POST['date_from'] ?? date('Y-m-01');
+$date_to = $_GET['date_to'] ?? $_POST['date_to'] ?? date('Y-m-t');
+
+// Build date range text
+$date_range_text = 'Period: ' . date('F j, Y', strtotime($date_from)) . ' - ' . date('F j, Y', strtotime($date_to));
+
+// Fetch data
+try {
+    // Key metrics query
+    $metrics_query = "
+        SELECT 
+            COUNT(*) as total_referrals,
+            SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted_referrals,
+            SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_referrals,
+            SUM(CASE WHEN destination_type = 'external' THEN 1 ELSE 0 END) as external_issued,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as active_referrals
+        FROM referrals 
+        WHERE DATE(referral_date) BETWEEN ? AND ?
+    ";
+    
+    $stmt = $pdo->prepare($metrics_query);
+    $stmt->execute([$date_from, $date_to]);
+    $metrics = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    $completion_rate = $metrics['total_referrals'] > 0 
+        ? round(($metrics['accepted_referrals'] / $metrics['total_referrals']) * 100, 1) 
+        : 0;
+
+} catch (Exception $e) {
+    die('Database error: ' . $e->getMessage());
+}
+
+// Method 1: Try Dompdf with ultra-safe settings
+function tryDompdfExport($html, $filename) {
+    try {
+        // Load Dompdf
+        $autoload_path = dirname(__DIR__, 2) . '/vendor/autoload.php';
+        if (!file_exists($autoload_path)) {
+            return false;
+        }
+        require_once $autoload_path;
+        
+        if (!class_exists('Dompdf\Dompdf')) {
+            return false;
+        }
+        
+        // Create HTML5 stub if needed
+        if (!class_exists('Masterminds\HTML5')) {
+            class HTML5 {
+                public function loadHTML($html) { return $html; }
+                public function saveHTML($dom) { return $dom; }
+            }
+            class_alias('HTML5', 'Masterminds\HTML5');
+        }
+        
+        $options = new \Dompdf\Options();
+        $options->set('isHtml5ParserEnabled', false);
+        $options->set('isRemoteEnabled', false);
+        $options->set('isPhpEnabled', false);
+        $options->set('isJavascriptEnabled', false);
+        $options->set('defaultFont', 'DejaVu Sans');
+        
+        $dompdf = new \Dompdf\Dompdf($options);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        $dompdf->stream($filename, array('Attachment' => true));
+        return true;
+        
+    } catch (Exception $e) {
+        error_log("Dompdf failed: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Method 2: HTML with print styles (browser PDF)
+function htmlPrintExport($html, $filename) {
+    header('Content-Type: text/html; charset=UTF-8');
+    echo '<!DOCTYPE html>
+    <html>
+    <head>
+        <title>Referral Summary Report</title>
+        <style>
+            @media print { body { margin: 0; } .no-print { display: none; } }
+            body { font-family: Arial; font-size: 12px; margin: 20px; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th, td { border: 1px solid #000; padding: 5px; }
+            th { background: #f0f0f0; }
+        </style>
+        <script>
+            window.onload = function() { 
+                setTimeout(function() { window.print(); }, 500);
+            };
+        </script>
+    </head>
+    <body>
+        <div class="no-print" style="background: #ffffcc; padding: 10px; margin-bottom: 20px;">
+            <strong>Instructions:</strong> Press Ctrl+P and select "Save as PDF" to download the report.
+        </div>
+        ' . $html . '
+    </body>
+    </html>';
+    return true;
+}
+
+// Generate the HTML content
+$html = '<div class="header">
+    <h1>REFERRAL SUMMARY REPORT</h1>
+    <h2>Republic of the Philippines</h2>
+    <h2>City Health Office</h2>
+    <h2>Koronadal City</h2>
+    <p><strong>' . htmlspecialchars($date_range_text) . '</strong></p>
+    <p>Generated: ' . date('F j, Y \a\t g:i A') . '</p>
+    <p>Generated by: ' . htmlspecialchars(($_SESSION['first_name'] ?? 'Unknown') . ' ' . ($_SESSION['last_name'] ?? 'User')) . ' (' . htmlspecialchars($_SESSION['role'] ?? 'Unknown') . ')</p>
+</div>
+
+<h2>KEY METRICS SUMMARY</h2>
+<table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Total Referrals</td><td>' . number_format($metrics['total_referrals']) . '</td></tr>
+    <tr><td>Accepted Referrals</td><td>' . number_format($metrics['accepted_referrals']) . '</td></tr>
+    <tr><td>Cancelled Referrals</td><td>' . number_format($metrics['cancelled_referrals']) . '</td></tr>
+    <tr><td>External Issued</td><td>' . number_format($metrics['external_issued']) . '</td></tr>
+    <tr><td>Active Referrals</td><td>' . number_format($metrics['active_referrals']) . '</td></tr>
+    <tr><td>Completion Rate</td><td>' . $completion_rate . '%</td></tr>
+</table>
+
+<h2>REPORT SUMMARY</h2>
+<p>This report contains referral data for the selected period.</p>
+<p>Generated on ' . date('F j, Y \a\t g:i A') . ' by the City Health Office, Koronadal City.</p>';
+
+$filename = 'referral_summary_report_' . date('Ymd_His') . '.pdf';
+
+// Try methods in order of preference
+if (isset($_GET['force_html']) || !tryDompdfExport($html, $filename)) {
+    htmlPrintExport($html, $filename);
+}
+?>
