@@ -56,6 +56,8 @@ $district_distribution = [];
 $philhealth_distribution = [];
 $philhealth_overall = [];
 $registration_trends = [];
+$pwd_count = 0;
+$pwd_percentage = 0;
 
 try {
     // Get total active patients
@@ -66,34 +68,47 @@ try {
     // Debug: Log the total patients count
     error_log("DEBUG - Total active patients: " . $total_patients);
 
+    // Get PWD patients count
+    $pwd_query = "SELECT COUNT(*) as pwd_count FROM patients WHERE status = 'active' AND isPWD = 1";
+    $pwd_result = $conn->query($pwd_query);
+    $pwd_count = $pwd_result->fetch_assoc()['pwd_count'];
+    $pwd_percentage = $total_patients > 0 ? ($pwd_count / $total_patients) * 100 : 0;
+
+    // Debug: Log the PWD count
+    error_log("DEBUG - PWD count: " . $pwd_count . ", PWD percentage: " . $pwd_percentage);
+
     // Age distribution - calculate age from date_of_birth
     $age_query = "
         SELECT 
-            CASE 
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) < 1 THEN 'Infants (0-1)'
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 'Toddlers (1-4)'
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 'Children (5-12)'
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 'Teens (13-17)'
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 'Young Adults (18-35)'
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 'Adults (36-59)'
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) >= 60 THEN 'Seniors (60+)'
-                ELSE 'Unknown'
-            END as age_group,
+            age_group,
             COUNT(*) as count
-        FROM patients 
-        WHERE status = 'active' AND date_of_birth IS NOT NULL
-        GROUP BY age_group
-        ORDER BY 
-            CASE 
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) < 1 THEN 1
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 2
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 3
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 4
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 5
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 6
-                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) >= 60 THEN 7
-                ELSE 8
-            END
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) < 1 THEN 'Infants (0-1)'
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 'Toddlers (1-4)'
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 'Children (5-12)'
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 'Teens (13-17)'
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 'Young Adults (18-35)'
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 'Adults (36-59)'
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) >= 60 THEN 'Seniors (60+)'
+                    ELSE 'Unknown'
+                END as age_group,
+                CASE 
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) < 1 THEN 1
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 2
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 3
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 4
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 5
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 6
+                    WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) >= 60 THEN 7
+                    ELSE 8
+                END as age_order
+            FROM patients 
+            WHERE status = 'active' AND date_of_birth IS NOT NULL
+        ) age_calc
+        GROUP BY age_group, age_order
+        ORDER BY age_order
     ";
     $age_result = $conn->query($age_query);
     $age_total = 0;
@@ -190,34 +205,39 @@ try {
     // Age distribution by district
     $age_by_district_query = "
         SELECT 
-            d.district_name,
-            CASE 
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 'Infants (0-1)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 'Toddlers (1-4)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 'Children (5-12)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 'Teens (13-17)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 'Young Adults (18-35)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 'Adults (36-59)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 'Seniors (60+)'
-                ELSE 'Unknown'
-            END as age_group,
+            district_name,
+            age_group,
             COUNT(*) as count
-        FROM patients p
-        INNER JOIN barangay b ON p.barangay_id = b.barangay_id
-        INNER JOIN districts d ON b.district_id = d.district_id
-        WHERE p.status = 'active' AND p.date_of_birth IS NOT NULL
-        GROUP BY d.district_id, d.district_name, age_group
-        ORDER BY d.district_name, 
-            CASE 
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 1
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 2
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 3
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 4
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 5
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 6
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 7
-                ELSE 8
-            END
+        FROM (
+            SELECT 
+                d.district_name,
+                CASE 
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 'Infants (0-1)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 'Toddlers (1-4)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 'Children (5-12)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 'Teens (13-17)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 'Young Adults (18-35)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 'Adults (36-59)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 'Seniors (60+)'
+                    ELSE 'Unknown'
+                END as age_group,
+                CASE 
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 1
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 2
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 3
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 4
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 5
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 6
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 7
+                    ELSE 8
+                END as age_order
+            FROM patients p
+            INNER JOIN barangay b ON p.barangay_id = b.barangay_id
+            INNER JOIN districts d ON b.district_id = d.district_id
+            WHERE p.status = 'active' AND p.date_of_birth IS NOT NULL
+        ) age_calc
+        GROUP BY district_name, age_group, age_order
+        ORDER BY district_name, age_order
     ";
     $age_by_district_result = $conn->query($age_by_district_query);
     $age_by_district = [];
@@ -228,33 +248,38 @@ try {
     // Age distribution by barangay
     $age_by_barangay_query = "
         SELECT 
-            b.barangay_name,
-            CASE 
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 'Infants (0-1)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 'Toddlers (1-4)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 'Children (5-12)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 'Teens (13-17)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 'Young Adults (18-35)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 'Adults (36-59)'
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 'Seniors (60+)'
-                ELSE 'Unknown'
-            END as age_group,
+            barangay_name,
+            age_group,
             COUNT(*) as count
-        FROM patients p
-        INNER JOIN barangay b ON p.barangay_id = b.barangay_id
-        WHERE p.status = 'active' AND p.date_of_birth IS NOT NULL
-        GROUP BY b.barangay_id, b.barangay_name, age_group
-        ORDER BY b.barangay_name, 
-            CASE 
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 1
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 2
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 3
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 4
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 5
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 6
-                WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 7
-                ELSE 8
-            END
+        FROM (
+            SELECT 
+                b.barangay_name,
+                CASE 
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 'Infants (0-1)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 'Toddlers (1-4)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 'Children (5-12)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 'Teens (13-17)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 'Young Adults (18-35)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 'Adults (36-59)'
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 'Seniors (60+)'
+                    ELSE 'Unknown'
+                END as age_group,
+                CASE 
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) < 1 THEN 1
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 1 AND 4 THEN 2
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 5 AND 12 THEN 3
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 13 AND 17 THEN 4
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 18 AND 35 THEN 5
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) BETWEEN 36 AND 59 THEN 6
+                    WHEN TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) >= 60 THEN 7
+                    ELSE 8
+                END as age_order
+            FROM patients p
+            INNER JOIN barangay b ON p.barangay_id = b.barangay_id
+            WHERE p.status = 'active' AND p.date_of_birth IS NOT NULL
+        ) age_calc
+        GROUP BY barangay_name, age_group, age_order
+        ORDER BY barangay_name, age_order
     ";
     $age_by_barangay_result = $conn->query($age_by_barangay_query);
     $age_by_barangay = [];
