@@ -24,10 +24,6 @@ $end_date = isset($_GET['end_date']) && !empty($_GET['end_date'])
     ? $_GET['end_date']
     : date('Y-m-t');
 
-$facility_filter = isset($_GET['facility_id']) && $_GET['facility_id'] !== ''
-    ? (int)$_GET['facility_id']
-    : '';
-
 $service_filter = isset($_GET['service_id']) && $_GET['service_id'] !== ''
     ? (int)$_GET['service_id']
     : '';
@@ -204,17 +200,6 @@ try {
 
     $stmt->execute($summary_params);
     $service_summary = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    // Get facility name if filtered
-    $facility_name = 'All Facilities';
-    if ($facility_filter) {
-        $stmt = $pdo->prepare("SELECT name FROM facilities WHERE facility_id = ?");
-        $stmt->execute([$facility_filter]);
-        $facility_data = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($facility_data) {
-            $facility_name = $facility_data['name'];
-        }
-    }
 
     // Get service name if filtered
     $service_name = 'All Services';
@@ -419,7 +404,6 @@ $html = '
     <!-- Report Information -->
     <div class="report-info">
         <p><strong>Report Period:</strong> ' . date('F j, Y', strtotime($start_date)) . ' to ' . date('F j, Y', strtotime($end_date)) . '</p>
-        <p><strong>Facility:</strong> ' . htmlspecialchars($facility_name) . '</p>
         <p><strong>Service Focus:</strong> ' . htmlspecialchars($service_name) . '</p>
         <p><strong>Generated:</strong> ' . date('F j, Y g:i A') . ' by ' . htmlspecialchars($_SESSION['employee_name'] ?? 'System') . '</p>
         <p><strong>Report Purpose:</strong> This comprehensive analysis examines healthcare service demand patterns by combining referral and consultation data to identify the most sought-after services and inform resource allocation decisions.</p>

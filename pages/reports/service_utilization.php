@@ -61,10 +61,6 @@ $end_date = isset($_GET['end_date']) && !empty($_GET['end_date'])
     ? $_GET['end_date']
     : date('Y-m-t'); // Default to current month end
 
-$facility_filter = isset($_GET['facility_id']) && $_GET['facility_id'] !== ''
-    ? (int)$_GET['facility_id']
-    : '';
-
 $service_filter = isset($_GET['service_id']) && $_GET['service_id'] !== ''
     ? (int)$_GET['service_id']
     : '';
@@ -336,11 +332,6 @@ try {
     $stmt->execute($summary_params);
     $service_summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Get facilities for filter dropdown
-    $stmt = $pdo->prepare("SELECT facility_id, name FROM facilities WHERE status = 'active' ORDER BY name");
-    $stmt->execute();
-    $facilities = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
     // Get services for filter dropdown
     $stmt = $pdo->prepare("SELECT service_id, name FROM services ORDER BY name");
     $stmt->execute();
@@ -356,7 +347,6 @@ try {
     $top_consultation_services = [];
     $service_trends = [];
     $service_summary = ['total_services' => 0, 'active_services' => 0, 'total_referrals' => 0, 'total_consultations' => 0, 'total_service_demand' => 0];
-    $facilities = [];
     $services = [];
 } catch (Exception $e) {
     $error = "An unexpected error occurred: " . $e->getMessage();
@@ -368,7 +358,6 @@ try {
     $top_consultation_services = [];
     $service_trends = [];
     $service_summary = ['total_services' => 0, 'active_services' => 0, 'total_referrals' => 0, 'total_consultations' => 0, 'total_service_demand' => 0];
-    $facilities = [];
     $services = [];
 }
 ?>
