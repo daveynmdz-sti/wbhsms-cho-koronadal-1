@@ -34,6 +34,8 @@ require_once $root_path . '/vendor/autoload.php';
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+// Note: GD extension is not required for this PDF export as we use text-based logo fallback
+
 // Check if user is logged in and update activity
 if (!is_employee_logged_in()) {
     header("Location: ../management/auth/employee_login.php?reason=session_expired");
@@ -511,7 +513,7 @@ $html = '<!DOCTYPE html>
 <body>
     <div class="header">
         <div class="logo">
-            <img src="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png" alt="CHO Logo" style="width: 60px; height: 60px;">
+            <div style="width: 60px; height: 60px; border: 2px solid #0077b6; border-radius: 50%; display: flex; align-items: center; justify-content: center; background-color: #f0f8ff; color: #0077b6; font-weight: bold; font-size: 24px;">CHO</div>
         </div>
         <h1>CITY HEALTH OFFICE - KORONADAL</h1>
         <h2>Patient Visits Analytics Report</h2>
@@ -1096,19 +1098,33 @@ $html .= '
 </body>
 </html>';
 
-// Create PDF
+// Create PDF with GD extension check and fallback
 $options = new Options();
 $options->set('defaultFont', 'DejaVu Sans');
-$options->set('isRemoteEnabled', true);
-$options->set('isHtml5ParserEnabled', true);
+$options->set('isRemoteEnabled', false); // Disable remote resources due to GD extension requirement
+$options->set('isHtml5ParserEnabled', false);
 $options->set('debugKeepTemp', false);
+$options->set('isPhpEnabled', false);
+$options->set('isJavascriptEnabled', false);
+$options->set('tempDir', sys_get_temp_dir());
+$options->set('logOutputFile', null);
 
 $dompdf = new Dompdf($options);
-$dompdf->loadHtml($html);
-$dompdf->setPaper('A4', 'portrait');
-$dompdf->render();
 
-// Output PDF
-$filename = 'Patient_Visits_Report_' . date('Y-m-d_H-i-s') . '.pdf';
-$dompdf->stream($filename, ['Attachment' => true]);
+try {
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+
+    // Output PDF
+    $filename = 'Patient_Visits_Report_' . date('Y-m-d_H-i-s') . '.pdf';
+    $dompdf->stream($filename, ['Attachment' => true]);
+} catch (Exception $e) {
+    // Log the error
+    error_log("PDF Generation Error: " . $e->getMessage());
+    
+    // Return user-friendly error
+    http_response_code(500);
+    die('Error: Unable to generate PDF report. Please try again or contact support if the problem persists.');
+}
 ?>

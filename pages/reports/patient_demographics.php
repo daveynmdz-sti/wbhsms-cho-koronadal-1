@@ -58,6 +58,12 @@ $philhealth_overall = [];
 $registration_trends = [];
 $pwd_count = 0;
 $pwd_percentage = 0;
+$age_by_district = [];
+$age_by_barangay = [];
+$gender_by_district = [];
+$gender_by_barangay = [];
+$philhealth_by_district = [];
+$philhealth_by_barangay = [];
 
 try {
     // Get total active patients
@@ -368,6 +374,22 @@ try {
     }
 } catch (Exception $e) {
     $error = "Error fetching demographics data: " . $e->getMessage();
+    // Ensure all variables are initialized to prevent JavaScript errors
+    $total_patients = 0;
+    $age_distribution = [];
+    $gender_distribution = [];
+    $barangay_distribution = [];
+    $district_distribution = [];
+    $philhealth_distribution = [];
+    $philhealth_overall = [];
+    $age_by_district = [];
+    $age_by_barangay = [];
+    $gender_by_district = [];
+    $gender_by_barangay = [];
+    $philhealth_by_district = [];
+    $philhealth_by_barangay = [];
+    $pwd_count = 0;
+    $pwd_percentage = 0;
 }
 ?>
 
@@ -1903,7 +1925,7 @@ try {
                             </thead>
                             <tbody>
                                 <?php foreach ($district_distribution as $index => $district): ?>
-                                    <?php $percentage = ($district['count'] / $total_patients) * 100; ?>
+                                    <?php $percentage = $total_patients > 0 ? ($district['count'] / $total_patients) * 100 : 0; ?>
                                     <tr>
                                         <td><?= $index + 1 ?></td>
                                         <td><?= htmlspecialchars($district['district_name'] ?? 'Unknown') ?></td>
@@ -1935,7 +1957,7 @@ try {
                             </thead>
                             <tbody>
                                 <?php foreach ($barangay_distribution as $index => $barangay): ?>
-                                    <?php $percentage = ($barangay['count'] / $total_patients) * 100; ?>
+                                    <?php $percentage = $total_patients > 0 ? ($barangay['count'] / $total_patients) * 100 : 0; ?>
                                     <tr>
                                         <td><?= $index + 1 ?></td>
                                         <td><?= htmlspecialchars($barangay['barangay_name'] ?? 'Unknown') ?></td>
@@ -2218,23 +2240,27 @@ try {
 
     <script>
         // Patient demographics data from PHP
-        const ageData = <?= json_encode($age_distribution) ?>;
-        const genderData = <?= json_encode($gender_distribution) ?>;
-        const philhealthData = <?= json_encode($philhealth_distribution) ?>;
-        const philhealthOverallData = <?= json_encode($philhealth_overall) ?>;
+        const ageData = <?= json_encode($age_distribution ?: []) ?>;
+        const genderData = <?= json_encode($gender_distribution ?: []) ?>;
+        const philhealthData = <?= json_encode($philhealth_distribution ?: []) ?>;
+        const philhealthOverallData = <?= json_encode($philhealth_overall ?: []) ?>;
         
         // District and Barangay breakdown data
-        const ageByDistrict = <?= json_encode($age_by_district) ?>;
-        const ageByBarangay = <?= json_encode($age_by_barangay) ?>;
-        const genderByDistrict = <?= json_encode($gender_by_district) ?>;
-        const genderByBarangay = <?= json_encode($gender_by_barangay) ?>;
-        const philhealthByDistrict = <?= json_encode($philhealth_by_district) ?>;
-        const philhealthByBarangay = <?= json_encode($philhealth_by_barangay) ?>;
+        const ageByDistrict = <?= json_encode($age_by_district ?: []) ?>;
+        const ageByBarangay = <?= json_encode($age_by_barangay ?: []) ?>;
+        const genderByDistrict = <?= json_encode($gender_by_district ?: []) ?>;
+        const genderByBarangay = <?= json_encode($gender_by_barangay ?: []) ?>;
+        const philhealthByDistrict = <?= json_encode($philhealth_by_district ?: []) ?>;
+        const philhealthByBarangay = <?= json_encode($philhealth_by_barangay ?: []) ?>;
 
         // Additional data for full reports
-        const totalPatients = <?= $total_patients ?>;
-        const pwdCount = <?= $pwd_count ?>;
-        const pwdPercentage = <?= number_format($pwd_percentage, 1) ?>;
+        const totalPatients = <?= (int)$total_patients ?>;
+        const pwdCount = <?= (int)$pwd_count ?>;
+        const pwdPercentage = <?= (float)number_format($pwd_percentage, 1) ?>;
+        
+        // Employee data for reports
+        const employeeName = <?= json_encode($_SESSION['employee_name'] ?? ($_SESSION['employee_first_name'] . ' ' . $_SESSION['employee_last_name']) ?? 'System User') ?>;
+        const employeeRole = <?= json_encode(ucfirst($_SESSION['role'] ?? 'user')) ?>;
 
         // Chart colors
         const chartColors = {
@@ -2755,7 +2781,7 @@ try {
                         <h2>Koronadal City</h2>
                         <br>
                         <p class="generation-info">Generated: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
-                        <p class="generation-info">Generated by: <?= htmlspecialchars($_SESSION['employee_name'] ?? ($_SESSION['employee_first_name'] . ' ' . $_SESSION['employee_last_name']) ?? 'System User') ?> (<?= htmlspecialchars(ucfirst($_SESSION['role'])) ?>)</p>
+                        <p class="generation-info">Generated by: ${employeeName} (${employeeRole})</p>
                     </div>
                     
                     <div class="report-content">

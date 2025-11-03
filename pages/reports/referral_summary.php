@@ -108,7 +108,7 @@ try {
         LEFT JOIN facilities rf ON r.referring_facility_id = rf.facility_id
         LEFT JOIN facilities tf ON r.referred_to_facility_id = tf.facility_id
         WHERE $where_clause
-        GROUP BY r.referring_facility_id, r.referred_to_facility_id, r.external_facility_name
+        GROUP BY r.referring_facility_id, rf.name, r.referred_to_facility_id, tf.name, r.external_facility_name
         ORDER BY total_referrals DESC
     ";
 
@@ -119,12 +119,18 @@ try {
     // 3. Destination Type Distribution
     $destination_query = "
         SELECT 
-            r.destination_type,
-            COUNT(*) as count,
-            ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM referrals WHERE $where_clause)), 2) as percentage
-        FROM referrals r
-        WHERE $where_clause
-        GROUP BY r.destination_type
+            destination_type,
+            count,
+            ROUND((count * 100.0 / total_count), 2) as percentage
+        FROM (
+            SELECT 
+                r.destination_type,
+                COUNT(*) as count,
+                (SELECT COUNT(*) FROM referrals r2 WHERE $where_clause) as total_count
+            FROM referrals r
+            WHERE $where_clause
+            GROUP BY r.destination_type
+        ) dest_summary
         ORDER BY count DESC
     ";
 
@@ -215,7 +221,7 @@ try {
         FROM referrals r
         JOIN facilities f ON r.referring_facility_id = f.facility_id
         WHERE $where_clause
-        GROUP BY r.referring_facility_id
+        GROUP BY r.referring_facility_id, f.name
         ORDER BY referral_count DESC
         LIMIT 1
     ";
@@ -229,7 +235,7 @@ try {
         FROM referrals r
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         WHERE $where_clause
-        GROUP BY COALESCE(r.referred_to_facility_id, 'external')
+        GROUP BY r.referred_to_facility_id, f.name
         ORDER BY referral_count DESC
         LIMIT 1
     ";
