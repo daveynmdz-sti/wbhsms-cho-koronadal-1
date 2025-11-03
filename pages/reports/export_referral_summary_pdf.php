@@ -141,7 +141,8 @@ try {
         LEFT JOIN facilities rf ON r.referring_facility_id = rf.facility_id
         LEFT JOIN facilities tf ON r.referred_to_facility_id = tf.facility_id
         WHERE $where_clause
-        GROUP BY r.referring_facility_id, r.referred_to_facility_id, r.external_facility_name
+        GROUP BY r.referring_facility_id, rf.name, r.referred_to_facility_id, tf.name, r.external_facility_name, 
+                 COALESCE(tf.name, r.external_facility_name, 'External Facility')
         ORDER BY total_referrals DESC
         LIMIT 20
     ";
@@ -151,11 +152,18 @@ try {
     $facility_transfers = $facility_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 3. Destination Type Distribution
+    // First get the total count
+    $total_count_query = "SELECT COUNT(*) as total FROM referrals r WHERE $where_clause";
+    $total_stmt = $pdo->prepare($total_count_query);
+    $total_stmt->execute($params);
+    $total_result = $total_stmt->fetch(PDO::FETCH_ASSOC);
+    $total_count = $total_result['total'];
+    
     $destination_query = "
         SELECT 
             r.destination_type,
             COUNT(*) as count,
-            ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM referrals WHERE $where_clause)), 2) as percentage
+            ROUND((COUNT(*) * 100.0 / ?), 2) as percentage
         FROM referrals r
         WHERE $where_clause
         GROUP BY r.destination_type
@@ -163,7 +171,7 @@ try {
     ";
     
     $destination_stmt = $pdo->prepare($destination_query);
-    $destination_stmt->execute(array_merge($params, $params));
+    $destination_stmt->execute(array_merge([$total_count], $params)); // Total count first, then filter params
     $destination_types = $destination_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 4. Referral Reasons Breakdown
@@ -180,7 +188,14 @@ try {
             COUNT(*) as count
         FROM referrals r
         WHERE $where_clause AND r.referral_reason IS NOT NULL
-        GROUP BY reason_category
+        GROUP BY CASE 
+                WHEN LOWER(r.referral_reason) LIKE '%consultation%' THEN 'Consultation'
+                WHEN LOWER(r.referral_reason) LIKE '%check%up%' OR LOWER(r.referral_reason) LIKE '%checkup%' THEN 'Check-up'
+                WHEN LOWER(r.referral_reason) LIKE '%lab%' OR LOWER(r.referral_reason) LIKE '%laboratory%' THEN 'Laboratory'
+                WHEN LOWER(r.referral_reason) LIKE '%mri%' OR LOWER(r.referral_reason) LIKE '%ct%scan%' THEN 'Imaging'
+                WHEN LOWER(r.referral_reason) LIKE '%emergency%' OR LOWER(r.referral_reason) LIKE '%urgent%' THEN 'Emergency'
+                ELSE 'Other'
+            END
         ORDER BY count DESC
         LIMIT 10
     ";
@@ -189,7 +204,23 @@ try {
     $reasons_stmt->execute($params);
     $referral_reasons = $reasons_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 5. Inter-Facility Coordination Statistics
+    // 5. Referral Timeline Trends
+    $timeline_query = "
+        SELECT 
+            DATE(r.referral_date) as referral_day,
+            COUNT(*) as daily_count,
+            SUM(CASE WHEN r.status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_count
+        FROM referrals r
+        WHERE $where_clause
+        GROUP BY DATE(r.referral_date)
+        ORDER BY referral_day ASC
+    ";
+
+    $timeline_stmt = $pdo->prepare($timeline_query);
+    $timeline_stmt->execute($params);
+    $timeline_data = $timeline_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 6. Inter-Facility Coordination Statistics
     $coordination_query = "
         SELECT 
             AVG(TIMESTAMPDIFF(DAY, r.referral_date, r.updated_at)) as avg_response_time,
@@ -209,7 +240,7 @@ try {
         FROM referrals r
         JOIN facilities f ON r.referring_facility_id = f.facility_id
         WHERE $where_clause
-        GROUP BY r.referring_facility_id
+        GROUP BY r.referring_facility_id, f.name
         ORDER BY referral_count DESC
         LIMIT 1
     ";
@@ -223,7 +254,7 @@ try {
         FROM referrals r
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         WHERE $where_clause
-        GROUP BY COALESCE(r.referred_to_facility_id, 'external')
+        GROUP BY r.referred_to_facility_id, f.name, COALESCE(f.name, 'External Facilities')
         ORDER BY referral_count DESC
         LIMIT 1
     ";
@@ -232,7 +263,7 @@ try {
     $active_receiving_stmt->execute($params);
     $most_active_receiving = $active_receiving_stmt->fetch(PDO::FETCH_ASSOC) ?: ['name' => 'N/A', 'referral_count' => 0];
 
-    // 6. Detailed Referral Table (for summary)
+    // 7. Detailed Referral Table (for summary)
     $detailed_query = "
         SELECT 
             r.referral_num,
@@ -256,7 +287,7 @@ try {
     $detailed_stmt->execute($params);
     $detailed_referrals = $detailed_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 7. Recent Activity Logs
+    // 8. Recent Activity Logs
     $logs_query = "
         SELECT 
             rl.log_id,
@@ -430,10 +461,39 @@ if (!empty($referral_reasons)) {
     </div>';
 }
 
+// Add timeline trends if available  
+if (!empty($timeline_data)) {
+    $html .= '
+    <div class="section">
+        <h2>V. REFERRAL TIMELINE TRENDS</h2>
+        <p><strong>Temporal Analysis:</strong> This section shows the daily distribution of referrals over the selected period, providing insights into referral patterns, peak periods, and cancellation trends. This information is valuable for resource planning and workload management.</p>
+        <table>
+            <tr>
+                <th>Date</th>
+                <th>Total Referrals</th>
+                <th>Cancelled</th>
+                <th>Success Rate</th>
+            </tr>';
+    
+    foreach ($timeline_data as $day) {
+        $success_rate = $day['daily_count'] > 0 ? round((($day['daily_count'] - $day['cancelled_count']) / $day['daily_count']) * 100, 1) : 0;
+        $html .= '<tr>
+            <td>' . date('M j, Y', strtotime($day['referral_day'])) . '</td>
+            <td>' . number_format($day['daily_count']) . '</td>
+            <td>' . number_format($day['cancelled_count']) . '</td>
+            <td>' . $success_rate . '%</td>
+        </tr>';
+    }
+    
+    $html .= '</table>
+        <p><strong>Trend Analysis:</strong> Regular monitoring of daily patterns helps identify peak demand periods and allocate resources accordingly. High cancellation rates on specific days may indicate systemic issues that require attention.</p>
+    </div>';
+}
+
 // Add coordination statistics
 $html .= '
     <div class="section">
-        <h2>V. INTER-FACILITY COORDINATION STATISTICS</h2>
+        <h2>VI. INTER-FACILITY COORDINATION STATISTICS</h2>
         <p><strong>Performance Metrics:</strong> These statistics measure the efficiency and effectiveness of inter-facility coordination. They provide key performance indicators for the referral system and help identify areas for process improvement.</p>
         <div class="stat-box">
             <div class="stat-value">Average Response Time: ' . round($coordination_stats['avg_response_time'] ?? 0, 1) . ' days</div>
@@ -457,7 +517,7 @@ $html .= '
 if (!empty($referral_logs)) {
     $html .= '
     <div class="section">
-        <h2>VI. RECENT REFERRAL ACTIVITY (LATEST 15)</h2>
+        <h2>VII. RECENT REFERRAL ACTIVITY (LATEST 15)</h2>
         <p><strong>Activity Tracking:</strong> This section provides an audit trail of recent referral actions, showing who performed specific actions and when. This transparency helps with accountability and process monitoring in the referral system.</p>
         <table>
             <tr>
@@ -489,7 +549,7 @@ if (!empty($referral_logs)) {
 if (!empty($detailed_referrals)) {
     $html .= '
     <div class="section">
-        <h2>VII. DETAILED REFERRAL RECORDS (LATEST 30)</h2>
+        <h2>VIII. DETAILED REFERRAL RECORDS (LATEST 30)</h2>
         <p><strong>Comprehensive Listing:</strong> This section provides a detailed view of individual referral cases, including patient information, facility details, and referral outcomes. This granular data supports case-by-case analysis and helps identify specific patterns or issues.</p>
         <table>
             <tr>
