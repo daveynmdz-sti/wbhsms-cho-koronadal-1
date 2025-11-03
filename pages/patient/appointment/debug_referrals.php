@@ -60,7 +60,7 @@ echo "<h3>3. All Referrals for Patient</h3>";
 $query = "
     SELECT r.referral_id, r.referral_num, r.referral_reason, r.destination_type,
            r.referred_to_facility_id, r.external_facility_name, r.status, r.service_id,
-           r.referral_date, r.created_at,
+           r.referral_date,
            f.name as facility_name, f.type as facility_type,
            s.name as service_name, s.description as service_description
     FROM referrals r

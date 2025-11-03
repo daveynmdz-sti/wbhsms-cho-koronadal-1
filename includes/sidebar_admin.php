@@ -164,8 +164,8 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'billing' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-file-invoice-dollar"></i> Billing Management
         </a>
-        <a href="#"
-            class="<?= $activePage === 'reports' ? 'active' : '' ?> disabled" role="menuitem">
+        <a href="<?= $nav_base ?>reports/reports_management.php"
+            class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-chart-bar"></i> Reports
         </a>
         <!-- QUEUE MANAGEMENT - COMMENTED OUT FOR DEPLOYMENT

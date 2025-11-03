@@ -148,6 +148,10 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'referrals' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-share"></i> Referrals Management
         </a>
+        <a href="<?= $nav_base ?>reports/reports_management.php"
+            class="<?= $activePage === 'reports' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-chart-bar"></i> Reports
+        </a>
     </div>
 
     <a href="<?= $nav_base ?>user/employee_profile.php"
