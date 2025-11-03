@@ -2468,6 +2468,16 @@ try {
             // Create comprehensive PDF report with full data structure
             generateCompleteFullReport();
             
+            // Add click handler for close button
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.complete-full-report')) {
+                    const rect = e.target.getBoundingClientRect();
+                    if (rect.right - e.clientX <= 110 && e.clientY <= 60) { // Close button area
+                        restoreNormalView();
+                    }
+                }
+            });
+            
             // Set document title for PDF
             const originalTitle = document.title;
             document.title = `Patient_Demographics_Full_Report_${new Date().toISOString().split('T')[0]}`;
@@ -2475,10 +2485,9 @@ try {
             setTimeout(() => {
                 window.print();
                 setTimeout(() => {
-                    restoreNormalView();
                     document.title = originalTitle;
                 }, 1000);
-            }, 500);
+            }, 1000);
         }
 
         function exportFullReportExcel() {
