@@ -117,26 +117,27 @@ try {
     $facility_stmt->execute($params);
     $facility_transfers = $facility_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 3. Destination Type Distribution
+    // 3. Destination Type Distribution  
+    // First get the total count
+    $total_count_query = "SELECT COUNT(*) as total FROM referrals r WHERE $where_clause";
+    $total_stmt = $pdo->prepare($total_count_query);
+    $total_stmt->execute($params);
+    $total_result = $total_stmt->fetch(PDO::FETCH_ASSOC);
+    $total_count = $total_result['total'];
+    
     $destination_query = "
         SELECT 
-            destination_type,
-            count,
-            ROUND((count * 100.0 / total_count), 2) as percentage
-        FROM (
-            SELECT 
-                r.destination_type,
-                COUNT(*) as count,
-                (SELECT COUNT(*) FROM referrals r2 WHERE $where_clause) as total_count
-            FROM referrals r
-            WHERE $where_clause
-            GROUP BY r.destination_type
-        ) dest_summary
+            r.destination_type,
+            COUNT(*) as count,
+            ROUND((COUNT(*) * 100.0 / ?), 2) as percentage
+        FROM referrals r
+        WHERE $where_clause
+        GROUP BY r.destination_type
         ORDER BY count DESC
     ";
 
     $destination_stmt = $pdo->prepare($destination_query);
-    $destination_stmt->execute(array_merge($params, $params)); // Double params for subquery
+    $destination_stmt->execute(array_merge([$total_count], $params)); // Total count first, then filter params
     $destination_types = $destination_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 4. Referral Reasons Breakdown
