@@ -318,7 +318,15 @@ $html = '<html>
     </div>
 
     <div class="section">
+        <h2>EXECUTIVE SUMMARY</h2>
+        <p><strong>Report Purpose:</strong> This comprehensive referral summary report analyzes patient referral patterns, inter-facility coordination effectiveness, and healthcare service utilization within the CHO Koronadal network. The report provides critical insights for healthcare administrators, policy makers, and clinical staff to improve patient care coordination and resource allocation.</p>
+        <p><strong>Scope:</strong> The analysis covers all referral activities during the specified period, including internal facility transfers, external referrals, referral outcomes, and coordination statistics. Data is sourced from the Web-Based Healthcare Services Management System (WBHSMS) database.</p>
+        <p><strong>Key Benefits:</strong> This report supports strategic planning, quality improvement initiatives, resource optimization, and performance monitoring across the healthcare network.</p>
+    </div>
+
+    <div class="section">
         <h2>I. KEY METRICS SUMMARY</h2>
+        <p><strong>Overview:</strong> This section provides a high-level snapshot of referral activity during the selected period. These metrics help administrators understand the overall volume and outcomes of patient referrals within the healthcare network.</p>
         <div class="stat-box">
             <div class="stat-value">Total Referrals: ' . number_format($metrics['total_referrals']) . '</div>
         </div>
@@ -337,13 +345,15 @@ $html = '<html>
         <div class="stat-box">
             <div class="stat-value">Completion Rate: ' . $completion_rate . '%</div>
         </div>
+        <p><strong>Analysis:</strong> The completion rate indicates the percentage of referrals that were successfully accepted out of the total referrals made. A higher completion rate suggests effective inter-facility coordination and patient care continuity.</p>
     </div>';
 
 // Add facility transfers if available
 if (!empty($facility_transfers)) {
     $html .= '
     <div class="section">
-        <h2>II. FACILITY-TO-FACILITY TRANSFERS (TOP 10)</h2>
+        <h2>II. FACILITY-TO-FACILITY TRANSFERS</h2>
+        <p><strong>Purpose:</strong> This section analyzes the flow of patient referrals between different healthcare facilities. It shows which facilities are most active in referring patients and which are receiving the most referrals, helping identify collaboration patterns and potential bottlenecks in the referral network.</p>
         <table>
             <tr>
                 <th>Referring Facility</th>
@@ -351,19 +361,23 @@ if (!empty($facility_transfers)) {
                 <th>Total</th>
                 <th>Accepted</th>
                 <th>Cancelled</th>
+                <th>Issued</th>
             </tr>';
     
-    foreach (array_slice($facility_transfers, 0, 10) as $transfer) {
+    foreach ($facility_transfers as $transfer) {
         $html .= '<tr>
             <td>' . htmlspecialchars($transfer['referring_facility']) . '</td>
             <td>' . htmlspecialchars($transfer['referred_to_facility']) . '</td>
             <td>' . number_format($transfer['total_referrals']) . '</td>
             <td>' . number_format($transfer['accepted']) . '</td>
             <td>' . number_format($transfer['cancelled']) . '</td>
+            <td>' . number_format($transfer['issued']) . '</td>
         </tr>';
     }
     
-    $html .= '</table></div>';
+    $html .= '</table>
+        <p><strong>Insights:</strong> Facilities with high referral volumes may need additional resources or capacity planning. High cancellation rates between specific facility pairs may indicate communication issues or capacity constraints that require attention.</p>
+    </div>';
 }
 
 // Add destination types if available
@@ -371,6 +385,7 @@ if (!empty($destination_types)) {
     $html .= '
     <div class="section">
         <h2>III. DESTINATION TYPE DISTRIBUTION</h2>
+        <p><strong>Definition:</strong> This section categorizes referrals by their destination type - whether they are internal (within the CHO network) or external (to facilities outside the network). This helps understand referral patterns and resource utilization across the healthcare system.</p>
         <table>
             <tr>
                 <th>Destination Type</th>
@@ -386,15 +401,142 @@ if (!empty($destination_types)) {
         </tr>';
     }
     
-    $html .= '</table></div>';
+    $html .= '</table>
+        <p><strong>Strategic Value:</strong> A high percentage of external referrals may indicate gaps in local healthcare capacity that need to be addressed through service expansion or specialist recruitment.</p>
+    </div>';
+}
+
+// Add referral reasons if available
+if (!empty($referral_reasons)) {
+    $html .= '
+    <div class="section">
+        <h2>IV. TOP REFERRAL REASONS</h2>
+        <p><strong>Clinical Context:</strong> This analysis categorizes referrals by their primary reason, providing insights into patient care needs and service demands. Understanding referral patterns helps in resource allocation and service planning.</p>
+        <table>
+            <tr>
+                <th>Reason Category</th>
+                <th>Count</th>
+            </tr>';
+    
+    foreach ($referral_reasons as $reason) {
+        $html .= '<tr>
+            <td>' . htmlspecialchars($reason['reason_category']) . '</td>
+            <td>' . number_format($reason['count']) . '</td>
+        </tr>';
+    }
+    
+    $html .= '</table>
+        <p><strong>Healthcare Planning:</strong> High volumes in specific categories may indicate areas where additional specialist services, equipment, or training are needed to better serve patient needs locally.</p>
+    </div>';
+}
+
+// Add coordination statistics
+$html .= '
+    <div class="section">
+        <h2>V. INTER-FACILITY COORDINATION STATISTICS</h2>
+        <p><strong>Performance Metrics:</strong> These statistics measure the efficiency and effectiveness of inter-facility coordination. They provide key performance indicators for the referral system and help identify areas for process improvement.</p>
+        <div class="stat-box">
+            <div class="stat-value">Average Response Time: ' . round($coordination_stats['avg_response_time'] ?? 0, 1) . ' days</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">Cancellation Rate: ' . round($coordination_stats['cancellation_rate'] ?? 0, 1) . '%</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">External Referral Ratio: ' . round($coordination_stats['external_ratio'] ?? 0, 1) . '%</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">Most Active Referring: ' . htmlspecialchars($most_active_referring['name']) . ' (' . $most_active_referring['referral_count'] . ' referrals)</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value">Most Active Receiving: ' . htmlspecialchars($most_active_receiving['name']) . ' (' . $most_active_receiving['referral_count'] . ' referrals)</div>
+        </div>
+        <p><strong>Quality Indicators:</strong> Lower response times indicate efficient communication between facilities. High cancellation rates may suggest coordination challenges that need addressing. The most active facilities may require additional support or recognition for their role in the referral network.</p>
+    </div>';
+
+// Add recent activity logs if available
+if (!empty($referral_logs)) {
+    $html .= '
+    <div class="section">
+        <h2>VI. RECENT REFERRAL ACTIVITY (LATEST 15)</h2>
+        <p><strong>Activity Tracking:</strong> This section provides an audit trail of recent referral actions, showing who performed specific actions and when. This transparency helps with accountability and process monitoring in the referral system.</p>
+        <table>
+            <tr>
+                <th>Referral #</th>
+                <th>Employee</th>
+                <th>Action</th>
+                <th>Previous Status</th>
+                <th>New Status</th>
+                <th>Timestamp</th>
+            </tr>';
+    
+    foreach ($referral_logs as $log) {
+        $html .= '<tr>
+            <td>' . htmlspecialchars($log['referral_num']) . '</td>
+            <td>' . htmlspecialchars($log['first_name'] . ' ' . $log['last_name']) . '</td>
+            <td>' . htmlspecialchars($log['action']) . '</td>
+            <td>' . htmlspecialchars($log['previous_status'] ?? 'N/A') . '</td>
+            <td>' . htmlspecialchars($log['new_status'] ?? 'N/A') . '</td>
+            <td>' . date('M j, Y g:i A', strtotime($log['timestamp'])) . '</td>
+        </tr>';
+    }
+    
+    $html .= '</table>
+        <p><strong>Process Monitoring:</strong> Regular review of activity logs helps identify workflow patterns, employee performance, and potential system issues that may require intervention or process improvements.</p>
+    </div>';
+}
+
+// Add detailed referrals if available
+if (!empty($detailed_referrals)) {
+    $html .= '
+    <div class="section">
+        <h2>VII. DETAILED REFERRAL RECORDS (LATEST 30)</h2>
+        <p><strong>Comprehensive Listing:</strong> This section provides a detailed view of individual referral cases, including patient information, facility details, and referral outcomes. This granular data supports case-by-case analysis and helps identify specific patterns or issues.</p>
+        <table>
+            <tr>
+                <th>Referral #</th>
+                <th>Patient ID</th>
+                <th>Referring Facility</th>
+                <th>Referred To</th>
+                <th>Type</th>
+                <th>Reason</th>
+                <th>Date</th>
+                <th>Status</th>
+            </tr>';
+    
+    foreach ($detailed_referrals as $referral) {
+        $reason = $referral['referral_reason'] ?? '';
+        $short_reason = strlen($reason) > 30 ? substr($reason, 0, 30) . '...' : $reason;
+        
+        $html .= '<tr>
+            <td>' . htmlspecialchars($referral['referral_num']) . '</td>
+            <td>' . htmlspecialchars($referral['patient_id']) . '</td>
+            <td>' . htmlspecialchars($referral['referring_facility']) . '</td>
+            <td>' . htmlspecialchars($referral['referred_to_facility']) . '</td>
+            <td>' . ucwords(str_replace('_', ' ', $referral['destination_type'])) . '</td>
+            <td>' . htmlspecialchars($short_reason) . '</td>
+            <td>' . date('M j, Y', strtotime($referral['referral_date'])) . '</td>
+            <td>' . ucfirst($referral['status']) . '</td>
+        </tr>';
+    }
+    
+    $html .= '</table>
+        <p><strong>Data Utility:</strong> This detailed information can be used for quality assurance, follow-up activities, and identifying specific cases that may require additional attention or intervention.</p>
+    </div>';
 }
 
 $html .= '
     <div class="section">
-        <h2>REPORT SUMMARY</h2>
-        <p>This report contains referral data for the selected period.</p>
+        <!--<h2>CONCLUSIONS AND RECOMMENDATIONS</h2>
+        <p><strong>Data-Driven Insights:</strong> This comprehensive report contains all referral data for the selected period including facility transfers, coordination statistics, activity logs, and detailed records. The information presented supports evidence-based decision making for healthcare administration and policy development.</p>
+        <p><strong>Continuous Improvement:</strong> Regular analysis of referral patterns helps identify opportunities for service enhancement, resource optimization, and improved patient care coordination. Key areas for ongoing monitoring include completion rates, response times, and facility capacity utilization.</p>
+        <p><strong>Stakeholder Engagement:</strong> This report should be shared with relevant stakeholders including facility managers, clinical staff, and administrative personnel to ensure coordinated efforts in improving the referral system.</p>
+        <p><strong>Next Steps:</strong> Consider implementing targeted interventions for facilities with high cancellation rates, developing specialized services for high-volume referral categories, and establishing regular review cycles for referral system performance.</p>-->
+        <hr>
+        <p><strong>Report Information:</strong></p>
         <p>Generated on ' . date('F j, Y \a\t g:i A') . ' by the City Health Office, Koronadal City.</p>
-        <p>For questions about this report, please contact the City Health Office.</p>
+        <p>Data Source: Web-Based Healthcare Services Management System (WBHSMS)</p>
+        <p>For questions about this report, please contact the City Health Office at CHO Koronadal.</p>
+        <p><strong>Confidentiality Notice:</strong> This report contains sensitive healthcare information and should be handled according to applicable privacy regulations and organizational policies.</p>
     </div>
 </body>
 </html>';

@@ -385,15 +385,7 @@ $error = '';
 
             <!-- Reports Grid -->
             <div class="reports-grid">
-                <!-- Financial Reports -->
-                <div class="report-card" onclick="handleReportClick('financial')">
-                    <i class="fas fa-file-invoice-dollar report-icon"></i>
-                    <h3 class="report-title">Financial Reports</h3>
-                    <p class="report-description">
-                        Generate comprehensive financial reports including revenue, expenses, billing performance, and financial health indicators.
-                    </p>
-                    <span class="report-status status-available">Available</span>
-                </div>
+
 
                 <!-- Patient Demographics -->
                 <div class="report-card" onclick="handleReportClick('patient_demographics')">
@@ -415,22 +407,22 @@ $error = '';
                     <span class="report-status status-available">Available</span>
                 </div>
 
-                <!-- Morbidity Report -->
-                <div class="report-card" onclick="handleReportClick('morbidity_report')">
-                    <i class="fas fa-heartbeat report-icon"></i>
-                    <h3 class="report-title">Morbidity Report</h3>
-                    <p class="report-description">
-                        Comprehensive analysis of disease patterns, health conditions, and epidemiological trends.
-                    </p>
-                    <span class="report-status status-available">Available</span>
-                </div>
-
                 <!-- Patient Visits -->
                 <div class="report-card" onclick="handleReportClick('patient_visits')">
                     <i class="fas fa-calendar-check report-icon"></i>
                     <h3 class="report-title">Patient Visits</h3>
                     <p class="report-description">
                         Comprehensive analysis of patient visit patterns, frequency, and healthcare utilization trends.
+                    </p>
+                    <span class="report-status status-available">Available</span>
+                </div>
+
+                <!-- Morbidity Report -->
+                <div class="report-card" onclick="handleReportClick('morbidity_report')">
+                    <i class="fas fa-heartbeat report-icon"></i>
+                    <h3 class="report-title">Morbidity Report</h3>
+                    <p class="report-description">
+                        Comprehensive analysis of disease patterns, health conditions, and epidemiological trends.
                     </p>
                     <span class="report-status status-available">Available</span>
                 </div>
@@ -455,6 +447,16 @@ $error = '';
                     <span class="report-status status-available">Available</span>
                 </div>
 
+                <!-- Financial Reports -->
+                <div class="report-card" onclick="handleReportClick('financial')">
+                    <i class="fas fa-file-invoice-dollar report-icon"></i>
+                    <h3 class="report-title">Financial Reports</h3>
+                    <p class="report-description">
+                        Generate comprehensive financial reports including revenue, expenses, billing performance, and financial health indicators.
+                    </p>
+                    <span class="report-status status-available">Available</span>
+                </div>
+
                 <!-- Service Utilization -->
                 <div class="report-card" onclick="handleReportClick('service_utilization')">
                     <i class="fas fa-stethoscope report-icon"></i>
@@ -471,7 +473,7 @@ $error = '';
     <script>
         function handleReportClick(reportType) {
             // Navigate to the specific report pages
-            switch(reportType) {
+            switch (reportType) {
                 case 'financial':
                     window.location.href = 'financial.php';
                     break;

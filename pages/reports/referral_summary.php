@@ -86,13 +86,13 @@ try {
         FROM referrals r 
         WHERE $where_clause
     ";
-    
+
     $metrics_stmt = $pdo->prepare($metrics_query);
     $metrics_stmt->execute($params);
     $metrics = $metrics_stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     // Calculate completion rate
-    $completion_rate = $metrics['total_referrals'] > 0 ? 
+    $completion_rate = $metrics['total_referrals'] > 0 ?
         round(($metrics['accepted_referrals'] / $metrics['total_referrals']) * 100, 2) : 0;
 
     // 2. Facility-to-Facility Transfers
@@ -111,7 +111,7 @@ try {
         GROUP BY r.referring_facility_id, r.referred_to_facility_id, r.external_facility_name
         ORDER BY total_referrals DESC
     ";
-    
+
     $facility_stmt = $pdo->prepare($facility_query);
     $facility_stmt->execute($params);
     $facility_transfers = $facility_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -127,7 +127,7 @@ try {
         GROUP BY r.destination_type
         ORDER BY count DESC
     ";
-    
+
     $destination_stmt = $pdo->prepare($destination_query);
     $destination_stmt->execute(array_merge($params, $params)); // Double params for subquery
     $destination_types = $destination_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -150,7 +150,7 @@ try {
         ORDER BY count DESC
         LIMIT 5
     ";
-    
+
     $reasons_stmt = $pdo->prepare($reasons_query);
     $reasons_stmt->execute($params);
     $referral_reasons = $reasons_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -166,7 +166,7 @@ try {
         GROUP BY DATE(r.referral_date)
         ORDER BY referral_day ASC
     ";
-    
+
     $timeline_stmt = $pdo->prepare($timeline_query);
     $timeline_stmt->execute($params);
     $timeline_data = $timeline_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -190,7 +190,7 @@ try {
         ORDER BY rl.timestamp DESC
         LIMIT 20
     ";
-    
+
     $logs_stmt = $pdo->prepare($logs_query);
     $logs_stmt->execute($params);
     $referral_logs = $logs_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -204,7 +204,7 @@ try {
         FROM referrals r
         WHERE $where_clause
     ";
-    
+
     $coordination_stmt = $pdo->prepare($coordination_query);
     $coordination_stmt->execute($params);
     $coordination_stats = $coordination_stmt->fetch(PDO::FETCH_ASSOC);
@@ -219,7 +219,7 @@ try {
         ORDER BY referral_count DESC
         LIMIT 1
     ";
-    
+
     $active_referring_stmt = $pdo->prepare($active_referring_query);
     $active_referring_stmt->execute($params);
     $most_active_referring = $active_referring_stmt->fetch(PDO::FETCH_ASSOC);
@@ -233,7 +233,7 @@ try {
         ORDER BY referral_count DESC
         LIMIT 1
     ";
-    
+
     $active_receiving_stmt = $pdo->prepare($active_receiving_query);
     $active_receiving_stmt->execute($params);
     $most_active_receiving = $active_receiving_stmt->fetch(PDO::FETCH_ASSOC);
@@ -257,11 +257,10 @@ try {
         ORDER BY r.referral_date DESC
         LIMIT 50
     ";
-    
+
     $detailed_stmt = $pdo->prepare($detailed_query);
     $detailed_stmt->execute($params);
     $detailed_referrals = $detailed_stmt->fetchAll(PDO::FETCH_ASSOC);
-
 } catch (Exception $e) {
     $error = "Error loading referral data: " . $e->getMessage();
     // Initialize empty arrays to prevent PHP errors
@@ -485,7 +484,7 @@ try {
             color: white;
             padding: 25px;
             border-radius: 12px;
-            text-align: center;
+            text-align: left;
             box-shadow: var(--shadow-light);
             transition: transform 0.3s ease;
         }
@@ -660,10 +659,25 @@ try {
             text-transform: uppercase;
         }
 
-        .status-accepted { background: #d4edda; color: #155724; }
-        .status-cancelled { background: #f8d7da; color: #721c24; }
-        .status-active { background: #d1ecf1; color: #055160; }
-        .status-issued { background: #fff3cd; color: #664d03; }
+        .status-accepted {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-active {
+            background: #d1ecf1;
+            color: #055160;
+        }
+
+        .status-issued {
+            background: #fff3cd;
+            color: #664d03;
+        }
 
         /* Charts container */
         .charts-container {
@@ -731,21 +745,22 @@ try {
 
         /* Print styles */
         @media print {
+
             .filter-section,
             .export-section,
             .breadcrumb,
             .sidebar {
                 display: none !important;
             }
-            
+
             .homepage {
                 margin-left: 0 !important;
             }
-            
+
             .content-wrapper {
                 padding: 1rem !important;
             }
-            
+
             .charts-container {
                 grid-template-columns: 1fr !important;
             }
@@ -756,23 +771,23 @@ try {
             .stats-container {
                 grid-template-columns: 1fr;
             }
-            
+
             .charts-container {
                 grid-template-columns: 1fr;
             }
-            
+
             .filter-form {
                 grid-template-columns: 1fr;
             }
-            
+
             .export-section {
                 justify-content: center;
             }
-            
+
             .data-table {
                 font-size: 12px;
             }
-            
+
             .data-table th,
             .data-table td {
                 padding: 8px;
@@ -873,281 +888,287 @@ try {
                     </div>
                 </form>
             </div>
-
-            <!-- Export Buttons -->
-            <div class="export-section">
-                <form method="POST" action="export_referral_summary_robust.php" style="display: inline;">
-                    <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
-                    <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
-                    <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
-                    <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
-                    <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
-                    <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
-                    <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-download"></i> Export PDF Report
-                    </button>
-                </form>
-                <form method="POST" action="export_referral_summary_pdf.php" style="display: inline;">
-                    <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
-                    <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
-                    <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
-                    <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
-                    <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
-                    <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
-                    <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
-                    <button type="submit" class="btn btn-warning">
-                        <i class="fas fa-file-pdf"></i> Download PDF Report
-                    </button>
-                </form>
-                <form method="GET" action="export_referral_summary_html.php" style="display: inline;">
-                    <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
-                    <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
-                    <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
-                    <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
-                    <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
-                    <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
-                    <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
-                    <button type="submit" class="btn btn-info">
-                        <i class="fas fa-print"></i> Print PDF Report
-                    </button>
-                </form>
-                <form method="GET" action="export_referral_summary_simple.php" style="display: inline;">
-                    <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
-                    <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
-                    <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
-                    <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
-                    <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
-                    <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
-                    <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
-                    <button type="submit" class="btn btn-secondary">
-                        <i class="fas fa-file-alt"></i> Text Report
-                    </button>
-                </form>
-                <button onclick="exportToExcel()" class="btn btn-success">
-                    <i class="fas fa-file-excel"></i> Export Excel
-                </button>
-                <button onclick="window.print()" class="btn btn-secondary">
-                    <i class="fas fa-print"></i> Print Report
-                </button>
-            </div>
-
-            <!-- Key Metrics Summary -->
-            <div class="stats-container">
-                <div class="stat-tile">
-                    <h3><?php echo number_format($metrics['total_referrals']); ?></h3>
-                    <p>Total Referrals</p>
-                </div>
-                <div class="stat-tile">
-                    <h3><?php echo number_format($metrics['accepted_referrals']); ?></h3>
-                    <p>Accepted Referrals</p>
-                </div>
-                <div class="stat-tile danger">
-                    <h3><?php echo number_format($metrics['cancelled_referrals']); ?></h3>
-                    <p>Cancelled Referrals</p>
-                </div>
-                <div class="stat-tile warning">
-                    <h3><?php echo number_format($metrics['external_issued']); ?></h3>
-                    <p>External Issued</p>
-                </div>
-                <div class="stat-tile">
-                    <h3><?php echo number_format($metrics['active_referrals']); ?></h3>
-                    <p>Active Referrals</p>
-                </div>
-                <div class="stat-tile completion-rate">
-                    <h3><?php echo $completion_rate; ?>%</h3>
-                    <p>Completion Rate</p>
-                </div>
-            </div>
-
-            <!-- Charts Section -->
-            <div class="charts-container">
-                <div class="chart-container">
-                    <h4><i class="fas fa-chart-pie"></i> Destination Type Distribution</h4>
-                    <canvas id="destinationChart"></canvas>
-                </div>
-                <div class="chart-container">
-                    <h4><i class="fas fa-chart-line"></i> Referral Timeline</h4>
-                    <canvas id="timelineChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Inter-Facility Coordination Statistics -->
-            <div class="coordination-stats">
-                <div class="coord-stat">
-                    <h4>Average Response Time</h4>
-                    <div class="value"><?php echo round($coordination_stats['avg_response_time'] ?? 0, 1); ?></div>
-                    <div class="unit">Days</div>
-                </div>
-                <div class="coord-stat">
-                    <h4>Cancellation Rate</h4>
-                    <div class="value"><?php echo round($coordination_stats['cancellation_rate'] ?? 0, 1); ?>%</div>
-                    <div class="unit">Percentage</div>
-                </div>
-                <div class="coord-stat">
-                    <h4>External Referral Ratio</h4>
-                    <div class="value"><?php echo round($coordination_stats['external_ratio'] ?? 0, 1); ?>%</div>
-                    <div class="unit">Percentage</div>
-                </div>
-                <div class="coord-stat">
-                    <h4>Most Active Referring</h4>
-                    <div class="value" style="font-size: 1.2rem;"><?php echo htmlspecialchars($most_active_referring['name'] ?? 'N/A'); ?></div>
-                    <div class="unit"><?php echo $most_active_referring['referral_count'] ?? 0; ?> referrals</div>
-                </div>
-                <div class="coord-stat">
-                    <h4>Most Active Receiving</h4>
-                    <div class="value" style="font-size: 1.2rem;"><?php echo htmlspecialchars($most_active_receiving['name'] ?? 'N/A'); ?></div>
-                    <div class="unit"><?php echo $most_active_receiving['referral_count'] ?? 0; ?> referrals</div>
-                </div>
-            </div>
-
-            <!-- Facility-to-Facility Transfers -->
             <div class="referral-content">
-                <h3><i class="fas fa-exchange-alt"></i> Facility-to-Facility Transfers</h3>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Referring Facility</th>
-                            <th>Referred To Facility</th>
-                            <th>Total Referrals</th>
-                            <th>Accepted</th>
-                            <th>Cancelled</th>
-                            <th>Issued</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($facility_transfers)): ?>
-                            <tr>
-                                <td colspan="6" class="text-center">No facility transfer data found for the selected period.</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($facility_transfers as $transfer): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($transfer['referring_facility']); ?></td>
-                                    <td><?php echo htmlspecialchars($transfer['referred_to_facility']); ?></td>
-                                    <td><?php echo number_format($transfer['total_referrals']); ?></td>
-                                    <td><?php echo number_format($transfer['accepted']); ?></td>
-                                    <td><?php echo number_format($transfer['cancelled']); ?></td>
-                                    <td><?php echo number_format($transfer['issued']); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
 
-            <!-- Referral Reasons Breakdown -->
-            <div class="referral-content">
-                <h3><i class="fas fa-list-ul"></i> Top Referral Reasons</h3>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Reason Category</th>
-                            <th>Count</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($referral_reasons)): ?>
-                            <tr>
-                                <td colspan="2" class="text-center">No referral reason data found for the selected period.</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($referral_reasons as $reason): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($reason['reason_category']); ?></td>
-                                    <td><?php echo number_format($reason['count']); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                <!-- Export Buttons -->
+                <div class="export-section">
+                    <!--<form method="POST" action="export_referral_summary_robust.php" style="display: inline;">
+                        <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
+                        <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
+                        <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
+                        <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
+                        <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
+                        <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
+                        <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-download"></i> Export PDF Report
+                        </button>
+                    </form>-->
+                    <form method="POST" action="export_referral_summary_pdf.php" style="display: inline;">
+                        <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
+                        <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
+                        <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
+                        <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
+                        <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
+                        <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
+                        <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-file-pdf"></i> Download PDF Report
+                        </button>
+                    </form>
+                    <!--<form method="GET" action="export_referral_summary_html.php" style="display: inline;">
+                        <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
+                        <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
+                        <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
+                        <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
+                        <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
+                        <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
+                        <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
+                        <button type="submit" class="btn btn-info">
+                            <i class="fas fa-print"></i> Print PDF Report
+                        </button>
+                    </form>
+                    <form method="GET" action="export_referral_summary_simple.php" style="display: inline;">
+                        <input type="hidden" name="filter_type" value="<?php echo htmlspecialchars($filter_type); ?>">
+                        <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
+                        <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
+                        <input type="hidden" name="month_from" value="<?php echo htmlspecialchars($month_from); ?>">
+                        <input type="hidden" name="month_to" value="<?php echo htmlspecialchars($month_to); ?>">
+                        <input type="hidden" name="year_from" value="<?php echo htmlspecialchars($year_from); ?>">
+                        <input type="hidden" name="year_to" value="<?php echo htmlspecialchars($year_to); ?>">
+                        <button type="submit" class="btn btn-secondary">
+                            <i class="fas fa-file-alt"></i> Text Report
+                        </button>
+                    </form>
+                    <button onclick="exportToExcel()" class="btn btn-success">
+                        <i class="fas fa-file-excel"></i> Export Excel
+                    </button>
+                    <button onclick="window.print()" class="btn btn-secondary">
+                        <i class="fas fa-print"></i> Print Report
+                    </button>-->
+                </div>
+                <h3><i class="fas fa-chart-pie"></i> Key Statistics</h3>
+                <!-- Key Metrics Summary -->
+                <div class="stats-container">
 
-            <!-- Referral Logs Activity -->
-            <div class="referral-content">
-                <h3><i class="fas fa-history"></i> Recent Referral Activity</h3>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Referral #</th>
-                            <th>Employee</th>
-                            <th>Action</th>
-                            <th>Previous Status</th>
-                            <th>New Status</th>
-                            <th>Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($referral_logs)): ?>
-                            <tr>
-                                <td colspan="6" class="text-center">No activity logs found for the selected period.</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($referral_logs as $log): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($log['referral_num']); ?></td>
-                                    <td><?php echo htmlspecialchars($log['first_name'] . ' ' . $log['last_name']); ?></td>
-                                    <td><?php echo htmlspecialchars($log['action']); ?></td>
-                                    <td><span class="status-badge status-<?php echo htmlspecialchars($log['previous_status']); ?>"><?php echo htmlspecialchars($log['previous_status'] ?? 'N/A'); ?></span></td>
-                                    <td><span class="status-badge status-<?php echo htmlspecialchars($log['new_status']); ?>"><?php echo htmlspecialchars($log['new_status'] ?? 'N/A'); ?></span></td>
-                                    <td><?php echo date('M j, Y g:i A', strtotime($log['timestamp'])); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                    <div class="stat-tile">
+                        <h3><?php echo number_format($metrics['total_referrals']); ?></h3>
+                        <p>Total Referrals</p>
+                    </div>
+                    <div class="stat-tile">
+                        <h3><?php echo number_format($metrics['accepted_referrals']); ?></h3>
+                        <p>Accepted Referrals</p>
+                    </div>
+                    <div class="stat-tile danger">
+                        <h3><?php echo number_format($metrics['cancelled_referrals']); ?></h3>
+                        <p>Cancelled Referrals</p>
+                    </div>
+                    <div class="stat-tile warning">
+                        <h3><?php echo number_format($metrics['external_issued']); ?></h3>
+                        <p>External Issued</p>
+                    </div>
+                    <div class="stat-tile">
+                        <h3><?php echo number_format($metrics['active_referrals']); ?></h3>
+                        <p>Active Referrals</p>
+                    </div>
+                    <div class="stat-tile completion-rate">
+                        <h3><?php echo $completion_rate; ?>%</h3>
+                        <p>Completion Rate</p>
+                    </div>
+                </div>
 
-            <!-- Detailed Referral Table -->
-            <div class="referral-content">
-                <h3><i class="fas fa-table"></i> Detailed Referral Records (Latest 50)</h3>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Referral #</th>
-                            <th>Patient ID</th>
-                            <th>Referring Facility</th>
-                            <th>Referred To</th>
-                            <th>Destination Type</th>
-                            <th>Reason</th>
-                            <th>Referral Date</th>
-                            <th>Status</th>
-                            <th>Updated</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($detailed_referrals)): ?>
+                <!-- Charts Section -->
+                <div class="charts-container">
+                    <div class="chart-container">
+                        <h4><i class="fas fa-chart-pie"></i> Destination Type Distribution</h4>
+                        <canvas id="destinationChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h4><i class="fas fa-chart-line"></i> Referral Timeline</h4>
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Inter-Facility Coordination Statistics -->
+                <div class="coordination-stats">
+                    <div class="coord-stat">
+                        <h4>Average Response Time</h4>
+                        <div class="value"><?php echo round($coordination_stats['avg_response_time'] ?? 0, 1); ?></div>
+                        <div class="unit">Days</div>
+                    </div>
+                    <div class="coord-stat">
+                        <h4>Cancellation Rate</h4>
+                        <div class="value"><?php echo round($coordination_stats['cancellation_rate'] ?? 0, 1); ?>%</div>
+                        <div class="unit">Percentage</div>
+                    </div>
+                    <div class="coord-stat">
+                        <h4>External Referral Ratio</h4>
+                        <div class="value"><?php echo round($coordination_stats['external_ratio'] ?? 0, 1); ?>%</div>
+                        <div class="unit">Percentage</div>
+                    </div>
+                    <div class="coord-stat">
+                        <h4>Most Active Referring</h4>
+                        <div class="value" style="font-size: 1.2rem;"><?php echo htmlspecialchars($most_active_referring['name'] ?? 'N/A'); ?></div>
+                        <div class="unit"><?php echo $most_active_referring['referral_count'] ?? 0; ?> referrals</div>
+                    </div>
+                    <div class="coord-stat">
+                        <h4>Most Active Receiving</h4>
+                        <div class="value" style="font-size: 1.2rem;"><?php echo htmlspecialchars($most_active_receiving['name'] ?? 'N/A'); ?></div>
+                        <div class="unit"><?php echo $most_active_receiving['referral_count'] ?? 0; ?> referrals</div>
+                    </div>
+                </div>
+
+                <!-- Facility-to-Facility Transfers -->
+                <div class="referral-content">
+                    <h3><i class="fas fa-exchange-alt"></i> Facility-to-Facility Transfers</h3>
+                    <table class="data-table">
+                        <thead>
                             <tr>
-                                <td colspan="9" class="text-center">No detailed referral data found for the selected period.</td>
+                                <th>Referring Facility</th>
+                                <th>Referred To Facility</th>
+                                <th>Total Referrals</th>
+                                <th>Accepted</th>
+                                <th>Cancelled</th>
+                                <th>Issued</th>
                             </tr>
-                        <?php else: ?>
-                            <?php foreach ($detailed_referrals as $referral): ?>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($facility_transfers)): ?>
                                 <tr>
-                                    <td><?php echo htmlspecialchars($referral['referral_num']); ?></td>
-                                    <td><?php echo htmlspecialchars($referral['patient_id']); ?></td>
-                                    <td><?php echo htmlspecialchars($referral['referring_facility']); ?></td>
-                                    <td><?php echo htmlspecialchars($referral['referred_to_facility']); ?></td>
-                                    <td><?php echo ucwords(str_replace('_', ' ', $referral['destination_type'])); ?></td>
-                                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($referral['referral_reason']); ?>">
-                                        <?php echo htmlspecialchars(substr($referral['referral_reason'], 0, 50)) . (strlen($referral['referral_reason']) > 50 ? '...' : ''); ?>
-                                    </td>
-                                    <td><?php echo date('M j, Y', strtotime($referral['referral_date'])); ?></td>
-                                    <td><span class="status-badge status-<?php echo htmlspecialchars($referral['status']); ?>"><?php echo htmlspecialchars($referral['status']); ?></span></td>
-                                    <td><?php echo date('M j, Y g:i A', strtotime($referral['updated_at'])); ?></td>
+                                    <td colspan="6" class="text-center">No facility transfer data found for the selected period.</td>
                                 </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                            <?php else: ?>
+                                <?php foreach ($facility_transfers as $transfer): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($transfer['referring_facility']); ?></td>
+                                        <td><?php echo htmlspecialchars($transfer['referred_to_facility']); ?></td>
+                                        <td><?php echo number_format($transfer['total_referrals']); ?></td>
+                                        <td><?php echo number_format($transfer['accepted']); ?></td>
+                                        <td><?php echo number_format($transfer['cancelled']); ?></td>
+                                        <td><?php echo number_format($transfer['issued']); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Referral Reasons Breakdown -->
+                <div class="referral-content">
+                    <h3><i class="fas fa-list-ul"></i> Top Referral Reasons</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Reason Category</th>
+                                <th>Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($referral_reasons)): ?>
+                                <tr>
+                                    <td colspan="2" class="text-center">No referral reason data found for the selected period.</td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($referral_reasons as $reason): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($reason['reason_category']); ?></td>
+                                        <td><?php echo number_format($reason['count']); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Referral Logs Activity -->
+                <div class="referral-content">
+                    <h3><i class="fas fa-history"></i> Recent Referral Activity</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Referral #</th>
+                                <th>Employee</th>
+                                <th>Action</th>
+                                <th>Previous Status</th>
+                                <th>New Status</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($referral_logs)): ?>
+                                <tr>
+                                    <td colspan="6" class="text-center">No activity logs found for the selected period.</td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($referral_logs as $log): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($log['referral_num']); ?></td>
+                                        <td><?php echo htmlspecialchars($log['first_name'] . ' ' . $log['last_name']); ?></td>
+                                        <td><?php echo htmlspecialchars($log['action']); ?></td>
+                                        <td><span class="status-badge status-<?php echo htmlspecialchars($log['previous_status']); ?>"><?php echo htmlspecialchars($log['previous_status'] ?? 'N/A'); ?></span></td>
+                                        <td><span class="status-badge status-<?php echo htmlspecialchars($log['new_status']); ?>"><?php echo htmlspecialchars($log['new_status'] ?? 'N/A'); ?></span></td>
+                                        <td><?php echo date('M j, Y g:i A', strtotime($log['timestamp'])); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Detailed Referral Table -->
+                <div class="referral-content">
+                    <h3><i class="fas fa-table"></i> Detailed Referral Records (Latest 50)</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Referral #</th>
+                                <th>Patient ID</th>
+                                <th>Referring Facility</th>
+                                <th>Referred To</th>
+                                <th>Destination Type</th>
+                                <th>Reason</th>
+                                <th>Referral Date</th>
+                                <th>Status</th>
+                                <th>Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($detailed_referrals)): ?>
+                                <tr>
+                                    <td colspan="9" class="text-center">No detailed referral data found for the selected period.</td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($detailed_referrals as $referral): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($referral['referral_num']); ?></td>
+                                        <td><?php echo htmlspecialchars($referral['patient_id']); ?></td>
+                                        <td><?php echo htmlspecialchars($referral['referring_facility']); ?></td>
+                                        <td><?php echo htmlspecialchars($referral['referred_to_facility']); ?></td>
+                                        <td><?php echo ucwords(str_replace('_', ' ', $referral['destination_type'])); ?></td>
+                                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($referral['referral_reason'] ?? ''); ?>">
+                                            <?php
+                                            $reason = $referral['referral_reason'] ?? '';
+                                            echo htmlspecialchars(substr($reason, 0, 50)) . (strlen($reason) > 50 ? '...' : '');
+                                            ?>
+                                        </td>
+                                        <td><?php echo date('M j, Y', strtotime($referral['referral_date'])); ?></td>
+                                        <td><span class="status-badge status-<?php echo htmlspecialchars($referral['status']); ?>"><?php echo htmlspecialchars($referral['status']); ?></span></td>
+                                        <td><?php echo date('M j, Y g:i A', strtotime($referral['updated_at'])); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </section>
 
     <script>
-        // Filter input toggle functionality
-        function toggleFilterInputs() {
+        // Ensure all functions are defined in the global scope
+        window.toggleFilterInputs = function() {
             const filterType = document.getElementById('filter_type').value;
-            
+
             // Hide all input groups
             document.getElementById('date_from_group').style.display = 'none';
             document.getElementById('date_to_group').style.display = 'none';
@@ -1155,9 +1176,9 @@ try {
             document.getElementById('month_to_group').style.display = 'none';
             document.getElementById('year_from_group').style.display = 'none';
             document.getElementById('year_to_group').style.display = 'none';
-            
+
             // Show relevant input groups
-            switch(filterType) {
+            switch (filterType) {
                 case 'date_range':
                     document.getElementById('date_from_group').style.display = 'flex';
                     document.getElementById('date_to_group').style.display = 'flex';
@@ -1171,6 +1192,11 @@ try {
                     document.getElementById('year_to_group').style.display = 'flex';
                     break;
             }
+        };
+
+        // Alias for backward compatibility
+        function toggleFilterInputs() {
+            window.toggleFilterInputs();
         }
 
         // Initialize filter inputs on page load
@@ -1179,132 +1205,175 @@ try {
             initializeCharts();
         });
 
-        // Chart initialization
+        // Chart initialization with error handling
         function initializeCharts() {
-            // Destination Type Distribution Chart
-            const destinationData = <?php echo json_encode($destination_types); ?>;
-            if (destinationData.length > 0) {
-                const destinationCtx = document.getElementById('destinationChart').getContext('2d');
-                new Chart(destinationCtx, {
-                    type: 'pie',
-                    data: {
-                        labels: destinationData.map(item => item.destination_type.replace('_', ' ').toUpperCase()),
-                        datasets: [{
-                            data: destinationData.map(item => item.count),
-                            backgroundColor: [
-                                '#0077b6',
-                                '#00b4d8',
-                                '#90e0ef',
-                                '#06d6a0',
-                                '#ffd60a'
-                            ],
-                            borderWidth: 2,
-                            borderColor: '#fff'
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'bottom'
+            // Check if Chart.js is loaded
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js is not loaded. Charts will not be displayed.');
+                return;
+            }
+
+            try {
+                // Destination Type Distribution Chart
+                const destinationData = <?php echo json_encode($destination_types ?: []); ?>;
+                if (destinationData && destinationData.length > 0) {
+                    const destinationCtx = document.getElementById('destinationChart');
+                    if (destinationCtx) {
+                        new Chart(destinationCtx.getContext('2d'), {
+                            type: 'pie',
+                            data: {
+                                labels: destinationData.map(item => item.destination_type.replace('_', ' ').toUpperCase()),
+                                datasets: [{
+                                    data: destinationData.map(item => item.count),
+                                    backgroundColor: [
+                                        '#0077b6',
+                                        '#00b4d8',
+                                        '#90e0ef',
+                                        '#06d6a0',
+                                        '#ffd60a'
+                                    ],
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                }]
                             },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const percentage = destinationData[context.dataIndex].percentage;
-                                        return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom'
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                const dataIndex = context.dataIndex;
+                                                const percentage = destinationData[dataIndex] && destinationData[dataIndex].percentage ? destinationData[dataIndex].percentage : 0;
+                                                return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
+                        });
                     }
-                });
-            }
+                }
 
-            // Timeline Chart
-            const timelineData = <?php echo json_encode($timeline_data); ?>;
-            if (timelineData.length > 0) {
-                const timelineCtx = document.getElementById('timelineChart').getContext('2d');
-                new Chart(timelineCtx, {
-                    type: 'line',
-                    data: {
-                        labels: timelineData.map(item => new Date(item.referral_day).toLocaleDateString()),
-                        datasets: [{
-                            label: 'Total Referrals',
-                            data: timelineData.map(item => item.daily_count),
-                            borderColor: '#0077b6',
-                            backgroundColor: 'rgba(0, 119, 182, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }, {
-                            label: 'Cancelled',
-                            data: timelineData.map(item => item.cancelled_count),
-                            borderColor: '#f72585',
-                            backgroundColor: 'rgba(247, 37, 133, 0.1)',
-                            tension: 0.4,
-                            fill: false
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'bottom'
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    stepSize: 1
+                // Timeline Chart
+                const timelineData = <?php echo json_encode($timeline_data ?: []); ?>;
+                if (timelineData && timelineData.length > 0) {
+                    const timelineCtx = document.getElementById('timelineChart');
+                    if (timelineCtx) {
+                        new Chart(timelineCtx.getContext('2d'), {
+                            type: 'line',
+                            data: {
+                                labels: timelineData.map(item => new Date(item.referral_day).toLocaleDateString()),
+                                datasets: [{
+                                    label: 'Total Referrals',
+                                    data: timelineData.map(item => item.daily_count),
+                                    borderColor: '#0077b6',
+                                    backgroundColor: 'rgba(0, 119, 182, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                }, {
+                                    label: 'Cancelled',
+                                    data: timelineData.map(item => item.cancelled_count),
+                                    borderColor: '#f72585',
+                                    backgroundColor: 'rgba(247, 37, 133, 0.1)',
+                                    tension: 0.4,
+                                    fill: false
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom'
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            stepSize: 1
+                                        }
+                                    }
                                 }
                             }
-                        }
+                        });
                     }
-                });
+                }
+            } catch (error) {
+                console.error('Error initializing charts:', error);
             }
         }
 
-        // Export to Excel function
+        // Export to Excel function with error handling
         function exportToExcel() {
-            const wb = XLSX.utils.book_new();
-            
-            // Create sheets for different data
-            const facilityData = <?php echo json_encode($facility_transfers); ?>;
-            const detailedData = <?php echo json_encode($detailed_referrals); ?>;
-            const reasonsData = <?php echo json_encode($referral_reasons); ?>;
-            
-            if (facilityData.length > 0) {
-                const facilityWs = XLSX.utils.json_to_sheet(facilityData);
-                XLSX.utils.book_append_sheet(wb, facilityWs, 'Facility Transfers');
+            try {
+                // Check if XLSX is loaded
+                if (typeof XLSX === 'undefined') {
+                    alert('Excel export library is not loaded. Please refresh the page and try again.');
+                    return;
+                }
+
+                const wb = XLSX.utils.book_new();
+
+                // Create sheets for different data
+                const facilityData = <?php echo json_encode($facility_transfers ?: []); ?>;
+                const detailedData = <?php echo json_encode($detailed_referrals ?: []); ?>;
+                const reasonsData = <?php echo json_encode($referral_reasons ?: []); ?>;
+
+                if (facilityData && facilityData.length > 0) {
+                    const facilityWs = XLSX.utils.json_to_sheet(facilityData);
+                    XLSX.utils.book_append_sheet(wb, facilityWs, 'Facility Transfers');
+                }
+
+                if (detailedData && detailedData.length > 0) {
+                    const detailedWs = XLSX.utils.json_to_sheet(detailedData);
+                    XLSX.utils.book_append_sheet(wb, detailedWs, 'Detailed Referrals');
+                }
+
+                if (reasonsData && reasonsData.length > 0) {
+                    const reasonsWs = XLSX.utils.json_to_sheet(reasonsData);
+                    XLSX.utils.book_append_sheet(wb, reasonsWs, 'Referral Reasons');
+                }
+
+                // Add metrics sheet
+                const metricsData = [{
+                        Metric: 'Total Referrals',
+                        Value: <?php echo isset($metrics['total_referrals']) ? intval($metrics['total_referrals']) : 0; ?>
+                    },
+                    {
+                        Metric: 'Accepted Referrals',
+                        Value: <?php echo isset($metrics['accepted_referrals']) ? intval($metrics['accepted_referrals']) : 0; ?>
+                    },
+                    {
+                        Metric: 'Cancelled Referrals',
+                        Value: <?php echo isset($metrics['cancelled_referrals']) ? intval($metrics['cancelled_referrals']) : 0; ?>
+                    },
+                    {
+                        Metric: 'External Issued',
+                        Value: <?php echo isset($metrics['external_issued']) ? intval($metrics['external_issued']) : 0; ?>
+                    },
+                    {
+                        Metric: 'Active Referrals',
+                        Value: <?php echo isset($metrics['active_referrals']) ? intval($metrics['active_referrals']) : 0; ?>
+                    },
+                    {
+                        Metric: 'Completion Rate (%)',
+                        Value: <?php echo isset($completion_rate) ? floatval($completion_rate) : 0; ?>
+                    }
+                ];
+                const metricsWs = XLSX.utils.json_to_sheet(metricsData);
+                XLSX.utils.book_append_sheet(wb, metricsWs, 'Key Metrics');
+
+                // Save the Excel file
+                XLSX.writeFile(wb, 'referral-summary-report.xlsx');
+            } catch (error) {
+                console.error('Error exporting to Excel:', error);
+                alert('Error exporting to Excel. Please try again.');
             }
-            
-            if (detailedData.length > 0) {
-                const detailedWs = XLSX.utils.json_to_sheet(detailedData);
-                XLSX.utils.book_append_sheet(wb, detailedWs, 'Detailed Referrals');
-            }
-            
-            if (reasonsData.length > 0) {
-                const reasonsWs = XLSX.utils.json_to_sheet(reasonsData);
-                XLSX.utils.book_append_sheet(wb, reasonsWs, 'Referral Reasons');
-            }
-            
-            // Add metrics sheet
-            const metricsData = [
-                { Metric: 'Total Referrals', Value: <?php echo $metrics['total_referrals']; ?> },
-                { Metric: 'Accepted Referrals', Value: <?php echo $metrics['accepted_referrals']; ?> },
-                { Metric: 'Cancelled Referrals', Value: <?php echo $metrics['cancelled_referrals']; ?> },
-                { Metric: 'External Issued', Value: <?php echo $metrics['external_issued']; ?> },
-                { Metric: 'Active Referrals', Value: <?php echo $metrics['active_referrals']; ?> },
-                { Metric: 'Completion Rate (%)', Value: <?php echo $completion_rate; ?> }
-            ];
-            const metricsWs = XLSX.utils.json_to_sheet(metricsData);
-            XLSX.utils.book_append_sheet(wb, metricsWs, 'Key Metrics');
-            
-            // Save the Excel file
-            XLSX.writeFile(wb, 'referral-summary-report.xlsx');
         }
 
         // Auto-dismiss alerts
