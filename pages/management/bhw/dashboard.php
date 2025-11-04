@@ -61,6 +61,29 @@ $employee_name = $_SESSION['employee_name'] ?? ($_SESSION['employee_first_name']
 $employee_number = $_SESSION['employee_number'] ?? 'N/A';
 $role = $_SESSION['role'] ?? 'BHW';
 
+// Get BHW facility assignment information
+$facility_name = 'No facility assigned';
+$facility_type = 'Unknown';
+$facility_district = 'Unknown';
+
+try {
+    $stmt = $pdo->prepare('
+        SELECT f.name as facility_name, f.type as facility_type, f.district
+        FROM employees e 
+        LEFT JOIN facilities f ON e.facility_id = f.facility_id
+        WHERE e.employee_id = ?
+    ');
+    $stmt->execute([$employee_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row && $row['facility_name']) {
+        $facility_name = $row['facility_name'];
+        $facility_type = $row['facility_type'] ?? 'Unknown';
+        $facility_district = $row['district'] ?? 'Unknown';
+    }
+} catch (PDOException $e) {
+    error_log("BHW dashboard facility error: " . $e->getMessage());
+}
+
 // Dashboard Statistics with real database queries
 $stats = [
     'assigned_households' => 0,
@@ -676,6 +699,15 @@ try {
             <div class="welcome-message">
                 <h1 class="dashboard-title">Good day, <?php echo htmlspecialchars($employee_name); ?>!</h1>
                 <p>Barangay Health Worker Dashboard • <?php echo htmlspecialchars(strtoupper($role)); ?> • ID: <?php echo htmlspecialchars($employee_number); ?></p>
+                <p style="color: var(--primary); font-weight: 500; margin-top: 0.25rem;">
+                    <i class="fas fa-hospital"></i> Assigned to: <?php echo htmlspecialchars($facility_name); ?> 
+                    <?php if ($facility_type !== 'Unknown'): ?>
+                        (<?php echo htmlspecialchars($facility_type); ?>)
+                    <?php endif; ?>
+                    <?php if ($facility_district !== 'Unknown'): ?>
+                        • <?php echo htmlspecialchars($facility_district); ?>
+                    <?php endif; ?>
+                </p>
             </div>
             
             <div class="dashboard-actions">

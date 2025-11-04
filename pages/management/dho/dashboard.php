@@ -67,6 +67,9 @@ $defaults = [
     'name' => $_SESSION['employee_first_name'] . ' ' . $_SESSION['employee_last_name'],
     'employee_number' => $_SESSION['employee_number'] ?? '-',
     'role' => $employee_role,
+    'facility_name' => 'No facility assigned',
+    'facility_type' => 'Unknown',
+    'facility_district' => 'Unknown',
     'stats' => [
         'health_centers' => 0,
         'active_programs' => 0,
@@ -81,9 +84,16 @@ $defaults = [
     'priority_alerts' => []
 ];
 
-// Get DHO info from employees table
+// Get DHO info from employees table with facility information
 try {
-    $stmt = $pdo->prepare('SELECT first_name, middle_name, last_name, employee_number, role FROM employees WHERE employee_id = ?');
+    $stmt = $pdo->prepare('
+        SELECT e.first_name, e.middle_name, e.last_name, e.employee_number, r.role_name as role,
+               f.name as facility_name, f.type as facility_type, f.district
+        FROM employees e 
+        LEFT JOIN roles r ON e.role_id = r.role_id
+        LEFT JOIN facilities f ON e.facility_id = f.facility_id
+        WHERE e.employee_id = ?
+    ');
     $stmt->execute([$employee_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
@@ -93,6 +103,9 @@ try {
         $defaults['name'] = trim($full_name);
         $defaults['employee_number'] = $row['employee_number'];
         $defaults['role'] = $row['role'];
+        $defaults['facility_name'] = $row['facility_name'] ?? 'No facility assigned';
+        $defaults['facility_type'] = $row['facility_type'] ?? 'Unknown';
+        $defaults['facility_district'] = $row['district'] ?? 'Unknown';
     }
 } catch (PDOException $e) {
     error_log("DHO dashboard error: " . $e->getMessage());
@@ -1211,6 +1224,15 @@ try {
             <div class="welcome-message">
                 <h1 class="dashboard-title">Good day, <?php echo htmlspecialchars($defaults['name']); ?>!</h1>
                 <p>District Health Officer Dashboard • <?php echo htmlspecialchars($defaults['role']); ?> • ID: <?php echo htmlspecialchars($defaults['employee_number']); ?></p>
+                <p style="color: var(--primary); font-weight: 500; margin-top: 0.25rem;">
+                    <i class="fas fa-hospital"></i> Assigned to: <?php echo htmlspecialchars($defaults['facility_name']); ?> 
+                    <?php if ($defaults['facility_type'] !== 'Unknown'): ?>
+                        (<?php echo htmlspecialchars($defaults['facility_type']); ?>)
+                    <?php endif; ?>
+                    <?php if ($defaults['facility_district'] !== 'Unknown'): ?>
+                        • <?php echo htmlspecialchars($defaults['facility_district']); ?>
+                    <?php endif; ?>
+                </p>
             </div>
             
             <div class="dashboard-actions">

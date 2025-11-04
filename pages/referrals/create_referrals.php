@@ -90,7 +90,82 @@ $error_message = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'create_referral') {
+    if ($action === 'save_vitals') {
+        try {
+            $conn->begin_transaction();
+
+            // Get form data
+            $patient_id = (int)($_POST['patient_id'] ?? 0);
+
+            // Validate jurisdiction permission for this patient
+            if (!canEmployeeCreateReferralForPatient($conn, $employee_id, $patient_id, $_SESSION['role'])) {
+                throw new Exception("Access denied. You can only record vitals for patients within your jurisdiction.");
+            }
+
+            // Vitals data
+            $systolic_bp = !empty($_POST['systolic_bp']) ? (int)$_POST['systolic_bp'] : null;
+            $diastolic_bp = !empty($_POST['diastolic_bp']) ? (int)$_POST['diastolic_bp'] : null;
+            $heart_rate = !empty($_POST['heart_rate']) ? (int)$_POST['heart_rate'] : null;
+            $respiratory_rate = !empty($_POST['respiratory_rate']) ? (int)$_POST['respiratory_rate'] : null;
+            $temperature = !empty($_POST['temperature']) ? (float)$_POST['temperature'] : null;
+            $weight = !empty($_POST['weight']) ? (float)$_POST['weight'] : null;
+            $height = !empty($_POST['height']) ? (float)$_POST['height'] : null;
+            $vitals_remarks = trim($_POST['vitals_remarks'] ?? '');
+
+            // Calculate BMI if both weight and height are provided
+            $bmi = null;
+            if ($weight && $height) {
+                $height_m = $height / 100; // Convert cm to meters
+                $bmi = round($weight / ($height_m * $height_m), 2);
+            }
+
+            // Validation
+            if (!$patient_id) {
+                throw new Exception('Please select a patient first.');
+            }
+
+            // Check if at least one vital sign is provided
+            if (!$systolic_bp && !$diastolic_bp && !$heart_rate && !$respiratory_rate && !$temperature && !$weight && !$height && empty($vitals_remarks)) {
+                throw new Exception('Please provide at least one vital sign measurement or remark.');
+            }
+
+            // Insert vitals (always create new record for historical tracking)
+            $stmt = $conn->prepare("
+                INSERT INTO vitals (
+                    patient_id, systolic_bp, diastolic_bp, heart_rate, 
+                    respiratory_rate, temperature, weight, height, bmi, 
+                    recorded_by, remarks, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+            $stmt->bind_param(
+                'iiiiddddiis',
+                $patient_id,
+                $systolic_bp,
+                $diastolic_bp,
+                $heart_rate,
+                $respiratory_rate,
+                $temperature,
+                $weight,
+                $height,
+                $bmi,
+                $employee_id,
+                $vitals_remarks
+            );
+            $stmt->execute();
+            $vitals_id = $conn->insert_id;
+
+            $conn->commit();
+            $_SESSION['snackbar_message'] = "Patient vitals recorded successfully! Patient remains selected for your convenience.";
+            $_SESSION['keep_patient_selected'] = $patient_id;
+
+            // Redirect to same page to refresh and show new vitals
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit();
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error_message = $e->getMessage();
+        }
+    } elseif ($action === 'create_referral') {
         try {
             $conn->begin_transaction();
 
@@ -119,23 +194,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($external_facility_type === 'other' && !empty($other_facility_name)) {
                     $external_facility_name = $other_facility_name;
                 }
-            }
-
-            // Vitals data
-            $systolic_bp = !empty($_POST['systolic_bp']) ? (int)$_POST['systolic_bp'] : null;
-            $diastolic_bp = !empty($_POST['diastolic_bp']) ? (int)$_POST['diastolic_bp'] : null;
-            $heart_rate = !empty($_POST['heart_rate']) ? (int)$_POST['heart_rate'] : null;
-            $respiratory_rate = !empty($_POST['respiratory_rate']) ? (int)$_POST['respiratory_rate'] : null;
-            $temperature = !empty($_POST['temperature']) ? (float)$_POST['temperature'] : null;
-            $weight = !empty($_POST['weight']) ? (float)$_POST['weight'] : null;
-            $height = !empty($_POST['height']) ? (float)$_POST['height'] : null;
-            $vitals_remarks = trim($_POST['vitals_remarks'] ?? '');
-
-            // Calculate BMI if both weight and height are provided
-            $bmi = null;
-            if ($weight && $height) {
-                $height_m = $height / 100; // Convert cm to meters
-                $bmi = round($weight / ($height_m * $height_m), 2);
             }
 
             // Validation
@@ -183,32 +241,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Insert vitals first (if any vitals data provided)
+            // Get latest vitals for this patient
             $vitals_id = null;
-            if ($systolic_bp || $diastolic_bp || $heart_rate || $respiratory_rate || $temperature || $weight || $height) {
-                $stmt = $conn->prepare("
-                    INSERT INTO vitals (
-                        patient_id, systolic_bp, diastolic_bp, heart_rate, 
-                        respiratory_rate, temperature, weight, height, bmi, 
-                        recorded_by, remarks
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ");
-                $stmt->bind_param(
-                    'iiiiddddiis',
-                    $patient_id,
-                    $systolic_bp,
-                    $diastolic_bp,
-                    $heart_rate,
-                    $respiratory_rate,
-                    $temperature,
-                    $weight,
-                    $height,
-                    $bmi,
-                    $employee_id,
-                    $vitals_remarks
-                );
-                $stmt->execute();
-                $vitals_id = $conn->insert_id;
+            $stmt = $conn->prepare("
+                SELECT vitals_id 
+                FROM vitals 
+                WHERE patient_id = ? 
+                ORDER BY recorded_at DESC, vitals_id DESC 
+                LIMIT 1
+            ");
+            $stmt->bind_param('i', $patient_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($row = $result->fetch_assoc()) {
+                $vitals_id = $row['vitals_id'];
             }
 
             // Generate referral number
@@ -278,8 +324,37 @@ $first_name = $_GET['first_name'] ?? '';
 $last_name = $_GET['last_name'] ?? '';
 $barangay_filter = $_GET['barangay'] ?? '';
 
+// Check if we need to keep a patient selected after vitals save
+$keep_patient_selected = $_SESSION['keep_patient_selected'] ?? null;
+if ($keep_patient_selected) {
+    unset($_SESSION['keep_patient_selected']);
+}
+
 $patients = [];
-if ($search_query || $first_name || $last_name || $barangay_filter) {
+// If we're keeping a patient selected (after vitals save), automatically search for that patient
+if ($keep_patient_selected) {
+    // Search for the specific patient to display
+    $sql = "
+        SELECT p.patient_id, p.username, p.first_name, p.middle_name, p.last_name, 
+               p.date_of_birth, p.sex, p.contact_number, b.barangay_name,
+               TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
+        FROM patients p 
+        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
+        WHERE p.patient_id = ? AND p.status = 'active'
+        $jurisdiction_restriction
+    ";
+    
+    $stmt = $conn->prepare($sql);
+    // Bind patient ID first, then jurisdiction parameters
+    $all_params = array_merge([$keep_patient_selected], $jurisdiction_params);
+    $all_param_types = 'i' . $jurisdiction_param_types;
+    $stmt->bind_param($all_param_types, ...$all_params);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $patients = $result->fetch_all(MYSQLI_ASSOC);
+}
+// Normal search functionality
+elseif ($search_query || $first_name || $last_name || $barangay_filter) {
     $where_conditions = [];
     $params = [];
     $param_types = '';
@@ -389,6 +464,26 @@ try {
 } catch (Exception $e) {
     // Ignore errors for services
 }
+
+// Function to get latest vitals for a patient
+function getLatestVitals($conn, $patient_id) {
+    try {
+        $stmt = $conn->prepare("
+            SELECT v.*, CONCAT(e.first_name, ' ', e.last_name) as recorded_by_name
+            FROM vitals v 
+            LEFT JOIN employees e ON v.recorded_by = e.employee_id
+            WHERE v.patient_id = ? 
+            ORDER BY v.recorded_at DESC, v.vitals_id DESC 
+            LIMIT 1
+        ");
+        $stmt->bind_param('i', $patient_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        return $result->fetch_assoc();
+    } catch (Exception $e) {
+        return null;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -482,6 +577,31 @@ try {
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 1rem;
             margin-bottom: 1rem;
+        }
+
+        .vitals-form {
+            margin-bottom: 2rem;
+        }
+
+        .vitals-info {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 0.75rem;
+            margin-top: 0.5rem;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .vitals-info.last-vitals {
+            background: #f8f9fa;
+            border-left: 4px solid #17a2b8;
+        }
+
+        .vitals-info.current-vitals {
+            background: #e8f5e8;
+            border-left: 4px solid #28a745;
+            color: #155724;
         }
 
         .form-row {
@@ -1255,11 +1375,75 @@ try {
                 </div>
             </div>
 
+            <!-- Patient Vitals Section - Separate Form -->
+            <div class="form-section">
+                <form class="profile-card referral-form enabled" id="vitalsForm" method="post">
+                    <input type="hidden" name="action" value="save_vitals">
+                    <input type="hidden" name="patient_id" id="vitalsPatientId">
+
+                    <h3><i class="fas fa-heartbeat"></i> Patient Vitals</h3>
+                    <div id="vitalsPatientInfo" class="selected-patient-info" style="display:none;">
+                        <p><strong>Patient:</strong> <span id="vitalsPatientName"></span></p>
+                        <div id="lastVitalsInfo" style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 5px; font-size: 0.9em; color: #666; display: none;">
+                            <i class="fas fa-info-circle"></i> <span id="lastVitalsText"></span>
+                        </div>
+                        <div id="noVitalsInfo" style="margin-top: 0.5rem; padding: 0.75rem; background: #fff3cd; border-radius: 5px; font-size: 0.9em; color: #856404; border-left: 4px solid #ffc107; display: none;">
+                            <i class="fas fa-exclamation-triangle"></i> <span id="noVitalsText">No previous vitals recorded for this patient. You can record new vitals below.</span>
+                        </div>
+                        <div id="autoSelectedInfo" style="margin-top: 0.5rem; padding: 0.75rem; background: #d1ecf1; border-radius: 5px; font-size: 0.9em; color: #0c5460; border-left: 4px solid #17a2b8; display: none;">
+                            <i class="fas fa-check-circle"></i> <span id="autoSelectedText">Patient automatically selected after saving vitals. New vitals displayed below.</span>
+                        </div>
+                    </div>
+
+                    <div class="vitals-grid">
+                        <div class="form-group">
+                            <label for="systolic_bp">Systolic BP</label>
+                            <input type="number" id="systolic_bp" name="systolic_bp" min="60" max="300" placeholder="120">
+                        </div>
+                        <div class="form-group">
+                            <label for="diastolic_bp">Diastolic BP</label>
+                            <input type="number" id="diastolic_bp" name="diastolic_bp" min="40" max="200" placeholder="80">
+                        </div>
+                        <div class="form-group">
+                            <label for="heart_rate">Heart Rate</label>
+                            <input type="number" id="heart_rate" name="heart_rate" min="30" max="200" placeholder="72">
+                        </div>
+                        <div class="form-group">
+                            <label for="respiratory_rate">Respiratory Rate</label>
+                            <input type="number" id="respiratory_rate" name="respiratory_rate" min="8" max="60" placeholder="18">
+                        </div>
+                        <div class="form-group">
+                            <label for="temperature">Temperature (°C)</label>
+                            <input type="number" id="temperature" name="temperature" step="0.1" min="30" max="45" placeholder="36.5">
+                        </div>
+                        <div class="form-group">
+                            <label for="weight">Weight (kg)</label>
+                            <input type="number" id="weight" name="weight" step="0.1" min="1" max="500" placeholder="70.0">
+                        </div>
+                        <div class="form-group">
+                            <label for="height">Height (cm)</label>
+                            <input type="number" id="height" name="height" step="0.1" min="50" max="250" placeholder="170.0">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="vitals_remarks">Vitals Remarks</label>
+                        <textarea id="vitals_remarks" name="vitals_remarks" rows="3"
+                            placeholder="Any additional notes about the patient's vitals..."></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" disabled id="saveVitalsBtn">
+                            <i class="fas fa-save"></i> Save Vitals
+                        </button>
+                    </div>
+                </form>
+            </div>
+
             <!-- Referral Form -->
             <div class="form-section">
                 <form class="profile-card referral-form" id="referralForm" method="post">
                     <input type="hidden" name="action" value="create_referral">
-                    <input type="hidden" name="patient_id" id="selectedPatientId">
+                    <input type="hidden" name="patient_id" id="referralPatientId">
                     <input type="hidden" name="referred_to_facility_id" id="referredToFacilityId">
 
                     <h3><i class="fas fa-share"></i> Create Referral</h3>
@@ -1268,47 +1452,10 @@ try {
                             <i class="fas fa-hospital"></i> Referring From: <?= htmlspecialchars($employee_facility_name ?: 'Unknown Facility') ?>
                         </p>
                     </div>
-                    <div id="selectedPatientInfo" class="selected-patient-info" style="display:none;">
-                        <p><strong>Selected Patient:</strong> <span id="selectedPatientName"></span></p>
-                    </div>
-
-                    <!-- Patient Vitals Section -->
-                    <div class="form-section">
-                        <h4><i class="fas fa-heartbeat"></i> Patient Vitals (Optional)</h4>
-                        <div class="vitals-grid">
-                            <div class="form-group">
-                                <label for="systolic_bp">Systolic BP</label>
-                                <input type="number" id="systolic_bp" name="systolic_bp" min="60" max="300" placeholder="120">
-                            </div>
-                            <div class="form-group">
-                                <label for="diastolic_bp">Diastolic BP</label>
-                                <input type="number" id="diastolic_bp" name="diastolic_bp" min="40" max="200" placeholder="80">
-                            </div>
-                            <div class="form-group">
-                                <label for="heart_rate">Heart Rate</label>
-                                <input type="number" id="heart_rate" name="heart_rate" min="30" max="200" placeholder="72">
-                            </div>
-                            <div class="form-group">
-                                <label for="respiratory_rate">Respiratory Rate</label>
-                                <input type="number" id="respiratory_rate" name="respiratory_rate" min="8" max="60" placeholder="18">
-                            </div>
-                            <div class="form-group">
-                                <label for="temperature">Temperature (°C)</label>
-                                <input type="number" id="temperature" name="temperature" step="0.1" min="30" max="45" placeholder="36.5">
-                            </div>
-                            <div class="form-group">
-                                <label for="weight">Weight (kg)</label>
-                                <input type="number" id="weight" name="weight" step="0.1" min="1" max="500" placeholder="70.0">
-                            </div>
-                            <div class="form-group">
-                                <label for="height">Height (cm)</label>
-                                <input type="number" id="height" name="height" step="0.1" min="50" max="250" placeholder="170.0">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="vitals_remarks">Vitals Remarks</label>
-                            <textarea id="vitals_remarks" name="vitals_remarks" rows="3"
-                                placeholder="Any additional notes about the patient's vitals..."></textarea>
+                    <div id="referralPatientInfo" class="selected-patient-info" style="display:none;">
+                        <p><strong>Selected Patient:</strong> <span id="referralPatientName"></span></p>
+                        <div id="currentVitalsInfo" style="margin-top: 0.5rem; padding: 0.75rem; background: #e8f5e8; border-radius: 5px; font-size: 0.9em; color: #155724; border-left: 4px solid #28a745; display: none;">
+                            <i class="fas fa-heartbeat"></i> <span id="currentVitalsText"></span>
                         </div>
                     </div>
 
@@ -1335,7 +1482,8 @@ try {
 
                                     // BHW can refer to district, city, and external
                                     if ($current_role === 'bhw'): ?>
-                                        <option value="district_office">District Health Office</option>
+                                        <!-- District Health Office option will be dynamically shown/hidden based on patient's district -->
+                                        <option value="district_office" id="districtOfficeOption">District Health Office</option>
                                         <option value="city_office">City Health Office (Main District)</option>
                                         <option value="external">External Facility</option>
 
@@ -1347,7 +1495,8 @@ try {
                                     <?php // Admin can refer to all destinations, others can refer to city office and external
                                     elseif ($current_role === 'admin'): ?>
                                         <option value="barangay_center">Barangay Health Center</option>
-                                        <option value="district_office">District Health Office</option>
+                                        <!-- District Health Office option will be dynamically shown/hidden based on patient's district -->
+                                        <option value="district_office" id="districtOfficeOptionAdmin">District Health Office</option>
                                         <option value="city_office">City Health Office (Main District)</option>
                                         <option value="external">External Facility</option>
 
@@ -1358,7 +1507,8 @@ try {
                                     <?php else:
                                         // Fallback for any other roles - show district, city, and external only 
                                     ?>
-                                        <option value="district_office">District Health Office</option>
+                                        <!-- District Health Office option will be dynamically shown/hidden based on patient's district -->
+                                        <option value="district_office" id="districtOfficeOptionOther">District Health Office</option>
                                         <option value="city_office">City Health Office (Main District)</option>
                                         <option value="external">External Facility</option>
                                     <?php endif; ?>
@@ -1378,7 +1528,7 @@ try {
                                     </small>
                                 <?php elseif ($current_role === 'bhw'): ?>
                                     <small style="color: #666; font-size: 0.85em;">
-                                        <i class="fas fa-info-circle"></i> As Barangay Health Worker, you can refer to District Office, City Health Office, or external facilities
+                                        <i class="fas fa-info-circle"></i> As Barangay Health Worker, you can refer to District Office (for non-Main District patients), City Health Office, or external facilities
                                     </small>
                                 <?php endif; ?>
                             </div>
@@ -1543,10 +1693,15 @@ try {
             // Patient selection logic
             const patientCheckboxes = document.querySelectorAll('.patient-checkbox');
             const referralForm = document.getElementById('referralForm');
-            const submitBtn = referralForm.querySelector('button[type="submit"]');
-            const selectedPatientId = document.getElementById('selectedPatientId');
-            const selectedPatientInfo = document.getElementById('selectedPatientInfo');
-            const selectedPatientName = document.getElementById('selectedPatientName');
+            const vitalsForm = document.getElementById('vitalsForm');
+            const submitBtn = referralForm ? referralForm.querySelector('button[type="submit"]') : null;
+            const saveVitalsBtn = document.getElementById('saveVitalsBtn');
+            const referralPatientId = document.getElementById('referralPatientId');
+            const vitalsPatientId = document.getElementById('vitalsPatientId');
+            const referralPatientInfo = document.getElementById('referralPatientInfo');
+            const vitalsPatientInfo = document.getElementById('vitalsPatientInfo');
+            const referralPatientName = document.getElementById('referralPatientName');
+            const vitalsPatientName = document.getElementById('vitalsPatientName');
 
             patientCheckboxes.forEach(checkbox => {
                 checkbox.addEventListener('change', function() {
@@ -1574,21 +1729,37 @@ try {
                             parentCard.classList.add('selected');
                         }
 
-                        // Enable form
-                        referralForm.classList.add('enabled');
-                        submitBtn.disabled = false;
-                        selectedPatientId.value = this.value;
-                        selectedPatientName.textContent = this.dataset.patientName;
-                        selectedPatientInfo.style.display = 'block';
+                        // Enable both forms
+                        if (referralForm) referralForm.classList.add('enabled');
+                        if (vitalsForm) vitalsForm.classList.add('enabled');
+                        if (submitBtn) submitBtn.disabled = false;
+                        if (saveVitalsBtn) saveVitalsBtn.disabled = false;
+                        
+                        // Set patient IDs for both forms
+                        referralPatientId.value = this.value;
+                        vitalsPatientId.value = this.value;
+                        
+                        // Set patient names for both forms
+                        referralPatientName.textContent = this.dataset.patientName;
+                        vitalsPatientName.textContent = this.dataset.patientName;
+                        
+                        // Show patient info for both forms
+                        referralPatientInfo.style.display = 'block';
+                        vitalsPatientInfo.style.display = 'block';
 
-                        // Fetch patient facility information
+                        // Fetch patient facilities and latest vitals
                         fetchPatientFacilities(this.value);
+                        fetchAndPopulateLatestVitals(this.value);
                     } else {
-                        // Disable form if no patient selected
-                        referralForm.classList.remove('enabled');
-                        submitBtn.disabled = true;
-                        selectedPatientId.value = '';
-                        selectedPatientInfo.style.display = 'none';
+                        // Disable both forms if no patient selected
+                        if (referralForm) referralForm.classList.remove('enabled');
+                        if (vitalsForm) vitalsForm.classList.remove('enabled');
+                        if (submitBtn) submitBtn.disabled = true;
+                        if (saveVitalsBtn) saveVitalsBtn.disabled = true;
+                        if (referralPatientId) referralPatientId.value = '';
+                        if (vitalsPatientId) vitalsPatientId.value = '';
+                        if (referralPatientInfo) referralPatientInfo.style.display = 'none';
+                        if (vitalsPatientInfo) vitalsPatientInfo.style.display = 'none';
 
                         // Remove selection from both desktop and mobile
                         const parentRow = this.closest('.patient-row');
@@ -1600,9 +1771,16 @@ try {
                             parentCard.classList.remove('selected');
                         }
 
-                        // Clear facility information
+                        // Clear facility information and vitals
                         currentPatientFacilities = null;
                         hideAllConditionalFields();
+                        clearVitalsForm();
+                        hideLastVitalsInfo();
+                        hideNoVitalsInfo();
+                        hideAutoSelectedInfo();
+
+                        // Reset district-specific options (show all district office options)
+                        resetDistrictSpecificOptions();
 
                         // Clear all form inputs
                         document.getElementById('destination_type').value = '';
@@ -1650,7 +1828,7 @@ try {
                 destinationType.addEventListener('change', function() {
                     hideAllConditionalFields();
 
-                    const selectedPatientId = document.getElementById('selectedPatientId').value;
+                    const selectedPatientId = document.getElementById('referralPatientId') ? document.getElementById('referralPatientId').value : null;
 
                     switch (this.value) {
                         case 'barangay_center':
@@ -1683,7 +1861,7 @@ try {
                             if (referredToFacilityIdExt) referredToFacilityIdExt.value = '';
                             if (externalFacilityTypeField) {
                                 externalFacilityTypeField.classList.add('show');
-                                externalFacilityType.required = true;
+                                if (externalFacilityType) externalFacilityType.required = true;
                             }
                             filterServicesByDestination('external');
                             break;
@@ -1704,12 +1882,12 @@ try {
                     if (this.value === 'hospital') {
                         if (hospitalSelectionField) {
                             hospitalSelectionField.classList.add('show');
-                            hospitalName.required = true;
+                            if (hospitalName) hospitalName.required = true;
                         }
                     } else if (this.value === 'other') {
                         if (otherFacilityField) {
                             otherFacilityField.classList.add('show');
-                            otherFacilityName.required = true;
+                            if (otherFacilityName) otherFacilityName.required = true;
                         }
                     }
                 });
@@ -1862,6 +2040,9 @@ try {
                         if (data.success) {
                             currentPatientFacilities = data;
 
+                            // Handle district-specific destination options
+                            handleDistrictSpecificOptions(data.patient.district_id);
+
                             // Update destination type selection based on current selection
                             const currentDestinationType = destinationType.value;
                             if (currentDestinationType === 'barangay_center') {
@@ -1875,7 +2056,7 @@ try {
                             barangayInfo.style.display = 'block';
                             barangayInfo.style.color = '#666';
                             barangayInfo.innerHTML = `<i class="fas fa-map-marker-alt"></i> Barangay: ${data.patient.barangay_name}`;
-                            selectedPatientInfo.appendChild(barangayInfo);
+                            referralPatientInfo.appendChild(barangayInfo);
 
                         } else {
                             console.error('Error fetching patient facilities:', data.error);
@@ -1887,6 +2068,197 @@ try {
                         console.error('Network error:', error);
                         alert('Network error while loading patient information.');
                     });
+            }
+
+            // Function to handle district-specific destination options
+            function handleDistrictSpecificOptions(districtId) {
+                const districtOfficeOptions = [
+                    document.getElementById('districtOfficeOption'),
+                    document.getElementById('districtOfficeOptionAdmin'),
+                    document.getElementById('districtOfficeOptionOther')
+                ];
+
+                // Hide/show district office option based on patient's district
+                districtOfficeOptions.forEach(option => {
+                    if (option) {
+                        if (districtId == 1) {
+                            // For Main District (district_id=1), hide District Health Office option
+                            // since it's the same as City Health Office
+                            option.style.display = 'none';
+                            option.disabled = true;
+                        } else {
+                            // For other districts, show District Health Office option
+                            option.style.display = 'block';
+                            option.disabled = false;
+                        }
+                    }
+                });
+
+                // If current selection is district_office but patient is from Main District,
+                // automatically switch to city_office
+                const destinationSelect = document.getElementById('destination_type');
+                if (destinationSelect && destinationSelect.value === 'district_office' && districtId == 1) {
+                    destinationSelect.value = 'city_office';
+                    // Trigger change event to update the UI
+                    const event = new Event('change', { bubbles: true });
+                    destinationSelect.dispatchEvent(event);
+                }
+            }
+
+            // Function to reset district-specific options (show all options)
+            function resetDistrictSpecificOptions() {
+                const districtOfficeOptions = [
+                    document.getElementById('districtOfficeOption'),
+                    document.getElementById('districtOfficeOptionAdmin'),
+                    document.getElementById('districtOfficeOptionOther')
+                ];
+
+                // Show all district office options when no patient is selected
+                districtOfficeOptions.forEach(option => {
+                    if (option) {
+                        option.style.display = 'block';
+                        option.disabled = false;
+                    }
+                });
+            }
+
+            // Function to fetch and populate latest vitals for a patient
+            function fetchAndPopulateLatestVitals(patientId) {
+                console.log('Fetching vitals for patient:', patientId);
+                if (!patientId) return;
+
+                fetch(`get_latest_vitals.php?patient_id=${patientId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Vitals response:', data);
+                        if (data.success && data.vitals) {
+                            console.log('Populating vitals form with:', data.vitals);
+                            populateVitalsForm(data.vitals);
+                            showLastVitalsInfo(data.vitals);
+                            showCurrentVitalsInfo(data.vitals);
+                        } else {
+                            console.log('No vitals found or error:', data.message || data.error);
+                            clearVitalsForm();
+                            hideLastVitalsInfo();
+                            showNoVitalsInfo();
+                            hideCurrentVitalsInfo();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching vitals:', error);
+                        clearVitalsForm();
+                        hideLastVitalsInfo();
+                        showNoVitalsInfo();
+                        hideCurrentVitalsInfo();
+                    });
+            }
+
+            // Function to populate vitals form with latest data
+            function populateVitalsForm(vitals) {
+                console.log('populateVitalsForm called with:', vitals);
+                document.getElementById('systolic_bp').value = vitals.systolic_bp || '';
+                document.getElementById('diastolic_bp').value = vitals.diastolic_bp || '';
+                document.getElementById('heart_rate').value = vitals.heart_rate || '';
+                document.getElementById('respiratory_rate').value = vitals.respiratory_rate || '';
+                document.getElementById('temperature').value = vitals.temperature || '';
+                document.getElementById('weight').value = vitals.weight || '';
+                document.getElementById('height').value = vitals.height || '';
+                document.getElementById('vitals_remarks').value = vitals.remarks || '';
+                console.log('Vitals form populated successfully');
+            }
+
+            // Function to clear vitals form
+            function clearVitalsForm() {
+                document.getElementById('systolic_bp').value = '';
+                document.getElementById('diastolic_bp').value = '';
+                document.getElementById('heart_rate').value = '';
+                document.getElementById('respiratory_rate').value = '';
+                document.getElementById('temperature').value = '';
+                document.getElementById('weight').value = '';
+                document.getElementById('height').value = '';
+                document.getElementById('vitals_remarks').value = '';
+            }
+
+            // Function to show last vitals info
+            function showLastVitalsInfo(vitals) {
+                console.log('showLastVitalsInfo called with:', vitals);
+                const lastVitalsInfo = document.getElementById('lastVitalsInfo');
+                const lastVitalsText = document.getElementById('lastVitalsText');
+                
+                console.log('lastVitalsInfo element:', lastVitalsInfo);
+                console.log('lastVitalsText element:', lastVitalsText);
+                
+                if (vitals && vitals.recorded_at) {
+                    const recordedDate = new Date(vitals.recorded_at).toLocaleDateString();
+                    const recordedBy = vitals.recorded_by_name || 'Unknown';
+                    const message = `Last vitals recorded on ${recordedDate} by ${recordedBy}`;
+                    console.log('Setting last vitals message:', message);
+                    if (lastVitalsText) lastVitalsText.textContent = message;
+                    if (lastVitalsInfo) lastVitalsInfo.style.display = 'block';
+                    hideNoVitalsInfo(); // Hide no vitals notice when vitals exist
+                } else {
+                    console.log('No vitals to show, hiding info');
+                    if (lastVitalsInfo) lastVitalsInfo.style.display = 'none';
+                }
+            }
+
+            // Function to hide last vitals info
+            function hideLastVitalsInfo() {
+                const lastVitalsInfo = document.getElementById('lastVitalsInfo');
+                if (lastVitalsInfo) lastVitalsInfo.style.display = 'none';
+            }
+
+            // Function to show no vitals info
+            function showNoVitalsInfo() {
+                const noVitalsInfo = document.getElementById('noVitalsInfo');
+                if (noVitalsInfo) noVitalsInfo.style.display = 'block';
+                hideLastVitalsInfo(); // Hide last vitals info when showing no vitals notice
+            }
+
+            // Function to hide no vitals info
+            function hideNoVitalsInfo() {
+                const noVitalsInfo = document.getElementById('noVitalsInfo');
+                if (noVitalsInfo) noVitalsInfo.style.display = 'none';
+            }
+
+            // Function to show auto-selected info
+            function showAutoSelectedInfo() {
+                const autoSelectedInfo = document.getElementById('autoSelectedInfo');
+                if (autoSelectedInfo) {
+                    autoSelectedInfo.style.display = 'block';
+                    // Auto-hide after 5 seconds
+                    setTimeout(() => {
+                        autoSelectedInfo.style.display = 'none';
+                    }, 5000);
+                }
+                hideLastVitalsInfo();
+                hideNoVitalsInfo();
+            }
+
+            // Function to hide auto-selected info
+            function hideAutoSelectedInfo() {
+                const autoSelectedInfo = document.getElementById('autoSelectedInfo');
+                if (autoSelectedInfo) autoSelectedInfo.style.display = 'none';
+            }
+
+            // Function to show current vitals info in referral form
+            function showCurrentVitalsInfo(vitals) {
+                const currentVitalsInfo = document.getElementById('currentVitalsInfo');
+                const currentVitalsText = document.getElementById('currentVitalsText');
+                
+                if (vitals && vitals.recorded_at) {
+                    const recordedDate = new Date(vitals.recorded_at).toLocaleDateString();
+                    currentVitalsText.textContent = `Latest vitals available from ${recordedDate} (will be attached to referral)`;
+                    currentVitalsInfo.style.display = 'block';
+                } else {
+                    currentVitalsText.textContent = 'No vitals recorded for this patient';
+                    currentVitalsInfo.style.display = 'block';
+                }
+            }
+
+            // Function to hide current vitals info
+            function hideCurrentVitalsInfo() {
+                document.getElementById('currentVitalsInfo').style.display = 'none';
             }
 
             // Loading indicator functions
@@ -1922,7 +2294,7 @@ try {
             // Function to populate modal with form data
             function populateReferralModal() {
                 // Patient information
-                const patientName = document.getElementById('selectedPatientName').textContent;
+                const patientName = document.getElementById('referralPatientName').textContent;
                 const selectedCheckbox = document.querySelector('.patient-checkbox:checked');
                 let patientId = '-';
 
@@ -2159,14 +2531,12 @@ try {
                 });
             }
 
-
-
             // Form validation
             if (referralForm) {
                 referralForm.addEventListener('submit', function(e) {
                     e.preventDefault(); // Always prevent default submission initially
 
-                    const patientId = document.getElementById('selectedPatientId').value;
+                    const patientId = document.getElementById('referralPatientId').value;
                     if (!patientId) {
                         alert('Please select a patient from the search results above.');
                         return false;
@@ -2278,11 +2648,75 @@ try {
                 });
             }
 
+            // Form validation for vitals form
+            if (vitalsForm) {
+                vitalsForm.addEventListener('submit', function(e) {
+                    const patientId = document.getElementById('vitalsPatientId').value;
+                    if (!patientId) {
+                        e.preventDefault();
+                        alert('Please select a patient first.');
+                        return false;
+                    }
+
+                    // Check if at least one field is filled
+                    const vitalsFields = ['systolic_bp', 'diastolic_bp', 'heart_rate', 'respiratory_rate', 'temperature', 'weight', 'height'];
+                    const vitalsRemarks = document.getElementById('vitals_remarks').value.trim();
+                    
+                    const hasVitalData = vitalsFields.some(field => {
+                        const value = document.getElementById(field).value;
+                        return value && value.trim() !== '';
+                    }) || vitalsRemarks !== '';
+
+                    if (!hasVitalData) {
+                        e.preventDefault();
+                        alert('Please provide at least one vital sign measurement or remark.');
+                        return false;
+                    }
+
+                    // Allow form submission
+                    return true;
+                });
+            }
+
             // Note: Service filtering is handled through destination type selection
             // No additional facility-based service filtering needed here
 
             // Setup modal handlers
             setupModalHandlers();
+
+            // Auto-select patient if specified (after vitals save)
+            const keepPatientSelected = <?= json_encode($keep_patient_selected) ?>;
+            console.log('Keep patient selected:', keepPatientSelected);
+            if (keepPatientSelected) {
+                // Add a small delay to ensure DOM is fully rendered
+                setTimeout(() => {
+                    // Find and check the corresponding patient checkbox
+                    const patientCheckbox = document.querySelector('.patient-checkbox[value="' + keepPatientSelected + '"]');
+                    console.log('Found patient checkbox:', patientCheckbox);
+                    if (patientCheckbox) {
+                        patientCheckbox.checked = true;
+                        const event = new Event('change', { bubbles: true });
+                        patientCheckbox.dispatchEvent(event);
+                        console.log('Auto-selected patient and triggered change event');
+                        
+                        // Show auto-selected info notice
+                        setTimeout(() => {
+                            showAutoSelectedInfo();
+                        }, 500); // Small delay to let vitals load first
+                        
+                        // Scroll to the patient to make it visible
+                        const parentRow = patientCheckbox.closest('.patient-row');
+                        const parentCard = patientCheckbox.closest('.patient-card');
+                        if (parentRow) {
+                            parentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        } else if (parentCard) {
+                            parentCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    } else {
+                        console.error('Could not find patient checkbox for ID:', keepPatientSelected);
+                    }
+                }, 100);
+            }
         });
     </script>
 
