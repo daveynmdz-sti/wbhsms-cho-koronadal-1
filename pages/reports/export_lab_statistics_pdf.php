@@ -257,7 +257,7 @@ try {
     }
 
     // Get employee name for report
-    $employee_name = $_SESSION['first_name'] . ' ' . $_SESSION['last_name'];
+    $employee_name = ($_SESSION['employee_first_name'] ?? '') . ' ' . ($_SESSION['employee_last_name'] ?? '');
     $employee_role = ucfirst($_SESSION['role']);
 
     // Generate narrative analysis
