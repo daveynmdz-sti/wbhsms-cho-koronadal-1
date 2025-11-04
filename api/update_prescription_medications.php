@@ -80,8 +80,30 @@ try {
     $conn->begin_transaction();
     
     try {
-        // First, reset all medications for this prescription to 'pending'
-        $resetQuery = "UPDATE prescribed_medications SET status = ?, updated_at = NOW() WHERE prescription_id = ?";
+        // Check if any medications are already dispensed or unavailable - these should NOT be updated
+        $checkProcessedQuery = "SELECT prescribed_medication_id, medication_name, status 
+                               FROM prescribed_medications 
+                               WHERE prescription_id = ? AND status IN ('dispensed', 'unavailable')";
+        $checkProcessedStmt = $conn->prepare($checkProcessedQuery);
+        if (!$checkProcessedStmt) {
+            throw new Exception('Failed to prepare processed medications check: ' . $conn->error);
+        }
+        $checkProcessedStmt->bind_param("i", $prescriptionId);
+        $checkProcessedStmt->execute();
+        $processedMedications = $checkProcessedStmt->get_result();
+        
+        // If there are already processed medications, prevent the update
+        if ($processedMedications->num_rows > 0) {
+            $processedList = [];
+            while ($row = $processedMedications->fetch_assoc()) {
+                $processedList[] = $row['medication_name'] . ' (' . ucfirst($row['status']) . ')';
+            }
+            throw new Exception('Cannot update medication statuses. The following medications have already been processed and cannot be changed: ' . implode(', ', $processedList) . '. Medication statuses can only be set once for audit integrity.');
+        }
+        
+        // Only reset medications that are still pending (not dispensed or unavailable)
+        $resetQuery = "UPDATE prescribed_medications SET status = ?, updated_at = NOW() 
+                      WHERE prescription_id = ? AND status = 'pending'";
         $resetStmt = $conn->prepare($resetQuery);
         if (!$resetStmt) {
             throw new Exception('Failed to prepare reset query: ' . $conn->error);
@@ -110,21 +132,37 @@ try {
                     throw new Exception('Invalid medication status: ' . $status);
                 }
                 
-                // Check if the medication exists for this prescription before updating
-                $checkMedQuery = "SELECT prescribed_medication_id, medication_name FROM prescribed_medications WHERE prescribed_medication_id = ? AND prescription_id = ?";
+                // Check if the medication exists and is still pending (not already processed)
+                $checkMedQuery = "SELECT prescribed_medication_id, medication_name, status 
+                                 FROM prescribed_medications 
+                                 WHERE prescribed_medication_id = ? AND prescription_id = ?";
                 $checkMedStmt = $conn->prepare($checkMedQuery);
                 if ($checkMedStmt) {
                     $checkMedStmt->bind_param("ii", $prescribedMedicationId, $prescriptionId);
                     $checkMedStmt->execute();
-                    $medExists = $checkMedStmt->get_result();
+                    $medResult = $checkMedStmt->get_result();
                     
-                    if ($medExists->num_rows === 0) {
+                    if ($medResult->num_rows === 0) {
                         error_log("ERROR: Medication ID $prescribedMedicationId does not exist for prescription $prescriptionId");
                         throw new Exception("Medication ID $prescribedMedicationId not found for this prescription");
                     } else {
-                        $medData = $medExists->fetch_assoc();
-                        error_log("Found medication: ID $prescribedMedicationId - {$medData['medication_name']}");
+                        $medData = $medResult->fetch_assoc();
+                        
+                        // Check if medication is already processed (dispensed or unavailable)
+                        if (in_array($medData['status'], ['dispensed', 'unavailable'])) {
+                            throw new Exception("Cannot update medication '{$medData['medication_name']}' - it has already been processed as '{$medData['status']}'. Medication statuses can only be set once for audit integrity.");
+                        }
+                        
+                        error_log("Found medication: ID $prescribedMedicationId - {$medData['medication_name']} (Status: {$medData['status']})");
                     }
+                }
+                
+                // Only update medications that are still pending
+                $updateQuery = "UPDATE prescribed_medications SET status = ?, updated_at = NOW() 
+                               WHERE prescribed_medication_id = ? AND prescription_id = ? AND status = 'pending'";
+                $updateStmt = $conn->prepare($updateQuery);
+                if (!$updateStmt) {
+                    throw new Exception('Failed to prepare update query: ' . $conn->error);
                 }
                 
                 // Debug: Log each medication update
@@ -141,7 +179,8 @@ try {
                 error_log("Medication update result: affected_rows = $affectedRows");
                 
                 if ($affectedRows === 0) {
-                    error_log("Warning: No rows affected for medication ID $prescribedMedicationId - may not exist");
+                    error_log("Warning: No rows affected for medication ID $prescribedMedicationId - may already be processed or not exist");
+                    // Don't throw exception here as it might be already processed, which is now prevented above
                 }
             }
         }

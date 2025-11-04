@@ -30,7 +30,7 @@ if (!$canViewPrescriptions) {
     // Map role_id to role name for redirect
     $roleMap = [
         1 => 'admin',
-        2 => 'doctor', 
+        2 => 'doctor',
         3 => 'nurse',
         4 => 'pharmacist',
         5 => 'dho',
@@ -65,7 +65,8 @@ $checkColumnSql = "SHOW COLUMNS FROM prescriptions LIKE 'overall_status'";
 $columnResult = $conn->query($checkColumnSql);
 $hasOverallStatus = $columnResult->num_rows > 0;
 
-// Fetch prescriptions with patient information and medication counts
+// Fetch prescriptions with patient information and medication counts (LEFT PANEL - Active/Pending)
+// Only show prescriptions that have at least one pending medication
 $statusColumn = $hasOverallStatus ? 'p.overall_status' : 'p.status';
 $prescriptionsSql = "SELECT p.prescription_id, p.patient_id, 
                      p.prescription_date, 
@@ -78,28 +79,20 @@ $prescriptionsSql = "SELECT p.prescription_id, p.patient_id,
                      b.barangay_name as barangay,
                      e.first_name as prescribed_by_first_name, e.last_name as prescribed_by_last_name,
                      COUNT(pm.prescribed_medication_id) as total_medications,
-                     SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) as dispensed_medications
+                     SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) as dispensed_medications,
+                     SUM(CASE WHEN pm.status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_medications,
+                     SUM(CASE WHEN pm.status = 'pending' THEN 1 ELSE 0 END) as pending_medications
               FROM prescriptions p
               LEFT JOIN patients pt ON p.patient_id = pt.patient_id
               LEFT JOIN barangay b ON pt.barangay_id = b.barangay_id
               LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
               LEFT JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id
-              WHERE pt.status = 'active' AND (
-                  -- Show today's prescriptions (all statuses)
-                  DATE(p.prescription_date) = CURDATE() 
-                  OR 
-                  -- Show past prescriptions only if they have pending medications
-                  (DATE(p.prescription_date) < CURDATE() AND EXISTS (
-                      SELECT 1 FROM prescribed_medications pm_check 
-                      WHERE pm_check.prescription_id = p.prescription_id 
-                      AND pm_check.status = 'pending'
-                  ))
-                  OR
-                  -- Always show issued prescriptions regardless of date (fallback for status filter)
-                  $statusColumn = 'issued'
-                  OR
-                  -- Keep showing active prescriptions for backward compatibility
-                  $statusColumn = 'active'
+              WHERE pt.status = 'active' 
+              AND EXISTS (
+                  -- Only show prescriptions that have at least one pending medication
+                  SELECT 1 FROM prescribed_medications pm_pending 
+                  WHERE pm_pending.prescription_id = p.prescription_id 
+                  AND pm_pending.status = 'pending'
               )";
 
 $params = [];
@@ -144,29 +137,20 @@ $prescriptionsSql .= " GROUP BY p.prescription_id
 array_push($params, $recordsPerPage, $offset);
 $types .= "ii";
 
-// Get total count for pagination
+// Get total count for pagination (LEFT PANEL - Active/Pending)
+// Only count prescriptions that have at least one pending medication
 $countSql = "SELECT COUNT(DISTINCT p.prescription_id) as total
               FROM prescriptions p
               LEFT JOIN patients pt ON p.patient_id = pt.patient_id
               LEFT JOIN barangay b ON pt.barangay_id = b.barangay_id
               LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
               LEFT JOIN prescribed_medications pm ON p.prescription_id = pm.prescription_id
-              WHERE pt.status = 'active' AND (
-                  -- Show today's prescriptions (all statuses)
-                  DATE(p.prescription_date) = CURDATE() 
-                  OR 
-                  -- Show past prescriptions only if they have pending medications
-                  (DATE(p.prescription_date) < CURDATE() AND EXISTS (
-                      SELECT 1 FROM prescribed_medications pm_check 
-                      WHERE pm_check.prescription_id = p.prescription_id 
-                      AND pm_check.status = 'pending'
-                  ))
-                  OR
-                  -- Always show issued prescriptions regardless of date (fallback for status filter)
-                  $statusColumn = 'issued'
-                  OR
-                  -- Keep showing active prescriptions for backward compatibility
-                  $statusColumn = 'active'
+              WHERE pt.status = 'active' 
+              AND EXISTS (
+                  -- Only count prescriptions that have at least one pending medication
+                  SELECT 1 FROM prescribed_medications pm_pending 
+                  WHERE pm_pending.prescription_id = p.prescription_id 
+                  AND pm_pending.status = 'pending'
               )";
 
 $countParams = [];
@@ -241,8 +225,8 @@ try {
     $totalPrescriptions = 0;
 }
 
-// Recently dispensed prescriptions query - shows prescriptions with status 'issued' or 'dispensed'
-// (all medications processed: dispensed OR unavailable - ready for printing)
+// Recently dispensed prescriptions query - shows prescriptions where ALL medications are processed
+// (all medications either dispensed OR unavailable - no pending medications remaining)
 $recentDispensedSql = "SELECT p.prescription_id, 
                        p.prescription_date,
                        p.updated_at as dispensed_date,
@@ -253,7 +237,18 @@ $recentDispensedSql = "SELECT p.prescription_id,
                        FROM prescriptions p 
                        LEFT JOIN patients pt ON p.patient_id = pt.patient_id
                        LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
-                       WHERE p.status IN ('issued', 'dispensed')";
+                       WHERE pt.status = 'active'
+                       AND NOT EXISTS (
+                           -- Exclude prescriptions that have any pending medications
+                           SELECT 1 FROM prescribed_medications pm_pending 
+                           WHERE pm_pending.prescription_id = p.prescription_id 
+                           AND pm_pending.status = 'pending'
+                       )
+                       AND EXISTS (
+                           -- Only include prescriptions that have at least one medication
+                           SELECT 1 FROM prescribed_medications pm_exists 
+                           WHERE pm_exists.prescription_id = p.prescription_id
+                       )";
 
 $recentParams = [];
 $recentTypes = "";
@@ -288,7 +283,18 @@ $recentCountSql = "SELECT COUNT(*) as total
                    FROM prescriptions p 
                    LEFT JOIN patients pt ON p.patient_id = pt.patient_id
                    LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
-                   WHERE p.status IN ('issued', 'dispensed')";
+                   WHERE pt.status = 'active'
+                   AND NOT EXISTS (
+                       -- Exclude prescriptions that have any pending medications
+                       SELECT 1 FROM prescribed_medications pm_pending 
+                       WHERE pm_pending.prescription_id = p.prescription_id 
+                       AND pm_pending.status = 'pending'
+                   )
+                   AND EXISTS (
+                       -- Only include prescriptions that have at least one medication
+                       SELECT 1 FROM prescribed_medications pm_exists 
+                       WHERE pm_exists.prescription_id = p.prescription_id
+                   )";
 
 $recentCountParams = [];
 $recentCountTypes = "";
@@ -355,7 +361,7 @@ try {
 
 <head>
     <meta charset="UTF-8">
-        <!-- Favicon -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
@@ -479,202 +485,741 @@ try {
             background-color: #005577;
         }
 
-        /* Prescription Management Specific Styles */
+        .btn-outline {
+            background-color: transparent;
+            color: #0077b6;
+            border: 2px solid #0077b6;
+        }
+
+        .btn-outline:hover {
+            background-color: #0077b6;
+            color: white;
+        }
+
+        /* Section Header Styles */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .section-title i {
+            color: #0077b6;
+            font-size: 1.5rem;
+        }
+
+        .section-title h2 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .section-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        /* Workflow Guide Styles */
+        .workflow-guide {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .workflow-step {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            background: #f8f9fa;
+            min-width: 200px;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #0077b6;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .step-content h4 {
+            margin: 0 0 0.25rem 0;
+            color: #2c3e50;
+            font-size: 1rem;
+        }
+
+        .step-content p {
+            margin: 0;
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+
+        .workflow-arrow {
+            color: #0077b6;
+            font-size: 1.5rem;
+            margin: 0 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .workflow-guide {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .workflow-arrow {
+                transform: rotate(90deg);
+                margin: 0.5rem 0;
+            }
+
+            .section-header {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+        }
+
+        /* Enhanced Prescription Management Styles */
         .prescription-management-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 20px;
+            gap: 2rem;
+            margin-top: 2rem;
         }
 
         .prescription-panel {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .prescription-panel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+        }
+
+        .active-panel {
+            border-top: 4px solid #ffc107;
+        }
+
+        .completed-panel {
+            border-top: 4px solid #28a745;
         }
 
         .panel-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #03045e;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid #dee2e6;
         }
 
-        .panel-title {
-            font-size: 1.3em;
-            font-weight: bold;
-            color: #03045e;
+        .panel-title-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
 
-        .create-prescription-btn {
-            background: #03045e;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.9em;
-            transition: background-color 0.3s;
-        }
-
-        .create-prescription-btn:hover {
-            background: #0218A7;
-        }
-
-        .prescription-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-
-        .prescription-table th,
-        .prescription-table td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-            font-size: 0.9em;
-        }
-
-        .prescription-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-            color: #03045e;
-        }
-
-        .prescription-table tr:hover {
-            background-color: #f5f5f5;
-        }
-
-        .status-badge {
-            padding: 4px 8px;
+        .panel-icon {
+            width: 50px;
+            height: 50px;
             border-radius: 12px;
-            font-size: 0.8em;
-            font-weight: bold;
-            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
         }
 
-        .status-pending {
-            background-color: #fff3cd;
+        .panel-icon.pending {
+            background: #fff3cd;
             color: #856404;
         }
 
-        .status-dispensing {
-            background-color: #d1ecf1;
-            color: #0c5460;
-        }
-
-        .status-dispensed {
-            background-color: #d4edda;
+        .panel-icon.completed {
+            background: #d4edda;
             color: #155724;
         }
 
-        .status-cancelled {
-            background-color: #f8d7da;
-            color: #721c24;
+        .panel-title-content h3 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.25rem;
+            font-weight: 600;
         }
 
-        .status-partial {
-            background-color: #e2e3e5;
-            color: #383d41;
+        .panel-subtitle {
+            color: #6c757d;
+            font-size: 0.875rem;
         }
 
-        .action-btn {
-            padding: 5px 10px;
-            margin: 2px;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 0.8em;
-            transition: all 0.3s;
+        .panel-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.875rem;
         }
 
-        .btn-view {
-            background-color: #007bff;
-            color: white;
+        .panel-badge.pending {
+            background: #fff3cd;
+            color: #856404;
         }
 
-        .btn-dispense {
-            background-color: #28a745;
-            color: white;
+        .panel-badge.completed {
+            background: #d4edda;
+            color: #155724;
         }
 
-        .btn-print {
-            background-color: #17a2b8;
-            color: white;
+        /* Panel Info Cards */
+        .panel-info-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            margin: 0;
+            border-radius: 0;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 0.875rem;
         }
 
-        .action-btn:hover {
+        .panel-info-card.warning {
+            background: #fffbf0;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+
+        .panel-info-card.success {
+            background: #f0f9f0;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+
+        .panel-info-card i {
+            margin-top: 0.125rem;
+            font-size: 1rem;
+        }
+
+        .info-content {
+            flex: 1;
+            line-height: 1.4;
+        }
+
+        .info-content small {
             opacity: 0.8;
-            transform: translateY(-1px);
         }
 
+        /* Enhanced Prescription Management Styles */
+        .prescription-management-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .prescription-panel {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .prescription-panel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+        }
+
+        .active-panel {
+            border-top: 4px solid #ffc107;
+        }
+
+        .completed-panel {
+            border-top: 4px solid #28a745;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .panel-title-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .panel-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .panel-icon.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .panel-icon.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .panel-title-content h3 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .panel-subtitle {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+
+        .panel-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .panel-badge.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .panel-badge.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        /* Panel Info Cards */
+        .panel-info-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            margin: 0;
+            border-radius: 0;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 0.875rem;
+        }
+
+        .panel-info-card.warning {
+            background: #fffbf0;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+
+        .panel-info-card.success {
+            background: #f0f9f0;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+
+        .panel-info-card i {
+            margin-top: 0.125rem;
+            font-size: 1rem;
+        }
+
+        .info-content {
+            flex: 1;
+            line-height: 1.4;
+        }
+
+        .info-content small {
+            opacity: 0.8;
+        }
+
+        /* Enhanced Search and Filter Styles */
         .search-filters {
             display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
             flex-wrap: wrap;
             align-items: stretch;
         }
 
         .filter-input {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 0.9em;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 0.875rem;
             flex: 1;
-            min-width: 150px;
-        }
-
-        /* Enhanced search input styling */
-        .filter-input[id="searchPrescriptions"], 
-        .filter-input[id="recentSearchPrescriptions"] {
-            border: 2px solid #0077b6;
-            background: #f8f9fa;
-            font-weight: 500;
+            min-width: 200px;
             transition: all 0.3s ease;
-        }
-
-        .filter-input[id="searchPrescriptions"]:focus, 
-        .filter-input[id="recentSearchPrescriptions"]:focus {
-            outline: none;
-            border-color: #005577;
-            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.1);
             background: white;
         }
 
-        .filter-btn {
-            padding: 8px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9em;
+        .filter-input:focus {
+            outline: none;
+            border-color: #0077b6;
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.1);
+        }
+
+        /* Enhanced search input styling */
+        .filter-input[id="searchPrescriptions"],
+        .filter-input[id="recentSearchPrescriptions"] {
+            border: 2px solid #0077b6;
+            background: white;
             font-weight: 500;
+        }
+
+        .filter-input[id="searchPrescriptions"]:focus,
+        .filter-input[id="recentSearchPrescriptions"]:focus {
+            border-color: #005577;
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.2);
+        }
+
+        .filter-btn {
+            padding: 0.75rem 1.25rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 5px;
-            transition: all 0.3s;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
             white-space: nowrap;
         }
 
         .search-btn {
-            background-color: #0077b6;
+            background: linear-gradient(135deg, #0077b6 0%, #005577 100%);
             color: white;
+            box-shadow: 0 2px 8px rgba(0, 119, 182, 0.3);
         }
 
         .search-btn:hover {
-            background-color: #005577;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 119, 182, 0.4);
         }
 
         .clear-btn {
-            background-color: #6c757d;
+            background: #6c757d;
             color: white;
         }
 
         .clear-btn:hover {
-            background-color: #545b62;
+            background: #545b62;
+            transform: translateY(-1px);
+        }
+
+        /* Enhanced Table Styles */
+        .prescription-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .prescription-table th {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: #2c3e50;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .prescription-table td {
+            padding: 1rem;
+            border-bottom: 1px solid #f1f3f4;
+        }
+
+        .prescription-table tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Enhanced Action Buttons */
+        .action-btn {
+            padding: 0.5rem 1rem;
+            margin: 0.125rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .btn-view {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
+        }
+
+        .btn-view:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.4);
+        }
+
+        .btn-dispense {
+            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+        }
+
+        .btn-dispense:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(40, 167, 69, 0.4);
+        }
+
+        .btn-print {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(23, 162, 184, 0.3);
+        }
+
+        .btn-print:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(23, 162, 184, 0.4);
+        }
+
+        /* Enhanced Status Badges */
+        .status-badge {
+            padding: 0.375rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .status-pending {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            color: #856404;
+        }
+
+        .status-dispensing {
+            background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+            color: #0c5460;
+        }
+
+        .status-dispensed {
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+            color: #155724;
+        }
+
+        .status-cancelled {
+            background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+            color: #721c24;
+        }
+
+        .status-partial {
+            background: linear-gradient(135deg, #e2e3e5 0%, #d6d8db 100%);
+            color: #383d41;
+        }
+
+        /* Empty State Improvements */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #6c757d;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            color: #dee2e6;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 1rem;
+            color: #495057;
+            font-size: 1.25rem;
+        }
+
+        .empty-state p {
+            margin-bottom: 0;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        /* Progress Bar Enhancements */
+        .progress-bar {
+            width: 80px;
+            height: 10px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+            transition: width 0.5s ease;
+            border-radius: 10px;
+        }
+
+        /* Enhanced Mobile Responsiveness */
+        @media (max-width: 992px) {
+            .prescription-management-container {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+
+            .section-header {
+                padding: 1rem;
+            }
+
+            .section-title h2 {
+                font-size: 1.25rem;
+            }
+
+            .workflow-guide {
+                padding: 1rem;
+            }
+
+            .workflow-step {
+                min-width: auto;
+                flex: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .content-wrapper {
+                margin-left: 0;
+                padding: 1rem;
+            }
+
+            .prescription-management-container {
+                gap: 1rem;
+            }
+
+            .panel-header {
+                padding: 1rem;
+            }
+
+            .panel-title-section {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+
+            .panel-icon {
+                width: 40px;
+                height: 40px;
+                font-size: 1.25rem;
+            }
+
+            .search-filters {
+                flex-direction: column;
+                padding: 1rem;
+            }
+
+            .filter-input {
+                min-width: 100%;
+                margin-bottom: 0.5rem;
+            }
+
+            .filter-btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .prescription-table {
+                font-size: 0.8rem;
+            }
+
+            .prescription-table th,
+            .prescription-table td {
+                padding: 0.75rem 0.5rem;
+            }
+
+            .action-btn {
+                padding: 0.375rem 0.75rem;
+                font-size: 0.75rem;
+                margin: 0.125rem;
+            }
+        }
+
+        /* Accessibility Improvements */
+        .btn:focus,
+        .filter-btn:focus,
+        .action-btn:focus {
+            outline: 2px solid #0077b6;
+            outline-offset: 2px;
+        }
+
+        .prescription-table tr:focus-within {
+            background-color: #e8f4f8;
+            outline: 2px solid #0077b6;
+        }
+
+        /* Loading State Styles */
+        .loading-shimmer {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: -200% 0;
+            }
+
+            100% {
+                background-position: 200% 0;
+            }
+        }
+
+        /* Search Help Tip */
+        .search-help-tip {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: #e8f4f8;
+            color: #0066cc;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #bee5eb;
+        }
+
+        .search-help-tip i {
+            color: #17a2b8;
         }
 
         .progress-bar {
@@ -708,7 +1253,7 @@ try {
             margin: 5% auto;
             padding: 20px;
             border-radius: 10px;
-            max-width: 80%;
+            max-width: 75%;
             max-height: 80%;
             overflow-y: auto;
         }
@@ -788,7 +1333,7 @@ try {
         #medicationsTable tbody tr[onclick]:hover {
             background-color: #e8f4f8 !important;
             transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         #medicationsTable tbody tr[onclick]:active {
@@ -924,6 +1469,736 @@ try {
                 margin-top: 40px;
             }
         }
+
+        /* Dispensed Modal Enhancements */
+        .dispensed-modal-content {
+            max-width: 60%;
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            overflow: hidden;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        .dispensed-modal-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: none;
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);
+        }
+
+        .dispensed-modal-header .modal-title-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .dispensed-modal-header .modal-icon-badge {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .dispensed-modal-header .modal-icon-badge i {
+            font-size: 22px;
+            color: white;
+        }
+
+        .dispensed-modal-header .modal-title-content h3 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .dispensed-modal-header .modal-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 400;
+            margin-top: 2px;
+            display: block;
+        }
+
+        .dispensed-modal-header .modal-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .dispensed-modal-header .action-btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .dispensed-modal-header .download-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .dispensed-modal-header .download-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .dispensed-modal-header .close-btn {
+            background: rgba(220, 53, 69, 0.8);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .dispensed-modal-header .close-btn:hover {
+            background: rgba(220, 53, 69, 1);
+            transform: rotate(90deg);
+        }
+
+        .dispensed-modal-body {
+            flex: 1;
+            overflow-y: auto;
+            background: white;
+            max-height: calc(95vh - 120px);
+        }
+
+        /* Content Section Improvements */
+        .dispensed-modal-body .patient-summary {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border: none;
+            border-radius: 12px;
+            margin: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #2196f3;
+            box-shadow: 0 3px 10px rgba(33, 150, 243, 0.1);
+        }
+
+        .dispensed-modal-body .consultation-info {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8ff 100%);
+            border: none;
+            border-radius: 12px;
+            margin: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #17a2b8;
+            box-shadow: 0 3px 10px rgba(23, 162, 184, 0.1);
+        }
+
+        .dispensed-modal-body .prescription-summary {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0fff0 100%);
+            border: none;
+            border-radius: 12px;
+            margin: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #28a745;
+            box-shadow: 0 3px 10px rgba(40, 167, 69, 0.1);
+        }
+
+        .dispensed-modal-body h4 {
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dispensed-modal-body h4 i {
+            font-size: 20px;
+            color: #3498db;
+        }
+
+        .dispensed-modal-body .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px;
+        }
+
+        .dispensed-modal-body .info-item {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .dispensed-modal-body .info-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .dispensed-modal-body .info-value {
+            color: #212529;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .dispensed-modal-body .medications-table {
+            width: calc(100% - 40px);
+            margin: 0 20px 20px 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .dispensed-modal-body .medications-table th {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 12px;
+            padding: 15px 12px;
+        }
+
+        .dispensed-modal-body .medications-table td {
+            padding: 15px 12px;
+            border-bottom: 1px solid #ecf0f1;
+            background: white;
+            transition: background-color 0.2s ease;
+        }
+
+        .dispensed-modal-body .medications-table tr:hover td {
+            background: #f8f9fa;
+        }
+
+        .dispensed-modal-body .status-dispensed {
+            color: #28a745;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .dispensed-modal-body .status-unavailable {
+            color: #dc3545;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .dispensed-modal-body .dispensed-badge {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+        }
+
+        /* Mobile Responsiveness for Dispensed Modal */
+        @media (max-width: 768px) {
+            .dispensed-modal-content {
+                max-width: 98%;
+                max-height: 98%;
+                margin: 1%;
+            }
+
+            .dispensed-modal-header {
+                padding: 15px 20px;
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .dispensed-modal-header .modal-title-section {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .dispensed-modal-header .modal-actions {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .dispensed-modal-body .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .dispensed-modal-body .medications-table {
+                width: calc(100% - 20px);
+                margin: 0 10px 20px 10px;
+                font-size: 12px;
+            }
+
+            .dispensed-modal-body .patient-summary,
+            .dispensed-modal-body .consultation-info,
+            .dispensed-modal-body .prescription-summary {
+                margin: 10px;
+            }
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8) translateY(-50px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        /* Update Modal Enhancements */
+        .update-modal-content {
+            max-width: 90%;
+            max-height: 95%;
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            overflow: hidden;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        .update-modal-header {
+            background: linear-gradient(135deg, #6f42c1 0%, #5a67d8 100%);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: none;
+            box-shadow: 0 4px 12px rgba(111, 66, 193, 0.2);
+        }
+
+        .update-modal-header .modal-title-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .update-modal-header .modal-icon-badge {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .update-modal-header .modal-icon-badge i {
+            font-size: 22px;
+            color: white;
+        }
+
+        .update-modal-header .modal-title-content h3 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .update-modal-header .modal-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 400;
+            margin-top: 2px;
+            display: block;
+        }
+
+        .update-modal-header .modal-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .update-modal-header .action-btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .update-modal-header .download-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .update-modal-header .download-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .update-modal-header .close-btn {
+            background: rgba(220, 53, 69, 0.8);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .update-modal-header .close-btn:hover {
+            background: rgba(220, 53, 69, 1);
+            transform: rotate(90deg);
+        }
+
+        .update-modal-body {
+            flex: 1;
+            overflow-y: auto;
+            background: white;
+            max-height: calc(95vh - 120px);
+        }
+
+        /* Update Modal Content Styling */
+        .update-modal-body .patient-summary {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border: none;
+            border-radius: 12px;
+            margin: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #2196f3;
+            box-shadow: 0 3px 10px rgba(33, 150, 243, 0.1);
+        }
+
+        .update-modal-body .consultation-info {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8ff 100%);
+            border: none;
+            border-radius: 12px;
+            margin: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #17a2b8;
+            box-shadow: 0 3px 10px rgba(23, 162, 184, 0.1);
+        }
+
+        .update-modal-body .medications-section {
+            background: linear-gradient(135deg, #fff3cd 0%, #fef9e7 100%);
+            border: none;
+            border-radius: 12px;
+            margin: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #ffc107;
+            box-shadow: 0 3px 10px rgba(255, 193, 7, 0.1);
+            padding: 20px;
+        }
+
+        .update-modal-body h4 {
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .update-modal-body h4 i {
+            font-size: 20px;
+            color: #6f42c1;
+        }
+
+        .update-modal-body .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .update-modal-body .info-item {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+        }
+
+        .update-modal-body .info-item:hover {
+            background: rgba(255, 255, 255, 0.9);
+            transform: translateY(-1px);
+        }
+
+        .update-modal-body .info-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .update-modal-body .info-value {
+            color: #212529;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .update-modal-body .medications-table {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 15px;
+        }
+
+        .update-modal-body .medications-table th {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 12px;
+            padding: 15px 12px;
+            border: none;
+        }
+
+        .update-modal-body .medications-table td {
+            padding: 15px 12px;
+            border: none;
+            border-bottom: 1px solid #ecf0f1;
+            background: white;
+            transition: background-color 0.2s ease;
+            font-size: 14px;
+        }
+
+        .update-modal-body .medications-table tr:hover td {
+            background: #f8f9fa;
+        }
+
+        .update-modal-body .medications-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .update-modal-body .status-dispensed {
+            color: #28a745;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .update-modal-body .status-unavailable {
+            color: #dc3545;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .update-modal-body .status-pending {
+            color: #ffc107;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .update-modal-body .update-actions {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #dee2e6;
+            margin: 0 20px 20px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .update-modal-body .update-actions .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 0 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .update-modal-body .update-actions .btn-primary {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            box-shadow: 0 3px 10px rgba(40, 167, 69, 0.3);
+        }
+
+        .update-modal-body .update-actions .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .update-modal-body .update-actions .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+            box-shadow: 0 3px 10px rgba(108, 117, 125, 0.3);
+        }
+
+        .update-modal-body .update-actions .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        /* Toggle Switch Improvements */
+        .update-modal-body .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+
+        .update-modal-body .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .update-modal-body .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 30px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .update-modal-body .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .update-modal-body input:checked+.slider {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+
+        .update-modal-body input:checked+.slider:before {
+            transform: translateX(30px);
+        }
+
+        .update-modal-body input:disabled+.slider {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .update-modal-body .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+
+        .update-modal-body .empty-state i {
+            font-size: 48px;
+            color: #dee2e6;
+            margin-bottom: 15px;
+        }
+
+        .update-modal-body .empty-state h3 {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+
+        /* Mobile Responsiveness for Update Modal */
+        @media (max-width: 768px) {
+            .update-modal-content {
+                max-width: 98%;
+                max-height: 98%;
+                margin: 1%;
+            }
+
+            .update-modal-header {
+                padding: 15px 20px;
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .update-modal-header .modal-title-section {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .update-modal-header .modal-actions {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .update-modal-body .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .update-modal-body .medications-table {
+                font-size: 12px;
+            }
+
+            .update-modal-body .patient-summary,
+            .update-modal-body .consultation-info,
+            .update-modal-body .medications-section {
+                margin: 10px;
+            }
+
+            .update-modal-body .update-actions {
+                margin: 0 10px 10px 10px;
+            }
+
+            .update-modal-body .update-actions .btn {
+                display: block;
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
     </style>
 </head>
 
@@ -947,16 +2222,24 @@ try {
 
         <div class="page-header">
             <h1><i class="fas fa-pills"></i> Prescription Management</h1>
-            <?php if ($canCreatePrescriptions): ?>
-                <a href="create_prescription_standalone.php" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Create Prescription
-                </a>
-            <?php endif; ?>
+            <div class="page-header-actions">
+                <?php if ($canCreatePrescriptions): ?>
+                    <a href="create_prescription_standalone.php" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Prescription
+                    </a>
+                <?php endif; ?>
+                <button type="button" class="btn btn-primary" onclick="openMedicationsModal()" style="margin-left: 12px;">
+                    <i class="fas fa-pills"></i> Available Medications
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="window.location.reload()" style="margin-left: 12px;">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
         </div>
 
         <!-- Success/Error Messages -->
         <div id="alertContainer"></div>
-        
+
         <!-- Display server-side messages -->
         <?php if (isset($_SESSION['success_message'])): ?>
             <div class="alert alert-success">
@@ -1022,7 +2305,6 @@ try {
                 if ($total_unavailable_result && $row = $total_unavailable_result->fetch_assoc()) {
                     $prescription_stats['total_medications_unavailable'] = intval($row['total'] ?? 0);
                 }
-
             } catch (Exception $e) {
                 // Use default values if query fails (table doesn't exist)
                 error_log("Prescription Stats Error: " . $e->getMessage());
@@ -1050,24 +2332,62 @@ try {
             </div>
         </div>
 
+        <!-- Workflow Guide -->
+        <div class="workflow-guide">
+            <div class="workflow-step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h4>Active Prescriptions</h4>
+                    <p>Review and process pending medications</p>
+                </div>
+            </div>
+            <div class="workflow-arrow">
+                <i class="fas fa-arrow-right"></i>
+            </div>
+            <div class="workflow-step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h4>Mark Status</h4>
+                    <p>Set as dispensed or unavailable</p>
+                </div>
+            </div>
+            <div class="workflow-arrow">
+                <i class="fas fa-arrow-right"></i>
+            </div>
+            <div class="workflow-step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h4>Completed</h4>
+                    <p>Ready for printing and patient pickup</p>
+                </div>
+            </div>
+        </div>
+
         <div class="prescription-management-container">
-            <!-- Left Panel: All Prescriptions -->
-            <div class="prescription-panel">
+            <!-- Left Panel: Active Prescriptions -->
+            <div class="prescription-panel active-panel">
                 <div class="panel-header">
-                    <div class="panel-title">
-                        <i class="fas fa-prescription-bottle-alt"></i> Ordered Prescriptions
+                    <div class="panel-title-section">
+                        <div class="panel-icon pending">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="panel-title-content">
+                            <h3>Active Prescriptions</h3>
+                            <span class="panel-subtitle">Medications pending processing</span>
+                        </div>
                     </div>
-                    <!-- View Available Medications Button -->
-                    <div style="margin-bottom: 15px;">
-                        <button type="button" class="btn btn-primary" onclick="openMedicationsModal()">
-                            <i class="fas fa-pills"></i> View Available Medications
-                        </button>
+                    <div class="panel-badge pending">
+                        <?= $totalPrescriptions ?> Active
                     </div>
                 </div>
 
-                <!-- Search Help Tip -->
-                <div style="background: #e7f3ff; border: 1px solid #b3d9ff; padding: 8px 12px; margin-bottom: 10px; border-radius: 4px; font-size: 13px; color: #0066cc;">
-                    <i class="fas fa-info-circle"></i> <strong>Search Tip:</strong> You can search using Patient ID, First Name, Last Name, or any combination. The date filter shows prescriptions ordered on that specific date.
+                <!-- Panel Description -->
+                <div class="panel-info-card warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div class="info-content">
+                        <strong>Action Required:</strong> These prescriptions have medications that need to be processed.
+                        <br><small>Click "View/Update" to mark medications as dispensed or unavailable.</small>
+                    </div>
                 </div>
 
                 <!-- Search and Filter Controls -->
@@ -1165,38 +2485,38 @@ try {
                             <?php endwhile; ?>
                         </tbody>
                     </table>
-                    
+
                     <!-- Pagination for All Prescriptions -->
-                    <?php 
+                    <?php
                     $totalPages = ceil($totalPrescriptions / $recordsPerPage);
-                    if ($totalPages > 1): 
+                    if ($totalPages > 1):
                     ?>
-                    <div class="pagination-container" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
-                        <span style="font-size: 0.9em; color: #666;">
-                            Showing <?= ($offset + 1) ?> to <?= min($offset + $recordsPerPage, $totalPrescriptions) ?> of <?= $totalPrescriptions ?> entries
-                        </span>
-                        <div class="pagination-buttons" style="display: flex; gap: 5px;">
-                            <?php if ($page > 1): ?>
-                                <button onclick="goToPage(<?= $page - 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
-                                    <i class="fas fa-chevron-left"></i>
-                                </button>
-                            <?php endif; ?>
-                            
-                            <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
-                                <button onclick="goToPage(<?= $i ?>)" class="pagination-btn <?= $i === $page ? 'active' : '' ?>" 
+                        <div class="pagination-container" style="margin: 24px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                            <span style="font-size: 0.9em; color: #666;">
+                                Showing <?= ($offset + 1) ?> to <?= min($offset + $recordsPerPage, $totalPrescriptions) ?> of <?= $totalPrescriptions ?> entries
+                            </span>
+                            <div class="pagination-buttons" style="display: flex; gap: 5px;">
+                                <?php if ($page > 1): ?>
+                                    <button onclick="goToPage(<?= $page - 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                <?php endif; ?>
+
+                                <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
+                                    <button onclick="goToPage(<?= $i ?>)" class="pagination-btn <?= $i === $page ? 'active' : '' ?>"
                                         style="padding: 5px 10px; border: 1px solid #ddd; background: <?= $i === $page ? '#0077b6' : 'white' ?>; 
                                                color: <?= $i === $page ? 'white' : 'black' ?>; cursor: pointer; border-radius: 3px;">
-                                    <?= $i ?>
-                                </button>
-                            <?php endfor; ?>
-                            
-                            <?php if ($page < $totalPages): ?>
-                                <button onclick="goToPage(<?= $page + 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
-                                    <i class="fas fa-chevron-right"></i>
-                                </button>
-                            <?php endif; ?>
+                                        <?= $i ?>
+                                    </button>
+                                <?php endfor; ?>
+
+                                <?php if ($page < $totalPages): ?>
+                                    <button onclick="goToPage(<?= $page + 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                    </div>
                     <?php endif; ?>
                 <?php else: ?>
                     <div class="empty-state">
@@ -1207,11 +2527,29 @@ try {
                 <?php endif; ?>
             </div>
 
-            <!-- Right Panel: Recently Dispensed -->
-            <div class="prescription-panel">
+            <!-- Right Panel: Completed Prescriptions -->
+            <div class="prescription-panel completed-panel">
                 <div class="panel-header">
-                    <div class="panel-title">
-                        <i class="fas fa-history"></i> Recently Dispensed
+                    <div class="panel-title-section">
+                        <div class="panel-icon completed">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="panel-title-content">
+                            <h3>Completed Prescriptions</h3>
+                            <span class="panel-subtitle">Ready for printing and pickup</span>
+                        </div>
+                    </div>
+                    <div class="panel-badge completed">
+                        <?= $totalRecentDispensed ?> Completed
+                    </div>
+                </div>
+
+                <!-- Panel Description -->
+                <div class="panel-info-card success">
+                    <i class="fas fa-check-circle"></i>
+                    <div class="info-content">
+                        <strong>All Set:</strong> All medications have been processed for these prescriptions.
+                        <br><small>Click "View" to see details or print prescription copies.</small>
                     </div>
                 </div>
 
@@ -1266,38 +2604,38 @@ try {
                             <?php endwhile; ?>
                         </tbody>
                     </table>
-                    
+
                     <!-- Pagination for Recently Dispensed -->
-                    <?php 
+                    <?php
                     $recentTotalPages = ceil($totalRecentDispensed / $recentRecordsPerPage);
-                    if ($recentTotalPages > 1): 
+                    if ($recentTotalPages > 1):
                     ?>
-                    <div class="pagination-container" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
-                        <span style="font-size: 0.9em; color: #666;">
-                            Showing <?= ($recentOffset + 1) ?> to <?= min($recentOffset + $recentRecordsPerPage, $totalRecentDispensed) ?> of <?= $totalRecentDispensed ?> entries
-                        </span>
-                        <div class="pagination-buttons" style="display: flex; gap: 5px;">
-                            <?php if ($recentPage > 1): ?>
-                                <button onclick="goToRecentPage(<?= $recentPage - 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
-                                    <i class="fas fa-chevron-left"></i>
-                                </button>
-                            <?php endif; ?>
-                            
-                            <?php for ($i = max(1, $recentPage - 2); $i <= min($recentTotalPages, $recentPage + 2); $i++): ?>
-                                <button onclick="goToRecentPage(<?= $i ?>)" class="pagination-btn <?= $i === $recentPage ? 'active' : '' ?>" 
+                        <div class="pagination-container" style="margin: 24px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                            <span style="font-size: 0.9em; color: #666;">
+                                Showing <?= ($recentOffset + 1) ?> to <?= min($recentOffset + $recentRecordsPerPage, $totalRecentDispensed) ?> of <?= $totalRecentDispensed ?> entries
+                            </span>
+                            <div class="pagination-buttons" style="display: flex; gap: 5px;">
+                                <?php if ($recentPage > 1): ?>
+                                    <button onclick="goToRecentPage(<?= $recentPage - 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                <?php endif; ?>
+
+                                <?php for ($i = max(1, $recentPage - 2); $i <= min($recentTotalPages, $recentPage + 2); $i++): ?>
+                                    <button onclick="goToRecentPage(<?= $i ?>)" class="pagination-btn <?= $i === $recentPage ? 'active' : '' ?>"
                                         style="padding: 5px 10px; border: 1px solid #ddd; background: <?= $i === $recentPage ? '#0077b6' : 'white' ?>; 
                                                color: <?= $i === $recentPage ? 'white' : 'black' ?>; cursor: pointer; border-radius: 3px;">
-                                    <?= $i ?>
-                                </button>
-                            <?php endfor; ?>
-                            
-                            <?php if ($recentPage < $recentTotalPages): ?>
-                                <button onclick="goToRecentPage(<?= $recentPage + 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
-                                    <i class="fas fa-chevron-right"></i>
-                                </button>
-                            <?php endif; ?>
+                                        <?= $i ?>
+                                    </button>
+                                <?php endfor; ?>
+
+                                <?php if ($recentPage < $recentTotalPages): ?>
+                                    <button onclick="goToRecentPage(<?= $recentPage + 1 ?>)" class="pagination-btn" style="padding: 5px 10px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 3px;">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                    </div>
                     <?php endif; ?>
                 <?php else: ?>
                     <div class="empty-state">
@@ -1312,22 +2650,22 @@ try {
 
     <!-- Available Medications Modal -->
     <div id="availableMedicationsModal" class="modal">
-        <div class="modal-content" style="max-width: 90%; max-height: 90%;">
+        <div class="modal-content" style="max-width: 55%; max-height: 90%; overflow-y: hidden;">
             <div class="modal-header">
                 <h3><i class="fas fa-pills"></i> PhilHealth GAMOT 2025 - Available Medications</h3>
                 <button class="close-btn" onclick="closeModal('availableMedicationsModal')">&times;</button>
             </div>
+            <div style="background: #e7f3ff; border: 1px solid #b3d9ff; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
+                <p style="margin: 0; font-size: 14px; color: #0066cc;">
+                    <i class="fas fa-info-circle"></i> <strong>Instructions:</strong> Click on any medication row to copy its details for easy prescription creation.
+                </p>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="medicationSearch" placeholder="Search medications..."
+                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                    onkeyup="filterMedications()">
+            </div>
             <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
-                <div style="background: #e7f3ff; border: 1px solid #b3d9ff; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
-                    <p style="margin: 0; font-size: 14px; color: #0066cc;">
-                        <i class="fas fa-info-circle"></i> <strong>Instructions:</strong> Click on any medication row to copy its details for easy prescription creation.
-                    </p>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <input type="text" id="medicationSearch" placeholder="Search medications..."
-                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
-                        onkeyup="filterMedications()">
-                </div>
                 <table class="prescription-table" id="medicationsTable">
                     <thead>
                         <tr>
@@ -1527,49 +2865,69 @@ try {
 
     <!-- View/Update Prescription Modal -->
     <div id="viewUpdatePrescriptionModal" class="modal">
-        <div class="modal-content" style="max-width: 95%; max-height: 95%;">
-            <div class="modal-header">
-                <h3><i class="fas fa-prescription"></i> 
-                    <?php if ($canUpdateMedications): ?>
-                        View / Update Prescription
-                    <?php else: ?>
-                        View Prescription Details
-                    <?php endif; ?>
-                </h3>
+        <div class="modal-content dispensed-modal-content">
+            <div class="modal-header dispensed-modal-header" style="background: linear-gradient(135deg, #ff9500 0%, #ff6b35 100%);">
+                <div class="modal-title-section">
+                    <div class="modal-icon-badge pending">
+                        <i class="fas fa-edit"></i>
+                    </div>
+                    <div class="modal-title-content" style="text-align: left;">
+                        <h3><?php if ($canUpdateMedications): ?>Update Prescription<?php else: ?>View Prescription<?php endif; ?></h3>
+                        <span class="modal-subtitle"><?php if ($canUpdateMedications): ?>Mark medications as dispensed or unavailable<?php else: ?>View prescription details<?php endif; ?></span>
+                    </div>
+                </div>
                 <div class="modal-actions">
-                    <button class="download-btn" onclick="downloadPrescriptionPDF()" title="Download PDF">
-                        <i class="fas fa-download"></i> Download PDF
+                    <button class="action-btn download-btn" onclick="downloadPrescriptionPDF()" title="Download PDF">
+                        <i class="fas fa-download"></i>
+                        <span>Download PDF</span>
                     </button>
-                    <button class="close-btn" onclick="closeModal('viewUpdatePrescriptionModal')">&times;</button>
+                    <button class="action-btn close-btn" onclick="closeModal('viewUpdatePrescriptionModal')" title="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
             </div>
-            <div id="viewUpdatePrescriptionBody">
-                <!-- Content will be loaded via AJAX -->
+            <div class="modal-body dispensed-modal-body">
+                <div id="viewUpdatePrescriptionBody">
+                    <!-- Content will be loaded via AJAX -->
+                </div>
             </div>
         </div>
     </div>
 
     <!-- View Dispensed Prescription Modal -->
     <div id="viewDispensedModal" class="modal">
-        <div class="modal-content" style="max-width: 95%; max-height: 95%;">
-            <div class="modal-header">
-                <h3><i class="fas fa-eye"></i> Dispensed Prescription Details</h3>
+        <div class="modal-content dispensed-modal-content">
+            <div class="modal-header dispensed-modal-header">
+                <div class="modal-title-section">
+                    <div class="modal-icon-badge completed">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="modal-title-content">
+                        <h3>Completed Prescription</h3>
+                        <span class="modal-subtitle">All medications have been processed</span>
+                    </div>
+                </div>
                 <div class="modal-actions">
-                    <button class="download-btn" onclick="downloadPrescriptionPDF()" title="Download PDF">
-                        <i class="fas fa-download"></i> Download PDF
+                    <button class="action-btn download-btn" onclick="downloadPrescriptionPDF()" title="Download PDF">
+                        <i class="fas fa-download"></i>
+                        <span>Download PDF</span>
                     </button>
-                    <button class="close-btn" onclick="closeModal('viewDispensedModal')">&times;</button>
+                    <button class="action-btn close-btn" onclick="closeModal('viewDispensedModal')" title="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
             </div>
-            <div id="viewDispensedBody">
-                <!-- Content will be loaded via AJAX -->
+            <div class="modal-body dispensed-modal-body">
+                <div id="viewDispensedBody">
+                    <!-- Content will be loaded via AJAX -->
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Print Prescription Modal -->
     <div id="printPrescriptionModal" class="modal">
-        <div class="modal-content print-modal" style="max-width: 95%; max-height: 95%;">
+        <div class="modal-content print-modal" style="max-width: 75%; max-height: 95%;">
             <div class="modal-header no-print">
                 <h3><i class="fas fa-print"></i> Print Prescription</h3>
                 <button class="close-btn" onclick="closeModal('printPrescriptionModal')">&times;</button>
@@ -1635,14 +2993,14 @@ try {
 
     <script>
         // Prescription Management JavaScript Functions
-        
+
         // Permission variables from PHP
         const canUpdateMedications = <?= json_encode($canUpdateMedications) ?>;
 
         // Initialize event listeners when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM Content Loaded - Prescription Management');
-            
+
             // Check if all modals exist
             const modalIds = ['viewUpdatePrescriptionModal', 'viewDispensedModal', 'createPrescriptionModal', 'availableMedicationsModal'];
             modalIds.forEach(modalId => {
@@ -1653,7 +3011,7 @@ try {
                     console.error(`Modal missing: ${modalId}`);
                 }
             });
-            
+
             // Search and filter functionality - with null checks
             const statusFilter = document.getElementById('statusFilter');
             const barangayFilter = document.getElementById('barangayFilter');
@@ -1745,7 +3103,7 @@ try {
         function applyRecentFilters() {
             const recentSearchElement = document.getElementById('recentSearchPrescriptions');
             const recentDateElement = document.getElementById('recentDateFilter');
-            
+
             const recentSearch = recentSearchElement ? recentSearchElement.value.trim() : '';
             const recentDate = recentDateElement ? recentDateElement.value : '';
 
@@ -1768,7 +3126,7 @@ try {
             if (status) params.set('status', status);
             if (date) params.set('date', date);
             if (page) params.set('page', page);
-            
+
             // Add recent filters
             if (recentSearch) params.set('recent_search', recentSearch);
             if (recentDate) params.set('recent_date', recentDate);
@@ -1779,7 +3137,7 @@ try {
         function clearRecentFilters() {
             const recentSearchElement = document.getElementById('recentSearchPrescriptions');
             const recentDateElement = document.getElementById('recentDateFilter');
-            
+
             if (recentSearchElement) recentSearchElement.value = '';
             if (recentDateElement) recentDateElement.value = '';
 
@@ -1810,7 +3168,7 @@ try {
         function goToRecentPage(page) {
             const recentSearchElement = document.getElementById('recentSearchPrescriptions');
             const recentDateElement = document.getElementById('recentDateFilter');
-            
+
             const recentSearch = recentSearchElement ? recentSearchElement.value.trim() : '';
             const recentDate = recentDateElement ? recentDateElement.value : '';
 
@@ -1833,7 +3191,7 @@ try {
             if (status) params.set('status', status);
             if (date) params.set('date', date);
             if (mainPage) params.set('page', mainPage);
-            
+
             // Add recent filters and pagination
             if (recentSearch) params.set('recent_search', recentSearch);
             if (recentDate) params.set('recent_date', recentDate);
@@ -1959,7 +3317,7 @@ try {
             const medicationsModal = document.getElementById('availableMedicationsModal');
             medicationsModal.style.display = 'block';
             medicationsModal.style.zIndex = '1100'; // Higher than default modal z-index
-            
+
             // Focus on the search input for better UX
             setTimeout(() => {
                 const searchInput = document.getElementById('medicationSearch');
@@ -1972,7 +3330,7 @@ try {
         // View dispensed prescription function
         function viewDispensedPrescription(prescriptionId) {
             console.log('viewDispensedPrescription called with ID:', prescriptionId);
-            
+
             // Set current prescription ID for PDF download
             updateCurrentPrescriptionId(prescriptionId);
 
@@ -1981,11 +3339,11 @@ try {
                 console.error('Modal viewDispensedModal not found');
                 return;
             }
-            
+
             console.log('Showing viewDispensedModal');
             modal.style.display = 'block';
             modal.style.zIndex = '1000';
-            
+
             const modalBody = document.getElementById('viewDispensedBody');
             if (modalBody) {
                 modalBody.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
@@ -2045,7 +3403,7 @@ try {
 
         function viewUpdatePrescription(prescriptionId) {
             console.log('viewUpdatePrescription called with ID:', prescriptionId);
-            
+
             // Set current prescription ID for PDF download
             updateCurrentPrescriptionId(prescriptionId);
 
@@ -2054,11 +3412,11 @@ try {
                 console.error('Modal viewUpdatePrescriptionModal not found');
                 return;
             }
-            
+
             console.log('Showing viewUpdatePrescriptionModal');
             modal.style.display = 'block';
             modal.style.zIndex = '1000';
-            
+
             const modalBody = document.getElementById('viewUpdatePrescriptionBody');
             if (modalBody) {
                 modalBody.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
@@ -2072,7 +3430,7 @@ try {
                     if (modalBody) {
                         modalBody.innerHTML = html;
                     }
-                    
+
                     // Apply permission restrictions to the loaded content
                     if (!canUpdateMedications) {
                         // Add restriction notice
@@ -2085,7 +3443,7 @@ try {
                         if (modalBody) {
                             modalBody.innerHTML = restrictionNotice + html;
                         }
-                        
+
                         // Disable all medication status checkboxes
                         const checkboxes = document.querySelectorAll('#viewUpdatePrescriptionBody input[type="checkbox"]');
                         checkboxes.forEach(checkbox => {
@@ -2093,7 +3451,7 @@ try {
                             checkbox.style.opacity = '0.5';
                             checkbox.style.cursor = 'not-allowed';
                         });
-                        
+
                         // Disable submit buttons
                         const submitButtons = document.querySelectorAll('#viewUpdatePrescriptionBody button[type="submit"], #viewUpdatePrescriptionBody .btn-primary, #viewUpdatePrescriptionBody .btn-success');
                         submitButtons.forEach(button => {
@@ -2157,26 +3515,45 @@ try {
                 return;
             }
 
+            // Check if the checkbox is disabled (medication already processed)
+            const checkbox = document.getElementById(statusType + '_' + medicationId);
+            if (checkbox && checkbox.disabled) {
+                showAlert('This medication has already been processed and cannot be changed. Medication statuses can only be set once for audit integrity.', 'error');
+                // Revert the checkbox change
+                checkbox.checked = !isChecked;
+                return;
+            }
+
+            // Additional check: See if medication is already processed by checking the other status
+            const otherType = statusType === 'dispensed' ? 'unavailable' : 'dispensed';
+            const otherCheckbox = document.getElementById(otherType + '_' + medicationId);
+            const statusElement = document.getElementById('status_' + medicationId);
+
+            // If the status element shows the medication is already processed, prevent changes
+            if (statusElement) {
+                const currentStatus = statusElement.textContent.toLowerCase();
+                if ((currentStatus === 'dispensed' || currentStatus === 'unavailable') && !isChecked) {
+                    // Only allow unchecking if we're reverting before submission
+                    // But if it's already saved to database, prevent any changes
+                    console.log('Medication appears to be already processed:', currentStatus);
+                }
+            }
+
             try {
                 // Prevent both dispensed and unavailable from being checked at the same time
                 if (isChecked) {
-                    const otherType = statusType === 'dispensed' ? 'unavailable' : 'dispensed';
-                    const otherCheckbox = document.getElementById(otherType + '_' + medicationId);
-                    if (otherCheckbox && otherCheckbox.checked) {
+                    if (otherCheckbox && otherCheckbox.checked && !otherCheckbox.disabled) {
                         otherCheckbox.checked = false;
                     }
                 }
 
                 // Update the status display
-                const statusElement = document.getElementById('status_' + medicationId);
                 if (statusElement) {
                     if (isChecked) {
                         statusElement.textContent = statusType === 'dispensed' ? 'Dispensed' : 'Unavailable';
                         statusElement.className = 'status-' + statusType;
                     } else {
                         // Check if the other status is checked
-                        const otherType = statusType === 'dispensed' ? 'unavailable' : 'dispensed';
-                        const otherCheckbox = document.getElementById(otherType + '_' + medicationId);
                         if (otherCheckbox && otherCheckbox.checked) {
                             statusElement.textContent = otherType === 'dispensed' ? 'Dispensed' : 'Unavailable';
                             statusElement.className = 'status-' + otherType;
@@ -2217,18 +3594,34 @@ try {
                 const medicationStatuses = [];
                 const checkboxes = document.querySelectorAll('input[type="checkbox"]');
 
+                // Also check for any disabled checkboxes (already processed medications)
+                let hasProcessedMedications = false;
+                const processedMedications = [];
+
                 checkboxes.forEach(checkbox => {
                     const parts = checkbox.id.split('_');
                     const statusType = parts[0];
                     const prescribedMedicationId = parts[1];
 
-                    if (checkbox.checked && (statusType === 'dispensed' || statusType === 'unavailable')) {
+                    // Check if this medication is already processed (disabled checkbox)
+                    if (checkbox.disabled && checkbox.checked) {
+                        hasProcessedMedications = true;
+                        processedMedications.push(`Medication ID ${prescribedMedicationId} (${statusType})`);
+                    }
+
+                    if (checkbox.checked && (statusType === 'dispensed' || statusType === 'unavailable') && !checkbox.disabled) {
                         medicationStatuses.push({
                             prescribed_medication_id: prescribedMedicationId,
                             status: statusType
                         });
                     }
                 });
+
+                // If there are processed medications, show a warning but allow the update for pending ones
+                if (hasProcessedMedications) {
+                    console.log('Found processed medications:', processedMedications);
+                    showAlert('Note: Some medications have already been processed and will not be updated. Only pending medications will be updated.', 'info');
+                }
 
                 console.log('Sending medication statuses:', medicationStatuses);
 
@@ -2338,7 +3731,7 @@ try {
 
             // Show confirmation and copy to clipboard
             const medicationText = `${drugName} ${dosage} ${formulation}`;
-            
+
             // Try to copy to clipboard
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(medicationText).then(() => {
@@ -2366,17 +3759,25 @@ try {
                 // Look for medication name input field in the create prescription form
                 const medicationNameField = document.querySelector('#createPrescriptionBody input[name*="medication_name"], #createPrescriptionBody input[placeholder*="medication"], #createPrescriptionBody input[placeholder*="drug"]');
                 const dosageField = document.querySelector('#createPrescriptionBody input[name*="dosage"], #createPrescriptionBody input[placeholder*="dosage"]');
-                
+
                 if (medicationNameField) {
                     medicationNameField.value = medicationData.name;
-                    medicationNameField.dispatchEvent(new Event('input', { bubbles: true }));
-                    medicationNameField.dispatchEvent(new Event('change', { bubbles: true }));
+                    medicationNameField.dispatchEvent(new Event('input', {
+                        bubbles: true
+                    }));
+                    medicationNameField.dispatchEvent(new Event('change', {
+                        bubbles: true
+                    }));
                 }
-                
+
                 if (dosageField) {
                     dosageField.value = medicationData.dosage;
-                    dosageField.dispatchEvent(new Event('input', { bubbles: true }));
-                    dosageField.dispatchEvent(new Event('change', { bubbles: true }));
+                    dosageField.dispatchEvent(new Event('input', {
+                        bubbles: true
+                    }));
+                    dosageField.dispatchEvent(new Event('change', {
+                        bubbles: true
+                    }));
                 }
 
                 // If fields were auto-filled, show additional message
@@ -2411,17 +3812,17 @@ try {
         // Automatic Status Update Functions for Prescriptions
         function checkAndUpdatePrescriptionStatuses() {
             console.log('=== Starting Prescription Status Check ===');
-            
+
             // Get all prescription rows with data attributes
             const prescriptionRows = document.querySelectorAll('tbody tr[data-prescription-id]');
             console.log(`Found ${prescriptionRows.length} prescription rows`);
-            
+
             prescriptionRows.forEach((row, index) => {
                 const prescriptionId = row.getAttribute('data-prescription-id');
                 const dispensed = parseInt(row.getAttribute('data-dispensed'));
                 const total = parseInt(row.getAttribute('data-total'));
                 const currentStatus = row.getAttribute('data-current-status');
-                
+
                 console.log(`Row ${index + 1}:`, {
                     prescriptionId,
                     dispensed,
@@ -2434,14 +3835,14 @@ try {
                         'data-current-status': row.getAttribute('data-current-status')
                     }
                 });
-                
+
                 if (!prescriptionId || isNaN(dispensed) || isNaN(total)) {
                     console.log(`Skipping row ${index + 1} - missing or invalid data`);
                     return;
                 }
-                
+
                 let shouldUpdateTo = null;
-                
+
                 // Core logic: Only update to dispensed when ALL medications are dispensed
                 if (dispensed === total && total > 0 && currentStatus !== 'dispensed') {
                     shouldUpdateTo = 'dispensed';
@@ -2456,7 +3857,7 @@ try {
                 else {
                     console.log(`Row ${index + 1}: No update needed (${dispensed}/${total} dispensed, current: ${currentStatus})`);
                 }
-                
+
                 // Update status if needed
                 if (shouldUpdateTo) {
                     console.log(`Auto-updating prescription ${prescriptionId} from ${currentStatus} to ${shouldUpdateTo}`);
@@ -2465,7 +3866,7 @@ try {
                     console.log(`No update required for prescription ${prescriptionId}`);
                 }
             });
-            
+
             console.log('=== Prescription Status Check Complete ===');
         }
 
@@ -2473,65 +3874,65 @@ try {
         function updatePrescriptionStatusAutomatically(prescriptionId, newStatus, rowElement) {
             // Use relative path from prescription-management directory
             const apiPath = '../../api/update_prescription_status.php';
-            
+
             console.log(`Calling API: ${apiPath} for prescription ${prescriptionId} -> ${newStatus}`);
-            
+
             fetch(apiPath, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    prescription_id: prescriptionId,
-                    overall_status: newStatus,
-                    remarks: 'Auto-updated based on medication dispensing status',
-                    auto_update: true
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prescription_id: prescriptionId,
+                        overall_status: newStatus,
+                        remarks: 'Auto-updated based on medication dispensing status',
+                        auto_update: true
+                    })
                 })
-            })
-            .then(response => {
-                console.log(`Response status: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
-                
-                // Check if response is actually JSON
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    // Response is not JSON, probably an error page
-                    return response.text().then(text => {
-                        console.error('Server returned non-JSON response:', text.substring(0, 500));
-                        throw new Error(`Server error: Expected JSON but received ${contentType || 'unknown content type'}`);
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('API Response:', data);
-                
-                if (data.success) {
-                    // Update the status badge in the UI immediately
-                    const statusBadge = rowElement.querySelector('.status-badge');
-                    if (statusBadge) {
-                        statusBadge.className = `status-badge status-${newStatus}`;
-                        statusBadge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1).replace('_', ' ');
+                .then(response => {
+                    console.log(`Response status: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
+
+                    // Check if response is actually JSON
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        // Response is not JSON, probably an error page
+                        return response.text().then(text => {
+                            console.error('Server returned non-JSON response:', text.substring(0, 500));
+                            throw new Error(`Server error: Expected JSON but received ${contentType || 'unknown content type'}`);
+                        });
                     }
-                    
-                    // Update data attribute
-                    rowElement.setAttribute('data-current-status', newStatus);
-                    
-                    // Show success notification
-                    console.log(`✅ Prescription #${prescriptionId} status automatically updated to ${newStatus}`);
-                    
-                    // Optionally show a subtle notification
-                    showAlert(`Prescription #${prescriptionId} status automatically updated to ${newStatus.replace('_', ' ')}`, 'success');
-                    
-                } else {
-                    console.error('❌ Failed to update prescription status:', data.message);
-                }
-            })
-            .catch(error => {
-                console.error('❌ Error updating prescription status:', error.message);
-                // Don't show error alerts for automatic updates to avoid spam
-                // But log the full error for debugging
-                console.error('Full error details:', error);
-            });
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('API Response:', data);
+
+                    if (data.success) {
+                        // Update the status badge in the UI immediately
+                        const statusBadge = rowElement.querySelector('.status-badge');
+                        if (statusBadge) {
+                            statusBadge.className = `status-badge status-${newStatus}`;
+                            statusBadge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1).replace('_', ' ');
+                        }
+
+                        // Update data attribute
+                        rowElement.setAttribute('data-current-status', newStatus);
+
+                        // Show success notification
+                        console.log(`✅ Prescription #${prescriptionId} status automatically updated to ${newStatus}`);
+
+                        // Optionally show a subtle notification
+                        showAlert(`Prescription #${prescriptionId} status automatically updated to ${newStatus.replace('_', ' ')}`, 'success');
+
+                    } else {
+                        console.error('❌ Failed to update prescription status:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error updating prescription status:', error.message);
+                    // Don't show error alerts for automatic updates to avoid spam
+                    // But log the full error for debugging
+                    console.error('Full error details:', error);
+                });
         }
 
         // Run automatic status check on page load

@@ -20,7 +20,7 @@ if (!$canCreatePrescriptions) {
     // Map role_id to role name for redirect
     $roleMap = [
         1 => 'admin',
-        2 => 'doctor', 
+        2 => 'doctor',
         3 => 'nurse',
         4 => 'pharmacist',
         5 => 'dho',
@@ -40,35 +40,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $patient_id = (int)($_POST['patient_id'] ?? 0);
         $medications = $_POST['medications'] ?? [];
         $remarks = trim($_POST['remarks'] ?? '');
-        
+
         if (!$patient_id) {
             throw new Exception('Please select a patient.');
         }
-        
+
         if (empty($medications)) {
             throw new Exception('Please add at least one medication.');
         }
-        
+
         // Validate patient exists and is active
         $patient_stmt = $conn->prepare("SELECT patient_id, first_name, last_name, status FROM patients WHERE patient_id = ?");
         $patient_stmt->bind_param("i", $patient_id);
         $patient_stmt->execute();
         $patient_result = $patient_stmt->get_result();
-        
+
         if ($patient_result->num_rows === 0) {
             throw new Exception('Patient not found.');
         }
-        
+
         $patient = $patient_result->fetch_assoc();
-        
+
         // Validate patient is active
         if ($patient['status'] !== 'active') {
             throw new Exception('Prescriptions can only be created for active patients.');
         }
-        
+
         // Start transaction
         $conn->begin_transaction();
-        
+
         try {
             // Create prescription record - standalone (consultation_id, appointment_id, visit_id can be NULL)
             $prescription_stmt = $conn->prepare("
@@ -85,15 +85,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     created_at
                 ) VALUES (?, NULL, NULL, NULL, ?, NOW(), 'issued', 'issued', ?, NOW())
             ");
-            
+
             $prescription_stmt->bind_param("iis", $patient_id, $_SESSION['employee_id'], $remarks);
-            
+
             if (!$prescription_stmt->execute()) {
                 throw new Exception('Failed to create prescription: ' . $conn->error);
             }
-            
+
             $prescription_id = $conn->insert_id;
-            
+
             // Add medications
             $medication_stmt = $conn->prepare("
                 INSERT INTO prescribed_medications (
@@ -107,18 +107,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())
             ");
-            
+
             foreach ($medications as $medication) {
                 if (empty(trim($medication['medication_name']))) continue;
-                
+
                 // Store trimmed values in variables for bind_param reference
                 $med_name = trim($medication['medication_name']);
                 $med_dosage = trim($medication['dosage'] ?? '');
                 $med_frequency = trim($medication['frequency'] ?? '');
                 $med_duration = trim($medication['duration'] ?? '');
                 $med_instructions = trim($medication['instructions'] ?? '');
-                
-                $medication_stmt->bind_param("isssss",
+
+                $medication_stmt->bind_param(
+                    "isssss",
                     $prescription_id,
                     $med_name,
                     $med_dosage,
@@ -126,90 +127,118 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $med_duration,
                     $med_instructions
                 );
-                
+
                 if (!$medication_stmt->execute()) {
                     throw new Exception('Failed to add medication: ' . $conn->error);
                 }
             }
-            
+
             $conn->commit();
             $_SESSION['success_message'] = "Prescription created successfully for " . $patient['first_name'] . " " . $patient['last_name'];
-            
+
             // Clean all output buffers before redirect to prevent header issues
             while (ob_get_level()) {
                 ob_end_clean();
             }
             header("Location: prescription_management.php");
             exit();
-            
         } catch (Exception $e) {
             $conn->rollback();
             throw $e;
         }
-        
     } catch (Exception $e) {
         $_SESSION['error_message'] = $e->getMessage();
     }
 }
 
 // Patient search functionality
-$search_query = $_GET['search'] ?? '';
-$first_name = $_GET['first_name'] ?? '';
-$last_name = $_GET['last_name'] ?? '';
+$search_query = trim($_GET['search'] ?? '');
+$barangay_filter = trim($_GET['barangay'] ?? '');
 
 $patients = [];
-if ($search_query || $first_name || $last_name) {
+// Search when either search query or barangay filter has a value, or show recent patients by default
+if (!empty($search_query) || !empty($barangay_filter)) {
     $where_conditions = [];
     $params = [];
     $param_types = '';
-    
+
     if (!empty($search_query)) {
-        $where_conditions[] = "(p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?)";
+        // Search in patient ID, first name, last name, and full name
+        $where_conditions[] = "(p.patient_id LIKE ? OR p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?)";
         $search_term = "%$search_query%";
-        $params = array_merge($params, [$search_term, $search_term, $search_term, $search_term]);
-        $param_types .= 'ssss';
+        $params = array_merge($params, [$search_term, $search_term, $search_term, $search_term, $search_term]);
+        $param_types .= 'sssss';
     }
-    
-    if (!empty($first_name)) {
-        $where_conditions[] = "p.first_name LIKE ?";
-        $params[] = "%$first_name%";
+
+    if (!empty($barangay_filter)) {
+        $where_conditions[] = "b.barangay_name = ?";
+        $params[] = $barangay_filter;
         $param_types .= 's';
     }
-    
-    if (!empty($last_name)) {
-        $where_conditions[] = "p.last_name LIKE ?";
-        $params[] = "%$last_name%";
-        $param_types .= 's';
-    }
-    
+
     $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
-    
+
     $sql = "
         SELECT p.patient_id, p.username, p.first_name, p.middle_name, p.last_name, 
-               p.sex, p.contact_number, p.date_of_birth,
+               p.sex, p.contact_number, p.date_of_birth, b.barangay_name as barangay,
                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
         FROM patients p 
-        $where_clause
-        AND p.status = 'active'
+        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+        " . (!empty($where_clause) ? $where_clause . " AND p.status = 'active'" : "WHERE p.status = 'active'") . "
         ORDER BY p.last_name, p.first_name
-        LIMIT 5
+        LIMIT 20
     ";
-    
-    if (!empty($params)) {
+
+    try {
+        if (!empty($params)) {
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param($param_types, ...$params);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $patients = $result->fetch_all(MYSQLI_ASSOC);
+        } else {
+            // If no params, execute query directly
+            $stmt = $conn->prepare($sql);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $patients = $result->fetch_all(MYSQLI_ASSOC);
+        }
+    } catch (Exception $e) {
+        error_log("Patient search error: " . $e->getMessage());
+        $_SESSION['error_message'] = "Search error: " . $e->getMessage();
+        $patients = [];
+    }
+} else {
+    // Show recent patients when no search parameters
+    $sql = "
+        SELECT p.patient_id, p.username, p.first_name, p.middle_name, p.last_name, 
+               p.sex, p.contact_number, p.date_of_birth, b.barangay_name as barangay,
+               TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
+        FROM patients p 
+        LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
+        WHERE p.status = 'active'
+        ORDER BY p.created_at DESC, p.last_name, p.first_name
+        LIMIT 10
+    ";
+
+    try {
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param($param_types, ...$params);
         $stmt->execute();
         $result = $stmt->get_result();
         $patients = $result->fetch_all(MYSQLI_ASSOC);
+    } catch (Exception $e) {
+        error_log("Patient default load error: " . $e->getMessage());
+        $patients = [];
     }
 }
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
-        <!-- Favicon -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
@@ -257,7 +286,8 @@ if ($search_query || $first_name || $last_name) {
             box-shadow: 0 2px 8px rgba(0, 119, 182, 0.1);
         }
 
-        .medication-row input, .medication-row textarea {
+        .medication-row input,
+        .medication-row textarea {
             width: 100%;
             padding: 0.75rem;
             border: 2px solid #e0e0e0;
@@ -266,7 +296,8 @@ if ($search_query || $first_name || $last_name) {
             transition: border-color 0.3s ease;
         }
 
-        .medication-row input:focus, .medication-row textarea:focus {
+        .medication-row input:focus,
+        .medication-row textarea:focus {
             outline: none;
             border-color: #0077b6;
             box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.1);
@@ -544,11 +575,12 @@ if ($search_query || $first_name || $last_name) {
                 grid-template-columns: 1fr;
             }
 
-            .medication-row, .medication-headers {
+            .medication-row,
+            .medication-headers {
                 grid-template-columns: 1fr;
                 gap: 0.5rem;
             }
-            
+
             .medication-headers {
                 display: none;
             }
@@ -614,7 +646,7 @@ if ($search_query || $first_name || $last_name) {
         #medicationsTable tbody tr[onclick]:hover {
             background-color: #e8f4f8 !important;
             transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         #medicationsTable tbody tr[onclick]:active {
@@ -645,10 +677,358 @@ if ($search_query || $first_name || $last_name) {
         .prescription-table tr:hover {
             background-color: #f5f5f5;
         }
+
+        /* Reminders Box Styling */
+        .reminders-box {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f8f9fa 100%);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-left: 5px solid #0077b6;
+            box-shadow: 0 4px 15px rgba(0, 119, 182, 0.1);
+        }
+
+        .reminders-header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid rgba(0, 119, 182, 0.1);
+        }
+
+        .reminders-header h3 {
+            color: #0077b6;
+            font-size: 1.5rem;
+            margin: 0 0 0.5rem 0;
+            font-weight: 700;
+        }
+
+        .reminders-header p {
+            color: #666;
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .reminders-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            align-items: start;
+        }
+
+        .reminder-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(0, 119, 182, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .reminder-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 119, 182, 0.15);
+            border-color: #0077b6;
+        }
+
+        .reminder-icon {
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            box-shadow: 0 3px 10px rgba(0, 119, 182, 0.3);
+        }
+
+        .reminder-content h4 {
+            color: #0077b6;
+            font-size: 1.1rem;
+            margin: 0 0 0.5rem 0;
+            font-weight: 600;
+        }
+
+        .reminder-content p {
+            color: #666;
+            margin: 0;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 768px) {
+            .reminders-box {
+                padding: 1.5rem;
+            }
+
+            .reminders-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .reminder-item {
+                padding: 1rem;
+            }
+
+            .reminder-icon {
+                width: 40px;
+                height: 40px;
+                font-size: 1rem;
+            }
+        }
+
+        /* Professional Patient Information Card Styles - Compact Version */
+        .patient-info-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fffe 100%);
+            border: 1px solid #e3f2fd;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            margin: 15px 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .patient-info-card:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .patient-info-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 12px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+        }
+
+        .patient-info-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="15" height="15" patternUnits="userSpaceOnUse"><path d="M 15 0 L 0 0 0 15" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.4;
+        }
+
+        .patient-info-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .patient-icon {
+            font-size: 1.3rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .patient-info-title h4 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        .patient-status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            position: relative;
+            z-index: 1;
+        }
+
+        .patient-status-badge i {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .patient-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0;
+            padding: 0;
+        }
+
+        .patient-info-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            border-bottom: 1px solid #f0f4f8;
+            border-right: 1px solid #f0f4f8;
+            transition: all 0.3s ease;
+            position: relative;
+            background: #ffffff;
+        }
+
+        .patient-info-item:hover {
+            background: linear-gradient(135deg, #f8fdff 0%, #e8f5ff 100%);
+        }
+
+        .patient-info-item.primary {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-left: 3px solid #28a745;
+        }
+
+        .patient-info-item.primary:hover {
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+        }
+
+        .info-icon-wrapper {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.25);
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .patient-info-item:hover .info-icon-wrapper {
+            transform: scale(1.05);
+            box-shadow: 0 3px 10px rgba(40, 167, 69, 0.35);
+        }
+
+        .info-icon-wrapper i {
+            font-size: 0.95rem;
+        }
+
+        .info-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .info-content label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #1f2937;
+            display: block;
+            word-break: break-word;
+        }
+
+        .info-value.loading {
+            color: #6b7280;
+            font-style: italic;
+            position: relative;
+        }
+
+        .info-value.loading::after {
+            content: '';
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 50%;
+            border-top-color: #28a745;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 6px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design for Patient Info Card */
+        @media (max-width: 768px) {
+            .patient-info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .patient-info-item {
+                padding: 14px;
+                border-right: none;
+            }
+
+            .patient-info-header {
+                padding: 10px 16px;
+                flex-direction: column;
+                gap: 8px;
+                text-align: center;
+            }
+
+            .patient-info-title h4 {
+                font-size: 0.9rem;
+            }
+
+            .info-icon-wrapper {
+                width: 32px;
+                height: 32px;
+                margin-right: 10px;
+            }
+
+            .info-icon-wrapper i {
+                font-size: 0.85rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .patient-info-card {
+                border-radius: 8px;
+                margin: 10px 0;
+            }
+
+            .patient-info-item {
+                padding: 12px;
+            }
+
+            .info-icon-wrapper {
+                width: 30px;
+                height: 30px;
+                margin-right: 8px;
+            }
+
+            .info-content label {
+                font-size: 0.7rem;
+            }
+
+            .info-value {
+                font-size: 0.85rem;
+            }
+
+            .patient-status-badge {
+                padding: 4px 8px;
+                font-size: 0.75rem;
+            }
+        }
     </style>
 </head>
+
 <body>
-    <?php 
+    <?php
     // Include reusable topbar component
     require_once $root_path . '/includes/topbar.php';
 
@@ -662,7 +1042,7 @@ if ($search_query || $first_name || $last_name) {
     ?>
 
     <section class="homepage">
-        <?php 
+        <?php
         // Render back button with modal
         renderBackButton([
             'back_url' => 'prescription_management.php',
@@ -674,20 +1054,41 @@ if ($search_query || $first_name || $last_name) {
         ]);
         ?>
 
-        <div class="profile-wrapper">
+        <div class="profile-wrapper" style="max-width:1300px;">
             <!-- Reminders Box -->
             <div class="reminders-box">
-                <div class="reminder-item">
-                    <i class="fas fa-prescription-bottle-alt"></i>
-                    <span><strong>Prescription Guidelines:</strong> Always verify patient allergies and current medications before prescribing.</span>
+                <div class="reminders-header">
+                    <h3><i class="fas fa-lightbulb"></i> Important Guidelines</h3>
+                    <!--<p>Please review these important guidelines before creating a prescription</p>-->
                 </div>
-                <div class="reminder-item">
-                    <i class="fas fa-user-check"></i>
-                    <span><strong>Patient Selection:</strong> Select the patient from the dropdown below to begin creating a prescription.</span>
-                </div>
-                <div class="reminder-item">
-                    <i class="fas fa-pills"></i>
-                    <span><strong>Medication Details:</strong> Include proper dosage, frequency, duration, and special instructions for each medication.</span>
+                <div class="reminders-grid">
+                    <div class="reminder-item">
+                        <div class="reminder-icon">
+                            <i class="fas fa-prescription-bottle-alt"></i>
+                        </div>
+                        <div class="reminder-content">
+                            <h4>Prescription Guidelines</h4>
+                            <p>Always verify patient allergies and current medications before prescribing.</p>
+                        </div>
+                    </div>
+                    <div class="reminder-item">
+                        <div class="reminder-icon">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <div class="reminder-content">
+                            <h4>Patient Selection</h4>
+                            <p>Select the patient from the search results below to begin creating a prescription.</p>
+                        </div>
+                    </div>
+                    <div class="reminder-item">
+                        <div class="reminder-icon">
+                            <i class="fas fa-pills"></i>
+                        </div>
+                        <div class="reminder-content">
+                            <h4>Medication Details</h4>
+                            <p>Include proper dosage, frequency, duration, and special instructions for each medication.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -712,25 +1113,57 @@ if ($search_query || $first_name || $last_name) {
                     <h3><i class="fas fa-search"></i> Search Patient</h3>
                     <form method="GET" class="search-grid" id="patientSearchForm">
                         <div class="form-group">
-                            <label for="search">General Search</label>
+                            <label for="search">Patient Search</label>
                             <input type="text" id="search" name="search" value="<?= htmlspecialchars($_GET['search'] ?? '') ?>"
-                                placeholder="Patient ID, Name...">
+                                placeholder="Search by Patient ID, First Name, or Last Name...">
                         </div>
                         <div class="form-group">
-                            <label for="first_name">First Name</label>
-                            <input type="text" id="first_name" name="first_name" value="<?= htmlspecialchars($_GET['first_name'] ?? '') ?>"
-                                placeholder="Enter first name...">
+                            <label for="barangay">Barangay</label>
+                            <select id="barangay" name="barangay">
+                                <option value="">All Barangays</option>
+                                <?php
+                                // Get unique barangays from barangay table
+                                $selectedBarangay = $_GET['barangay'] ?? '';
+                                try {
+                                    $barangayQuery = "SELECT DISTINCT barangay_name FROM barangay WHERE status = 'active' ORDER BY barangay_name";
+                                    $barangayResult = $conn->query($barangayQuery);
+                                    if ($barangayResult) {
+                                        while ($barangay = $barangayResult->fetch_assoc()) {
+                                            $selected = $selectedBarangay === $barangay['barangay_name'] ? 'selected' : '';
+                                            echo "<option value='" . htmlspecialchars($barangay['barangay_name']) . "' $selected>" . htmlspecialchars($barangay['barangay_name']) . "</option>";
+                                        }
+                                    }
+                                } catch (Exception $e) {
+                                    // If barangay table doesn't exist, show default options
+                                    $defaultBarangays = [
+                                        'Brgy. Assumption',
+                                        'Brgy. Caloocan',
+                                        'Brgy. Carpenter Hill',
+                                        'Brgy. Concepcion',
+                                        'Brgy. Esperanza',
+                                        'Brgy. Topland',
+                                        'Brgy. Zone I',
+                                        'Brgy. Zone II',
+                                        'Brgy. Zone III',
+                                        'Brgy. Zone IV'
+                                    ];
+                                    foreach ($defaultBarangays as $barangay) {
+                                        $selected = $selectedBarangay === $barangay ? 'selected' : '';
+                                        echo "<option value='" . htmlspecialchars($barangay) . "' $selected>" . htmlspecialchars($barangay) . "</option>";
+                                    }
+                                }
+                                ?>
+                            </select>
                         </div>
-                        <div class="form-group">
-                            <label for="last_name">Last Name</label>
-                            <input type="text" id="last_name" name="last_name" value="<?= htmlspecialchars($_GET['last_name'] ?? '') ?>"
-                                placeholder="Enter last name...">
-                        </div>
-                        <div class="form-group">
+                        <div class="form-group" style="display: flex;flex-direction: row;gap:10px;">
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-search"></i> Search
                             </button>
+                            <button type="button" class="btn btn-secondary" onclick="clearFilters()">
+                                <i class="fas fa-times"></i> Clear Filters
+                            </button>
                         </div>
+
                     </form>
                 </div>
             </div>
@@ -739,15 +1172,31 @@ if ($search_query || $first_name || $last_name) {
             <div class="form-section">
                 <div class="patient-table">
                     <h3><i class="fas fa-users"></i> Patient Search Results</h3>
-                    <?php if (empty($patients) && ($search_query || $first_name || $last_name)): ?>
+
+                    <!-- Debug info (remove in production) -->
+                    <?php if (isset($_GET['debug'])): ?>
+                        <div style="background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: monospace;">
+                            <strong>Debug Info:</strong><br>
+                            Search Query: "<?= htmlspecialchars($search_query) ?>"<br>
+                            Barangay Filter: "<?= htmlspecialchars($barangay_filter) ?>"<br>
+                            Patients Count: <?= count($patients) ?><br>
+                            GET Parameters: <?= htmlspecialchars(print_r($_GET, true)) ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (empty($patients) && (!empty($search_query) || !empty($barangay_filter))): ?>
                         <div class="empty-search">
                             <i class="fas fa-user-times fa-2x"></i>
                             <p>No patients found matching your search criteria.</p>
                             <p>Try adjusting your search terms or check the spelling.</p>
                         </div>
                     <?php elseif (!empty($patients)): ?>
-                        <p>Found <?= count($patients) ?> patient(s). Select one to create a prescription:</p>
-                        
+                        <?php if (!empty($search_query) || !empty($barangay_filter)): ?>
+                            <p>Found <?= count($patients) ?> patient(s) matching your search. Select one to create a prescription:</p>
+                        <?php else: ?>
+                            <p>Showing <?= count($patients) ?> recent patients. Use the search form above to find specific patients:</p>
+                        <?php endif; ?>
+
                         <!-- Desktop Table View -->
                         <div class="patient-table-container">
                             <table>
@@ -757,6 +1206,7 @@ if ($search_query || $first_name || $last_name) {
                                         <th>Patient ID</th>
                                         <th>Name</th>
                                         <th>Age/Sex</th>
+                                        <th>Barangay</th>
                                         <th>Contact</th>
                                     </tr>
                                 </thead>
@@ -764,16 +1214,17 @@ if ($search_query || $first_name || $last_name) {
                                     <?php foreach ($patients as $patient): ?>
                                         <tr class="patient-row" data-patient-id="<?= $patient['patient_id'] ?>">
                                             <td>
-                                                <input type="radio" name="selected_patient" value="<?= $patient['patient_id'] ?>" 
+                                                <input type="radio" name="selected_patient" value="<?= $patient['patient_id'] ?>"
                                                     class="patient-checkbox" data-patient-name="<?= htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']) ?>">
                                             </td>
                                             <td><?= htmlspecialchars($patient['username']) ?></td>
                                             <td>
-                                                <?= htmlspecialchars($patient['first_name'] . ' ' . 
-                                                    ($patient['middle_name'] ? $patient['middle_name'] . ' ' : '') . 
+                                                <?= htmlspecialchars($patient['first_name'] . ' ' .
+                                                    ($patient['middle_name'] ? $patient['middle_name'] . ' ' : '') .
                                                     $patient['last_name']) ?>
                                             </td>
                                             <td><?= htmlspecialchars($patient['age']) ?> / <?= htmlspecialchars($patient['sex']) ?></td>
+                                            <td><?= htmlspecialchars($patient['barangay'] ?? 'Not specified') ?></td>
                                             <td><?= htmlspecialchars($patient['contact_number'] ?? 'N/A') ?></td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -794,93 +1245,266 @@ if ($search_query || $first_name || $last_name) {
             <div class="form-section">
                 <form class="prescription-form" id="prescriptionForm" method="post">
                     <input type="hidden" name="patient_id" id="selectedPatientId">
-                    
-                    <h3><i class="fas fa-prescription-bottle-alt"></i> Create Standalone Prescription</h3>
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        <strong>Standalone Prescription:</strong> This prescription is created independently without requiring an appointment or consultation. It can be created directly for any patient and will be tracked as a standalone prescription.
-                    </div>
+
+                    <h3 style="margin-bottom: 15px;"><i class="fas fa-prescription-bottle-alt"></i> Create Prescription</h3>
+
                     <div id="selectedPatientInfo" class="selected-patient-info" style="display:none;">
-                        <p><strong>Selected Patient:</strong> <span id="selectedPatientName"></span></p>
+                        <div class="patient-info-card">
+                            <div class="patient-info-header">
+                                <div class="patient-info-title">
+                                    <i class="fas fa-user-circle patient-icon"></i>
+                                    <h4>Selected Patient Information</h4>
+                                </div>
+                                <div class="patient-status-badge">
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>Selected</span>
+                                </div>
+                            </div>
+                            
+                            <div class="patient-info-grid">
+                                <div class="patient-info-item primary">
+                                    <div class="info-icon-wrapper">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div class="info-content">
+                                        <label>Patient Name</label>
+                                        <span id="selectedPatientName" class="info-value">--</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="patient-info-item">
+                                    <div class="info-icon-wrapper">
+                                        <i class="fas fa-birthday-cake"></i>
+                                    </div>
+                                    <div class="info-content">
+                                        <label>Age</label>
+                                        <span id="selectedPatientAge" class="info-value loading">Loading...</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="patient-info-item">
+                                    <div class="info-icon-wrapper">
+                                        <i class="fas fa-venus-mars"></i>
+                                    </div>
+                                    <div class="info-content">
+                                        <label>Sex</label>
+                                        <span id="selectedPatientSex" class="info-value loading">Loading...</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="patient-info-item">
+                                    <div class="info-icon-wrapper">
+                                        <i class="fas fa-ruler-vertical"></i>
+                                    </div>
+                                    <div class="info-content">
+                                        <label>Height</label>
+                                        <span id="selectedPatientHeight" class="info-value loading">Loading...</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="patient-info-item">
+                                    <div class="info-icon-wrapper">
+                                        <i class="fas fa-weight"></i>
+                                    </div>
+                                    <div class="info-content">
+                                        <label>Weight</label>
+                                        <span id="selectedPatientWeight" class="info-value loading">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Prescription Details Section -->
                     <div class="form-section">
-                        <h4><i class="fas fa-pills"></i> Prescription Details</h4>
-                        <p>Add medications and their detailed instructions below.</p>
-                        
-                        <!-- View Available Medications Button -->
-                        <div style="margin-bottom: 15px;">
-                            <button type="button" class="btn btn-primary" onclick="openMedicationsModal()">
-                                <i class="fas fa-eye"></i> View Available Medications
-                            </button>
-                        </div>
-
-                <div class="medications-container">
-                    <div class="medication-headers">
-                        <div>Medication Name</div>
-                        <div>Dosage</div>
-                        <div>Frequency</div>
-                        <div>Duration</div>
-                        <div>Instructions</div>
-                    </div>
-                    
-                    <div id="medications-container">
-                        <!-- Initial medication row -->
-                        <div class="medication-row">
-                            <div class="form-group">
-                                <input type="text" name="medications[0][medication_name]" placeholder="e.g., Paracetamol" required>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                            <div>
+                                <h4 style="margin: 0;"><i class="fas fa-pills"></i> Prescription Details</h4>
+                                <p style="margin: 5px 0 0 0; color: #666;">Add medications and their detailed instructions below.</p>
                             </div>
-                            <div class="form-group">
-                                <input type="text" name="medications[0][dosage]" placeholder="e.g., 500mg">
-                            </div>
-                            <div class="form-group">
-                                <input type="text" name="medications[0][frequency]" placeholder="e.g., 3x daily">
-                            </div>
-                            <div class="form-group">
-                                <input type="text" name="medications[0][duration]" placeholder="e.g., 7 days">
-                            </div>
-                            <div class="form-group">
-                                <textarea name="medications[0][instructions]" placeholder="Additional instructions..."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <button type="button" class="remove-medication" onclick="removeMedication(this)" style="display: none;">
-                                    <i class="fas fa-trash"></i>
+                            <div>
+                                <button type="button" class="btn btn-secondary" onclick="openMedicationsModal()">
+                                    <i class="fas fa-eye"></i> View Available Medications
                                 </button>
                             </div>
                         </div>
+
+                        <div class="medications-container">
+                            <div id="medications-container">                                
+                                <!-- Initial medication row -->
+                                <div class="medication-row">
+                                    <div class="form-group">
+                                        <label>Medication Name</label>
+                                        <input type="text" name="medications[0][medication_name]" placeholder="e.g., Paracetamol" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Dosage</label>
+                                        <select name="medications[0][dosage]" onchange="handleDosageChange(this)">
+                                            <option value="">Select dosage...</option>
+                                            <!-- Pain/Fever Medications -->
+                                            <optgroup label="Pain & Fever">
+                                                <option value="250mg">250mg</option>
+                                                <option value="500mg">500mg</option>
+                                                <option value="650mg">650mg</option>
+                                                <option value="200mg">200mg (Ibuprofen)</option>
+                                                <option value="400mg">400mg (Ibuprofen)</option>
+                                                <option value="80mg">80mg (Aspirin)</option>
+                                                <option value="100mg">100mg (Aspirin)</option>
+                                            </optgroup>
+                                            <!-- Antibiotics -->
+                                            <optgroup label="Antibiotics">
+                                                <option value="250mg">250mg</option>
+                                                <option value="500mg">500mg</option>
+                                                <option value="875mg">875mg</option>
+                                                <option value="1g">1g</option>
+                                                <option value="100mg">100mg</option>
+                                            </optgroup>
+                                            <!-- Cardiovascular -->
+                                            <optgroup label="Cardiovascular">
+                                                <option value="2.5mg">2.5mg</option>
+                                                <option value="5mg">5mg</option>
+                                                <option value="10mg">10mg</option>
+                                                <option value="20mg">20mg</option>
+                                                <option value="25mg">25mg</option>
+                                                <option value="50mg">50mg</option>
+                                                <option value="100mg">100mg</option>
+                                            </optgroup>
+                                            <!-- Diabetes -->
+                                            <optgroup label="Diabetes">
+                                                <option value="500mg">500mg (Metformin)</option>
+                                                <option value="850mg">850mg (Metformin)</option>
+                                                <option value="1000mg">1000mg (Metformin)</option>
+                                                <option value="2.5mg">2.5mg (Glibenclamide)</option>
+                                                <option value="5mg">5mg (Glibenclamide)</option>
+                                                <option value="100IU/mL">100IU/mL (Insulin)</option>
+                                            </optgroup>
+                                            <!-- Respiratory -->
+                                            <optgroup label="Respiratory">
+                                                <option value="2mg">2mg</option>
+                                                <option value="4mg">4mg</option>
+                                                <option value="100mcg/dose">100mcg/dose (Inhaler)</option>
+                                                <option value="250mcg/dose">250mcg/dose (Inhaler)</option>
+                                            </optgroup>
+                                            <!-- Vitamins & Supplements -->
+                                            <optgroup label="Vitamins & Supplements">
+                                                <option value="325mg">325mg (Iron)</option>
+                                                <option value="5mg">5mg (Folic Acid)</option>
+                                                <option value="500mg">500mg (Calcium)</option>
+                                                <option value="1 tablet">1 tablet</option>
+                                                <option value="1 capsule">1 capsule</option>
+                                            </optgroup>
+                                            <!-- Topical -->
+                                            <optgroup label="Topical">
+                                                <option value="1%">1%</option>
+                                                <option value="2%">2%</option>
+                                                <option value="0.5%">0.5%</option>
+                                                <option value="10%">10%</option>
+                                                <option value="25%">25%</option>
+                                            </optgroup>
+                                            <!-- Eye/Ear Drops -->
+                                            <optgroup label="Drops">
+                                                <option value="0.3%">0.3%</option>
+                                                <option value="0.5%">0.5%</option>
+                                                <option value="0.9%">0.9%</option>
+                                                <option value="1 drop">1 drop</option>
+                                                <option value="2 drops">2 drops</option>
+                                            </optgroup>
+                                            <!-- Liquids -->
+                                            <optgroup label="Liquids">
+                                                <option value="5mL">5mL</option>
+                                                <option value="10mL">10mL</option>
+                                                <option value="15mL">15mL</option>
+                                                <option value="1 sachet">1 sachet</option>
+                                                <option value="1 teaspoon">1 teaspoon</option>
+                                                <option value="1 tablespoon">1 tablespoon</option>
+                                            </optgroup>
+                                            <option value="custom">Other (specify)</option>
+                                        </select>
+                                        <input type="text" name="medications[0][dosage_custom]" placeholder="Enter custom dosage..." style="display:none; margin-top:5px;" onblur="updateDosageFromCustom(this)">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Frequency</label>
+                                        <select name="medications[0][frequency]" required>
+                                            <option value="">Select frequency...</option>
+                                            <option value="Once daily">Once daily</option>
+                                            <option value="Twice daily">Twice daily</option>
+                                            <option value="3 times daily">3 times daily</option>
+                                            <option value="4 times daily">4 times daily</option>
+                                            <option value="Every 4 hours">Every 4 hours</option>
+                                            <option value="Every 6 hours">Every 6 hours</option>
+                                            <option value="Every 8 hours">Every 8 hours</option>
+                                            <option value="Every 12 hours">Every 12 hours</option>
+                                            <option value="Before meals">Before meals</option>
+                                            <option value="After meals">After meals</option>
+                                            <option value="With meals">With meals</option>
+                                            <option value="At bedtime">At bedtime</option>
+                                            <option value="As needed">As needed</option>
+                                            <option value="Weekly">Weekly</option>
+                                            <option value="Monthly">Monthly</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Duration</label>
+                                        <select name="medications[0][duration]" required>
+                                            <option value="">Select duration...</option>
+                                            <option value="1 day">1 day</option>
+                                            <option value="3 days">3 days</option>
+                                            <option value="5 days">5 days</option>
+                                            <option value="7 days">7 days</option>
+                                            <option value="10 days">10 days</option>
+                                            <option value="14 days">14 days</option>
+                                            <option value="21 days">21 days</option>
+                                            <option value="1 month">1 month</option>
+                                            <option value="2 months">2 months</option>
+                                            <option value="3 months">3 months</option>
+                                            <option value="6 months">6 months</option>
+                                            <option value="1 year">1 year</option>
+                                            <option value="Until finished">Until finished</option>
+                                            <option value="As needed">As needed</option>
+                                            <option value="Ongoing">Ongoing</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Instructions</label>
+                                        <textarea name="medications[0][instructions]" placeholder="Additional instructions..."></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Actions</label>
+                                        <button type="button" class="remove-medication" onclick="removeMedication(this)" style="display: none;">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="button" class="add-medication" onclick="addMedication()">
+                                <i class="fas fa-plus"></i> Add Another Medication
+                            </button>
+                        </div>
                     </div>
-                    
-                    <button type="button" class="add-medication" onclick="addMedication()">
-                        <i class="fas fa-plus"></i> Add Another Medication
-                    </button>
-                </div>
-            </div>
 
-            <!-- Additional Information Section -->
-            <div class="form-section">
-                <div class="section-header">
-                    <h3><i class="fas fa-notes-medical"></i> Additional Information</h3>
-                    <p>Add any special notes or instructions for this prescription.</p>
-                </div>
+                    <!-- Additional Information Section -->
+                    <div class="form-section">
+                        <div class="section-header">
+                            <h3><i class="fas fa-notes-medical"></i> Additional Information</h3>
+                            <p>Add any special notes or instructions for this prescription.</p>
+                        </div>
 
-                <div class="form-group">
-                    <label for="additional_notes">Additional Notes</label>
-                    <textarea name="additional_notes" id="additional_notes" rows="4" 
-                            placeholder="Any special instructions, warnings, or additional information for this prescription..."></textarea>
-                </div>
-
-                <div class="form-group">
-                    <div class="button-container">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-prescription-bottle-alt"></i>
-                            Create Prescription
-                        </button>
+                        <div class="form-group">
+                            <textarea name="additional_notes" id="additional_notes" rows="4"
+                                placeholder="Any special instructions, warnings, or additional information for this prescription..."></textarea>
+                        </div>
                     </div>
-                </div>
+                    <div class="form-group">
+                        <div class="button-container">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-prescription-bottle-alt"></i>
+                                Create Prescription
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
-        </form>
-        </div>
         </div>
     </section>
 
@@ -890,10 +1514,10 @@ if ($search_query || $first_name || $last_name) {
         // Ensure DOM is fully loaded before executing functions
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM fully loaded');
-            
+
             // Initialize the page
             initializePage();
-            
+
             // Add form validation
             const prescriptionForm = document.getElementById('prescriptionForm');
             if (prescriptionForm) {
@@ -919,10 +1543,10 @@ if ($search_query || $first_name || $last_name) {
                     console.error('Critical Error: medications-container not found on page load');
                     return;
                 }
-                
+
                 // Update remove buttons on initial load
                 updateRemoveButtons();
-                
+
                 console.log('Page initialized successfully');
             } catch (error) {
                 console.error('Error initializing page:', error);
@@ -958,23 +1582,23 @@ if ($search_query || $first_name || $last_name) {
         window.debugPrescriptionPage = function() {
             console.log('=== PRESCRIPTION PAGE DEBUG INFO ===');
             console.log('Medication count:', medicationCount);
-            
+
             const container = document.getElementById('medications-container');
             console.log('Medications container:', container);
             console.log('Container children count:', container ? container.children.length : 'N/A');
-            
+
             const form = document.getElementById('prescriptionForm');
             console.log('Prescription form:', form);
-            
+
             const medicationInputs = document.querySelectorAll('input[name*="[medication_name]"]');
             console.log('Medication name inputs found:', medicationInputs.length);
-            
+
             const selectedPatientId = document.getElementById('selectedPatientId');
             console.log('Selected patient ID element:', selectedPatientId);
             console.log('Selected patient ID value:', selectedPatientId ? selectedPatientId.value : 'N/A');
-            
+
             console.log('=== END DEBUG INFO ===');
-            
+
             return {
                 medicationCount,
                 containerExists: !!container,
@@ -987,69 +1611,190 @@ if ($search_query || $first_name || $last_name) {
 
         function addMedication() {
             console.log('addMedication function called');
-            
+
             try {
                 const container = document.getElementById('medications-container');
                 console.log('Container found:', container);
-                
+
                 if (!container) {
                     console.error('Medications container not found');
-                    
+
                     // Use safe alert function
                     safeAlert('Error: Cannot find medications container. Please refresh the page.', 'error');
                     return;
                 }
-                
+
                 console.log('Creating new medication row with count:', medicationCount);
-                
+
                 const newRow = document.createElement('div');
                 newRow.className = 'medication-row';
-                
+
                 // Build the HTML string more carefully
                 const medicationHTML = `
                     <div class="form-group">
+                        <label>Medication Name</label>
                         <input type="text" name="medications[${medicationCount}][medication_name]" placeholder="e.g., Paracetamol" required>
                     </div>
                     <div class="form-group">
-                        <input type="text" name="medications[${medicationCount}][dosage]" placeholder="e.g., 500mg">
+                        <label>Dosage</label>
+                        <select name="medications[${medicationCount}][dosage]" onchange="handleDosageChange(this)">
+                            <option value="">Select dosage...</option>
+                            <!-- Pain/Fever Medications -->
+                            <optgroup label="Pain & Fever">
+                                <option value="250mg">250mg</option>
+                                <option value="500mg">500mg</option>
+                                <option value="650mg">650mg</option>
+                                <option value="200mg">200mg (Ibuprofen)</option>
+                                <option value="400mg">400mg (Ibuprofen)</option>
+                                <option value="80mg">80mg (Aspirin)</option>
+                                <option value="100mg">100mg (Aspirin)</option>
+                            </optgroup>
+                            <!-- Antibiotics -->
+                            <optgroup label="Antibiotics">
+                                <option value="250mg">250mg</option>
+                                <option value="500mg">500mg</option>
+                                <option value="875mg">875mg</option>
+                                <option value="1g">1g</option>
+                                <option value="100mg">100mg</option>
+                            </optgroup>
+                            <!-- Cardiovascular -->
+                            <optgroup label="Cardiovascular">
+                                <option value="2.5mg">2.5mg</option>
+                                <option value="5mg">5mg</option>
+                                <option value="10mg">10mg</option>
+                                <option value="20mg">20mg</option>
+                                <option value="25mg">25mg</option>
+                                <option value="50mg">50mg</option>
+                                <option value="100mg">100mg</option>
+                            </optgroup>
+                            <!-- Diabetes -->
+                            <optgroup label="Diabetes">
+                                <option value="500mg">500mg (Metformin)</option>
+                                <option value="850mg">850mg (Metformin)</option>
+                                <option value="1000mg">1000mg (Metformin)</option>
+                                <option value="2.5mg">2.5mg (Glibenclamide)</option>
+                                <option value="5mg">5mg (Glibenclamide)</option>
+                                <option value="100IU/mL">100IU/mL (Insulin)</option>
+                            </optgroup>
+                            <!-- Respiratory -->
+                            <optgroup label="Respiratory">
+                                <option value="2mg">2mg</option>
+                                <option value="4mg">4mg</option>
+                                <option value="100mcg/dose">100mcg/dose (Inhaler)</option>
+                                <option value="250mcg/dose">250mcg/dose (Inhaler)</option>
+                            </optgroup>
+                            <!-- Vitamins & Supplements -->
+                            <optgroup label="Vitamins & Supplements">
+                                <option value="325mg">325mg (Iron)</option>
+                                <option value="5mg">5mg (Folic Acid)</option>
+                                <option value="500mg">500mg (Calcium)</option>
+                                <option value="1 tablet">1 tablet</option>
+                                <option value="1 capsule">1 capsule</option>
+                            </optgroup>
+                            <!-- Topical -->
+                            <optgroup label="Topical">
+                                <option value="1%">1%</option>
+                                <option value="2%">2%</option>
+                                <option value="0.5%">0.5%</option>
+                                <option value="10%">10%</option>
+                                <option value="25%">25%</option>
+                            </optgroup>
+                            <!-- Eye/Ear Drops -->
+                            <optgroup label="Drops">
+                                <option value="0.3%">0.3%</option>
+                                <option value="0.5%">0.5%</option>
+                                <option value="0.9%">0.9%</option>
+                                <option value="1 drop">1 drop</option>
+                                <option value="2 drops">2 drops</option>
+                            </optgroup>
+                            <!-- Liquids -->
+                            <optgroup label="Liquids">
+                                <option value="5mL">5mL</option>
+                                <option value="10mL">10mL</option>
+                                <option value="15mL">15mL</option>
+                                <option value="1 sachet">1 sachet</option>
+                                <option value="1 teaspoon">1 teaspoon</option>
+                                <option value="1 tablespoon">1 tablespoon</option>
+                            </optgroup>
+                            <option value="custom">Other (specify)</option>
+                        </select>
+                        <input type="text" name="medications[${medicationCount}][dosage_custom]" placeholder="Enter custom dosage..." style="display:none; margin-top:5px;" onblur="updateDosageFromCustom(this)">
                     </div>
                     <div class="form-group">
-                        <input type="text" name="medications[${medicationCount}][frequency]" placeholder="e.g., 3x daily">
+                        <label>Frequency</label>
+                        <select name="medications[${medicationCount}][frequency]" required>
+                            <option value="">Select frequency...</option>
+                            <option value="Once daily">Once daily</option>
+                            <option value="Twice daily">Twice daily</option>
+                            <option value="3 times daily">3 times daily</option>
+                            <option value="4 times daily">4 times daily</option>
+                            <option value="Every 4 hours">Every 4 hours</option>
+                            <option value="Every 6 hours">Every 6 hours</option>
+                            <option value="Every 8 hours">Every 8 hours</option>
+                            <option value="Every 12 hours">Every 12 hours</option>
+                            <option value="Before meals">Before meals</option>
+                            <option value="After meals">After meals</option>
+                            <option value="With meals">With meals</option>
+                            <option value="At bedtime">At bedtime</option>
+                            <option value="As needed">As needed</option>
+                            <option value="Weekly">Weekly</option>
+                            <option value="Monthly">Monthly</option>
+                        </select>
                     </div>
                     <div class="form-group">
-                        <input type="text" name="medications[${medicationCount}][duration]" placeholder="e.g., 7 days">
+                        <label>Duration</label>
+                        <select name="medications[${medicationCount}][duration]" required>
+                            <option value="">Select duration...</option>
+                            <option value="1 day">1 day</option>
+                            <option value="3 days">3 days</option>
+                            <option value="5 days">5 days</option>
+                            <option value="7 days">7 days</option>
+                            <option value="10 days">10 days</option>
+                            <option value="14 days">14 days</option>
+                            <option value="21 days">21 days</option>
+                            <option value="1 month">1 month</option>
+                            <option value="2 months">2 months</option>
+                            <option value="3 months">3 months</option>
+                            <option value="6 months">6 months</option>
+                            <option value="1 year">1 year</option>
+                            <option value="Until finished">Until finished</option>
+                            <option value="As needed">As needed</option>
+                            <option value="Ongoing">Ongoing</option>
+                        </select>
                     </div>
                     <div class="form-group">
+                        <label>Instructions</label>
                         <textarea name="medications[${medicationCount}][instructions]" placeholder="Additional instructions..."></textarea>
                     </div>
                     <div class="form-group">
+                        <label>Actions</label>
                         <button type="button" class="remove-medication" onclick="removeMedication(this)">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 `;
-                
+
                 console.log('Setting innerHTML');
                 newRow.innerHTML = medicationHTML;
-                
+
                 console.log('Appending to container');
                 container.appendChild(newRow);
-                
+
                 medicationCount++;
                 console.log('Medication count incremented to:', medicationCount);
-                
+
                 // Show remove buttons for all rows when we have more than one
                 updateRemoveButtons();
-                
+
                 console.log('Medication added successfully');
-                
+
                 // Try to show success message
                 safeAlert('Medication row added successfully!', 'success');
-                
+
             } catch (error) {
                 console.error('Error adding medication:', error);
                 console.error('Error stack:', error.stack);
-                
+
                 // Use safe alert function
                 safeAlert('Error adding medication: ' + error.message, 'error');
             }
@@ -1063,7 +1808,7 @@ if ($search_query || $first_name || $last_name) {
                     showAlert('Error: Cannot find medications container', 'error');
                     return;
                 }
-                
+
                 if (container.children.length > 1) {
                     const rowToRemove = button.closest('.medication-row');
                     if (rowToRemove) {
@@ -1089,13 +1834,13 @@ if ($search_query || $first_name || $last_name) {
                     console.error('Medications container not found in updateRemoveButtons');
                     return;
                 }
-                
+
                 const removeButtons = container.querySelectorAll('.remove-medication');
-                
+
                 removeButtons.forEach(button => {
                     button.style.display = container.children.length > 1 ? 'block' : 'none';
                 });
-                
+
                 console.log('Remove buttons updated. Container has', container.children.length, 'children');
             } catch (error) {
                 console.error('Error updating remove buttons:', error);
@@ -1107,27 +1852,27 @@ if ($search_query || $first_name || $last_name) {
                 const selectedPatientId = document.getElementById('selectedPatientId').value;
                 const medicationInputs = document.querySelectorAll('input[name*="[medication_name]"]');
                 let hasValidMedication = false;
-                
+
                 // Check if patient is selected
                 if (!selectedPatientId) {
                     e.preventDefault();
                     showAlert('Please search and select a patient first.', 'error');
                     return false;
                 }
-                
+
                 // Check if at least one medication is added
                 medicationInputs.forEach(input => {
                     if (input.value.trim() !== '') {
                         hasValidMedication = true;
                     }
                 });
-                
+
                 if (!hasValidMedication) {
                     e.preventDefault();
                     showAlert('Please add at least one medication.', 'error');
                     return false;
                 }
-                
+
                 console.log('Form validation passed');
                 return true;
             } catch (error) {
@@ -1147,25 +1892,77 @@ if ($search_query || $first_name || $last_name) {
                 if (this.checked) {
                     const patientId = this.value;
                     const patientName = this.getAttribute('data-patient-name');
-                    
+
                     // Update hidden form field
                     document.getElementById('selectedPatientId').value = patientId;
-                    
-                    // Show selected patient info
+
+                    // Show selected patient info immediately with basic info
                     document.getElementById('selectedPatientName').textContent = patientName;
                     document.getElementById('selectedPatientInfo').style.display = 'block';
                     
+                    // Show loading states
+                    document.getElementById('selectedPatientAge').textContent = 'Loading...';
+                    document.getElementById('selectedPatientSex').textContent = 'Loading...';
+                    document.getElementById('selectedPatientHeight').textContent = 'Loading...';
+                    document.getElementById('selectedPatientWeight').textContent = 'Loading...';
+
+                    // Fetch detailed patient information
+                    fetchPatientDetails(patientId);
+
                     // Highlight selected row
                     document.querySelectorAll('.patient-row').forEach(row => {
                         row.classList.remove('selected-patient');
                     });
                     this.closest('.patient-row').classList.add('selected-patient');
-                    
+
                     // Enable the form
                     document.getElementById('prescriptionForm').classList.add('enabled');
                 }
             });
         });
+
+        // Function to fetch detailed patient information
+        function fetchPatientDetails(patientId) {
+            fetch(`../../api/get_patient_details.php?patient_id=${patientId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.patient) {
+                        const patient = data.patient;
+                        
+                        // Update patient information
+                        document.getElementById('selectedPatientAge').textContent = patient.age;
+                        document.getElementById('selectedPatientSex').textContent = patient.sex;
+                        document.getElementById('selectedPatientHeight').textContent = patient.height;
+                        document.getElementById('selectedPatientWeight').textContent = patient.weight;
+                        
+                        // Show success message if vitals are available
+                        if (patient.vitals_date) {
+                            const vitalsDate = new Date(patient.vitals_date).toLocaleDateString();
+                            console.log(`Patient vitals loaded from ${vitalsDate}`);
+                        }
+                    } else {
+                        // Handle error - show error states
+                        document.getElementById('selectedPatientAge').textContent = 'Error loading';
+                        document.getElementById('selectedPatientSex').textContent = 'Error loading';
+                        document.getElementById('selectedPatientHeight').textContent = 'Error loading';
+                        document.getElementById('selectedPatientWeight').textContent = 'Error loading';
+                        
+                        console.error('Error fetching patient details:', data.error || 'Unknown error');
+                        showAlert('Error loading patient details. Some information may not be available.', 'warning');
+                    }
+                })
+                .catch(error => {
+                    console.error('Network error fetching patient details:', error);
+                    
+                    // Show error states
+                    document.getElementById('selectedPatientAge').textContent = 'Network error';
+                    document.getElementById('selectedPatientSex').textContent = 'Network error';
+                    document.getElementById('selectedPatientHeight').textContent = 'Network error';
+                    document.getElementById('selectedPatientWeight').textContent = 'Network error';
+                    
+                    showAlert('Network error loading patient details. Please check your connection.', 'error');
+                });
+        }
 
         // Alert system (no JavaScript alerts)
         function showAlert(message, type = 'info') {
@@ -1176,11 +1973,11 @@ if ($search_query || $first_name || $last_name) {
                 ${message}
                 <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
             `;
-            
+
             // Insert at the top of profile-wrapper
             const profileWrapper = document.querySelector('.profile-wrapper');
             profileWrapper.insertBefore(alertDiv, profileWrapper.firstChild);
-            
+
             // Auto-remove after 5 seconds
             setTimeout(() => {
                 if (alertDiv.parentNode) {
@@ -1190,13 +1987,77 @@ if ($search_query || $first_name || $last_name) {
             }, 5000);
         }
 
+        // Clear filters function
+        function clearFilters() {
+            // Clear all form inputs
+            document.getElementById('search').value = '';
+            document.getElementById('barangay').value = '';
+
+            // Redirect to the page without any parameters
+            window.location.href = window.location.pathname;
+        }
+
+        // Dosage handling functions
+        function handleDosageChange(selectElement) {
+            const customInput = selectElement.parentNode.querySelector('input[name*="[dosage_custom]"]');
+            const dosageSelect = selectElement;
+
+            if (selectElement.value === 'custom') {
+                // Show custom input field
+                customInput.style.display = 'block';
+                customInput.focus();
+                // Clear the main dosage field temporarily
+                dosageSelect.setAttribute('data-original-name', dosageSelect.name);
+                dosageSelect.name = dosageSelect.name.replace('[dosage]', '[dosage_temp]');
+            } else {
+                // Hide custom input field
+                customInput.style.display = 'none';
+                customInput.value = '';
+                // Restore original field name
+                if (dosageSelect.hasAttribute('data-original-name')) {
+                    dosageSelect.name = dosageSelect.getAttribute('data-original-name');
+                    dosageSelect.removeAttribute('data-original-name');
+                }
+            }
+        }
+
+        function updateDosageFromCustom(customInput) {
+            const customValue = customInput.value.trim();
+            if (customValue) {
+                const dosageSelect = customInput.parentNode.querySelector('select[name*="[dosage"]');
+
+                // Create or update custom option
+                let customOption = dosageSelect.querySelector('option[value="' + customValue + '"]');
+                if (!customOption) {
+                    customOption = document.createElement('option');
+                    customOption.value = customValue;
+                    customOption.textContent = customValue;
+                    // Insert before "Other (specify)" option
+                    const otherOption = dosageSelect.querySelector('option[value="custom"]');
+                    dosageSelect.insertBefore(customOption, otherOption);
+                }
+
+                // Select the custom value
+                dosageSelect.value = customValue;
+
+                // Hide custom input
+                customInput.style.display = 'none';
+
+                // Restore original field name
+                if (dosageSelect.hasAttribute('data-original-name')) {
+                    dosageSelect.name = dosageSelect.getAttribute('data-original-name');
+                    dosageSelect.removeAttribute('data-original-name');
+                }
+            }
+        }
+
         // Available Medications Modal Functions
         function openMedicationsModal() {
             // Set higher z-index to appear above other modals
             const medicationsModal = document.getElementById('availableMedicationsModal');
             medicationsModal.style.display = 'block';
             medicationsModal.style.zIndex = '1100'; // Higher than default modal z-index
-            
+
             // Focus on the search input for better UX
             setTimeout(() => {
                 const searchInput = document.getElementById('medicationSearch');
@@ -1248,7 +2109,7 @@ if ($search_query || $first_name || $last_name) {
 
             // Show confirmation and copy to clipboard
             const medicationText = `${drugName} ${dosage} ${formulation}`;
-            
+
             // Try to copy to clipboard
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(medicationText).then(() => {
@@ -1276,10 +2137,10 @@ if ($search_query || $first_name || $last_name) {
                 // Look for the first empty medication name field
                 const medicationNameFields = document.querySelectorAll('input[name*="[medication_name]"]');
                 const dosageFields = document.querySelectorAll('input[name*="[dosage]"]');
-                
+
                 let targetNameField = null;
                 let targetDosageField = null;
-                
+
                 // Find the first empty medication name field
                 for (let i = 0; i < medicationNameFields.length; i++) {
                     if (!medicationNameFields[i].value.trim()) {
@@ -1288,17 +2149,25 @@ if ($search_query || $first_name || $last_name) {
                         break;
                     }
                 }
-                
+
                 if (targetNameField) {
                     targetNameField.value = medicationData.name;
-                    targetNameField.dispatchEvent(new Event('input', { bubbles: true }));
-                    targetNameField.dispatchEvent(new Event('change', { bubbles: true }));
+                    targetNameField.dispatchEvent(new Event('input', {
+                        bubbles: true
+                    }));
+                    targetNameField.dispatchEvent(new Event('change', {
+                        bubbles: true
+                    }));
                 }
-                
+
                 if (targetDosageField) {
                     targetDosageField.value = medicationData.dosage;
-                    targetDosageField.dispatchEvent(new Event('input', { bubbles: true }));
-                    targetDosageField.dispatchEvent(new Event('change', { bubbles: true }));
+                    targetDosageField.dispatchEvent(new Event('input', {
+                        bubbles: true
+                    }));
+                    targetDosageField.dispatchEvent(new Event('change', {
+                        bubbles: true
+                    }));
                 }
 
                 // If fields were auto-filled, show additional message
@@ -1344,8 +2213,8 @@ if ($search_query || $first_name || $last_name) {
                 </div>
                 <div style="margin-bottom: 15px;">
                     <input type="text" id="medicationSearch" placeholder="Search medications..."
-                           style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 14px;"
-                           oninput="filterMedications()">
+                        style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 14px;"
+                        oninput="filterMedications()">
                 </div>
                 <table class="prescription-table" id="medicationsTable">
                     <thead>
@@ -1668,4 +2537,5 @@ if ($search_query || $first_name || $last_name) {
         </div>
     </div>
 </body>
+
 </html>

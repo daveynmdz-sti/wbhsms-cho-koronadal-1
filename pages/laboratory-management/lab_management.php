@@ -321,12 +321,36 @@ try {
             align-items: center;
             margin-bottom: 2rem;
             flex-wrap: wrap;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            padding: 25px 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e3f2fd;
         }
 
         .page-header h1 {
             color: #0077b6;
             margin: 0;
             font-size: 1.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .page-header h1 i {
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 1.2rem;
+        }
+
+        .page-header-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
         .stats-grid {
@@ -337,42 +361,90 @@ try {
         }
 
         .stat-card {
-            background: white;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
             padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e3f2fd;
             text-align: center;
-            transition: transform 0.3s;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            transition: all 0.3s ease;
         }
 
         .stat-card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
         }
 
-        .stat-card.total {
-            border-left: 5px solid #6c757d;
+        .stat-card.total::before {
+            background: linear-gradient(135deg, #6c757d, #495057);
         }
 
-        .stat-card.pending {
-            border-left: 5px solid #ffc107;
+        .stat-card.pending::before {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
         }
 
-        .stat-card.active {
-            border-left: 5px solid #17a2b8;
+        .stat-card.active::before {
+            background: linear-gradient(135deg, #17a2b8, #138496);
         }
 
-        .stat-card.completed {
-            border-left: 5px solid #28a745;
+        .stat-card.completed::before {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
         }
 
-        .stat-card.voided {
-            border-left: 5px solid #dc3545;
+        .stat-card.voided::before {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+        }
+
+        .stat-card-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            font-size: 1.8rem;
+            color: white;
+        }
+
+        .stat-card.total .stat-card-icon {
+            background: linear-gradient(135deg, #6c757d, #495057);
+        }
+
+        .stat-card.pending .stat-card-icon {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+        }
+
+        .stat-card.active .stat-card-icon {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+        }
+
+        .stat-card.completed .stat-card-icon {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+        }
+
+        .stat-card.voided .stat-card-icon {
+            background: linear-gradient(135deg, #dc3545, #c82333);
         }
 
         .stat-number {
             font-size: 2.5em;
             font-weight: bold;
             color: #03045e;
+            margin-bottom: 8px;
+            display: block;
         }
 
         .stat-label {
@@ -380,6 +452,14 @@ try {
             color: #6c757d;
             text-transform: uppercase;
             letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .stat-description {
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 5px;
+            line-height: 1.4;
         }
 
         .breadcrumb {
@@ -415,33 +495,163 @@ try {
         }
 
         /* Laboratory Management Specific Styles */
-        .lab-management-container {
+        .laboratory-management-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 20px;
+            gap: 25px;
+            margin-top: 25px;
         }
 
-        .lab-panel {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        .laboratory-panel {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border-radius: 15px;
+            padding: 0;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e3f2fd;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .laboratory-panel:hover {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .laboratory-panel.active-panel {
+            border-left: 4px solid #ffc107;
+        }
+
+        .laboratory-panel.completed-panel {
+            border-left: 4px solid #28a745;
         }
 
         .panel-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #03045e;
+            padding: 25px 30px;
+            background: linear-gradient(135deg, #03045e 0%, #0077b6 100%);
+            color: white;
+            border-radius: 0;
+            margin: 0;
+            position: relative;
+            overflow: hidden;
         }
 
-        .panel-title {
-            font-size: 1.3em;
-            font-weight: bold;
-            color: #03045e;
+        .panel-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="10" cy="10" r="2" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100" height="100" fill="url(%23dots)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .panel-title-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .panel-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .panel-icon.pending {
+            background: rgba(255, 193, 7, 0.3);
+        }
+
+        .panel-icon.completed {
+            background: rgba(40, 167, 69, 0.3);
+        }
+
+        .panel-title-content h3 {
+            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: white;
+        }
+
+        .panel-subtitle {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 2px;
+            display: block;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .panel-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            position: relative;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .panel-badge.pending {
+            background: rgba(255, 193, 7, 0.3);
+            color: #fff;
+        }
+
+        .panel-badge.completed {
+            background: rgba(40, 167, 69, 0.3);
+            color: #fff;
+        }
+
+        .panel-info-card {
+            margin: 20px 25px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .panel-info-card.warning {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .panel-info-card.info {
+            background: linear-gradient(135deg, #d1ecf1 0%, #b8daff 100%);
+            color: #0c5460;
+            border: 1px solid #b8daff;
+        }
+
+        .panel-info-card i {
+            font-size: 1.2rem;
+            margin-top: 2px;
+        }
+
+        .info-content {
+            flex: 1;
+        }
+
+        .info-content strong {
+            font-weight: 600;
+        }
+
+        .info-content small {
+            opacity: 0.8;
         }
 
         .create-order-btn {
@@ -461,30 +671,50 @@ try {
 
         .lab-table {
             width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 0 25px 25px 25px;
+            width: calc(100% - 50px);
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e9ecef;
         }
 
         .lab-table th,
         .lab-table td {
-            padding: 12px 8px;
+            padding: 16px 12px;
             text-align: left;
-            border-bottom: 1px solid #ddd;
-            font-size: 0.85em;
+            border-bottom: 1px solid #f1f3f4;
+            font-size: 0.9rem;
             vertical-align: middle;
         }
 
         .lab-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-            color: #03045e;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #dee2e6;
             position: sticky;
             top: 0;
             z-index: 10;
         }
 
-        .lab-table tr:hover {
-            background-color: #f5f5f5;
+        .lab-table tbody tr {
+            transition: all 0.3s ease;
+        }
+
+        .lab-table tbody tr:hover {
+            background: linear-gradient(135deg, #f8fdff 0%, #e3f2fd 100%);
+            transform: translateX(2px);
+        }
+
+        .lab-table tbody tr:last-child td {
+            border-bottom: none;
         }
 
         /* Improved action buttons container */
@@ -641,51 +871,73 @@ try {
 
         .search-filters {
             display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
+            gap: 12px;
+            margin: 20px 25px;
             flex-wrap: wrap;
             align-items: stretch;
+            background: rgba(248, 249, 250, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e9ecef;
         }
 
         .filter-input {
-            padding: 8px;
+            padding: 12px 16px;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 0.9em;
+            border-radius: 8px;
+            font-size: 0.9rem;
             flex: 1;
             min-width: 150px;
+            background: white;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: #0077b6;
+            box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.1);
+            transform: translateY(-1px);
         }
 
         .filter-btn {
-            padding: 8px 15px;
+            padding: 12px 20px;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 0.9em;
+            font-size: 0.9rem;
             font-weight: 500;
             display: flex;
             align-items: center;
-            gap: 5px;
-            transition: all 0.3s;
+            gap: 8px;
+            transition: all 0.3s ease;
             white-space: nowrap;
+            min-width: 100px;
+            justify-content: center;
         }
 
         .search-btn {
-            background-color: #0077b6;
+            background: linear-gradient(135deg, #0077b6, #023e8a);
             color: white;
+            box-shadow: 0 4px 12px rgba(0, 119, 182, 0.3);
         }
 
         .search-btn:hover {
-            background-color: #005577;
+            background: linear-gradient(135deg, #005577, #01204a);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 119, 182, 0.4);
         }
 
         .clear-btn {
-            background-color: #6c757d;
+            background: linear-gradient(135deg, #6c757d, #495057);
             color: white;
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
         }
 
         .clear-btn:hover {
-            background-color: #545b62;
+            background: linear-gradient(135deg, #545b62, #343a40);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(108, 117, 125, 0.4);
         }
 
         .progress-bar {
@@ -1730,6 +1982,89 @@ try {
             border-right: 8px solid transparent;
             border-bottom: 8px solid rgba(0, 0, 0, 0.9);
         }
+
+        /* Enhanced Responsive Design for Laboratory Management */
+        @media (max-width: 768px) {
+            .laboratory-management-container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .laboratory-panel {
+                margin: 0;
+            }
+
+            .panel-header {
+                padding: 20px;
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .panel-title-section {
+                justify-content: center;
+            }
+
+            .panel-info-card {
+                margin: 15px 20px;
+                padding: 12px 15px;
+            }
+
+            .search-filters {
+                margin: 15px 20px;
+                padding: 15px;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .filter-input {
+                min-width: auto;
+            }
+
+            .lab-table {
+                margin: 0 20px 20px 20px;
+                width: calc(100% - 40px);
+                font-size: 0.8rem;
+            }
+
+            .lab-table th,
+            .lab-table td {
+                padding: 10px 8px;
+            }
+
+            .page-header {
+                padding: 20px;
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .page-header-actions {
+                justify-content: center;
+                width: 100%;
+                flex-wrap: wrap;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 15px;
+            }
+
+            .stat-card {
+                padding: 20px;
+            }
+
+            .stat-card-icon {
+                width: 50px;
+                height: 50px;
+                font-size: 1.5rem;
+                margin-bottom: 12px;
+            }
+
+            .stat-number {
+                font-size: 2rem;
+            }
+        }
     </style>
 </head>
 
@@ -1767,15 +2102,42 @@ try {
 
         <div class="page-header">
             <h1><i class="fas fa-flask"></i> Laboratory Management</h1>
-            <?php if ($canCreateOrders): ?>
-                <a href="create_lab_order.php" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Create Lab Order
-                </a>
-            <?php endif; ?>
+            <div class="page-header-actions">
+                <?php if ($canCreateOrders): ?>
+                    <a href="create_lab_order.php" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Lab Order
+                    </a>
+                <?php endif; ?>
+                <?php if ($canUploadResults): ?>
+                    <button type="button" class="btn btn-primary" onclick="showQuickUpload(0)" style="margin-left: 12px;">
+                        <i class="fas fa-upload"></i> Quick Upload
+                    </button>
+                <?php endif; ?>
+                <button type="button" class="btn btn-secondary" onclick="window.location.reload()" style="margin-left: 12px;">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
         </div>
 
         <!-- Success/Error Messages -->
         <div id="alertContainer"></div>
+
+        <!-- Display server-side messages -->
+        <?php if (isset($_SESSION['success_message'])): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i> <?= htmlspecialchars($_SESSION['success_message']) ?>
+                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+            </div>
+            <?php unset($_SESSION['success_message']); ?>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['error_message'])): ?>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($_SESSION['error_message']) ?>
+                <button type="button" class="btn-close" onclick="this.parentElement.remove();">&times;</button>
+            </div>
+            <?php unset($_SESSION['error_message']); ?>
+        <?php endif; ?>
 
         <!-- Laboratory Statistics -->
         <div class="stats-grid">
@@ -1797,32 +2159,66 @@ try {
             <?php endif; ?>
 
             <div class="stat-card total">
+                <div class="stat-card-icon">
+                    <i class="fas fa-flask"></i>
+                </div>
                 <div class="stat-number"><?= number_format($lab_stats['total'] ?? 0) ?></div>
-                <div class="stat-label">Total Tests (30 days)</div>
+                <div class="stat-label">Total Tests</div>
+                <div class="stat-description">Last 30 days</div>
             </div>
 
             <div class="stat-card pending">
+                <div class="stat-card-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
                 <div class="stat-number"><?= number_format($lab_stats['pending'] ?? 0) ?></div>
                 <div class="stat-label">Pending Tests</div>
+                <div class="stat-description">Awaiting processing</div>
             </div>
 
             <div class="stat-card completed">
+                <div class="stat-card-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
                 <div class="stat-number"><?= number_format($lab_stats['completed'] ?? 0) ?></div>
                 <div class="stat-label">Completed Tests</div>
+                <div class="stat-description">Results available</div>
             </div>
 
             <div class="stat-card voided">
+                <div class="stat-card-icon">
+                    <i class="fas fa-times-circle"></i>
+                </div>
                 <div class="stat-number"><?= number_format($lab_stats['cancelled'] ?? 0) ?></div>
                 <div class="stat-label">Cancelled Orders</div>
+                <div class="stat-description">Voided orders</div>
             </div>
         </div>
 
-        <div class="lab-management-container">
+        <div class="laboratory-management-container">
             <!-- Left Panel: Lab Orders -->
-            <div class="lab-panel">
+            <div class="laboratory-panel active-panel">
                 <div class="panel-header">
-                    <div class="panel-title">
-                        <i class="fas fa-list-alt"></i> Lab Orders
+                    <div class="panel-title-section">
+                        <div class="panel-icon pending">
+                            <i class="fas fa-list-alt"></i>
+                        </div>
+                        <div class="panel-title-content">
+                            <h3>Active Lab Orders</h3>
+                            <span class="panel-subtitle">Orders requiring processing</span>
+                        </div>
+                    </div>
+                    <div class="panel-badge pending">
+                        <?= $totalRecords ?> Orders
+                    </div>
+                </div>
+
+                <!-- Panel Description -->
+                <div class="panel-info-card warning">
+                    <i class="fas fa-flask"></i>
+                    <div class="info-content">
+                        <strong>Processing Required:</strong> These lab orders contain tests that need results upload.
+                        <br><small>Upload results to complete testing process.</small>
                     </div>
                 </div>
 
@@ -1988,10 +2384,28 @@ try {
             </div>
 
             <!-- Right Panel: Recent Lab Records -->
-            <div class="lab-panel">
+            <div class="laboratory-panel completed-panel">
                 <div class="panel-header">
-                    <div class="panel-title">
-                        <i class="fas fa-history"></i> Recent Lab Records
+                    <div class="panel-title-section">
+                        <div class="panel-icon completed">
+                            <i class="fas fa-history"></i>
+                        </div>
+                        <div class="panel-title-content">
+                            <h3>Recent Lab Records</h3>
+                            <span class="panel-subtitle">Recently processed tests</span>
+                        </div>
+                    </div>
+                    <div class="panel-badge completed">
+                        <?= $recentTotalRecords ?> Records
+                    </div>
+                </div>
+
+                <!-- Panel Description -->
+                <div class="panel-info-card info">
+                    <i class="fas fa-info-circle"></i>
+                    <div class="info-content">
+                        <strong>Recent Activity:</strong> View recently completed and processed lab tests.
+                        <br><small>Download results or review test status here.</small>
                     </div>
                 </div>
 
