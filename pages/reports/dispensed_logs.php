@@ -50,13 +50,9 @@ $start_date = $_GET['start_date'] ?? date('Y-m-01'); // First day of current mon
 $end_date = $_GET['end_date'] ?? date('Y-m-d'); // Today
 $status_filter = $_GET['status_filter'] ?? '';
 $medication_filter = $_GET['medication_filter'] ?? '';
-$employee_filter = $_GET['employee_filter'] ?? '';
 
 try {
     // Get filter options for dropdowns
-    $employees_stmt = $pdo->query("SELECT employee_id, CONCAT(first_name, ' ', last_name) as full_name FROM employees WHERE status = 'active' ORDER BY first_name");
-    $employees = $employees_stmt->fetchAll(PDO::FETCH_ASSOC);
-
     $medications_stmt = $pdo->query("SELECT DISTINCT medication_name FROM prescribed_medications WHERE medication_name IS NOT NULL AND medication_name != '' ORDER BY medication_name");
     $medications = $medications_stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -67,7 +63,7 @@ try {
         'end_date' => $end_date
     ];
 
-    if (!empty($status_filter)) {
+    if (!empty($status_filter) && in_array($status_filter, ['dispensed', 'unavailable'])) {
         $where_conditions[] = "pm.status = :status_filter";
         $params['status_filter'] = $status_filter;
     }
@@ -77,10 +73,7 @@ try {
         $params['medication_filter'] = '%' . $medication_filter . '%';
     }
 
-    if (!empty($employee_filter)) {
-        $where_conditions[] = "p.prescribed_by_employee_id = :employee_filter";
-        $params['employee_filter'] = $employee_filter;
-    }
+    // Employee filter removed - only pharmacists update medication status
 
     $where_clause = implode(' AND ', $where_conditions);
 
@@ -89,10 +82,8 @@ try {
         SELECT 
             COUNT(DISTINCT pm.prescribed_medication_id) as total_medications,
             COUNT(DISTINCT p.prescription_id) as total_prescriptions,
-            COUNT(DISTINCT p.patient_id) as total_patients,
             SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) as dispensed_count,
             SUM(CASE WHEN pm.status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_count,
-            SUM(CASE WHEN pm.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
             ROUND((SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) as dispensing_rate
         FROM prescribed_medications pm
         JOIN prescriptions p ON pm.prescription_id = p.prescription_id
@@ -107,20 +98,27 @@ try {
     $status_breakdown_query = "
         SELECT 
             pm.status,
-            COUNT(*) as count,
-            ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM prescribed_medications pm2 
-                JOIN prescriptions p2 ON pm2.prescription_id = p2.prescription_id 
-                WHERE $where_clause)), 2) as percentage
+            COUNT(*) as count
         FROM prescribed_medications pm
         JOIN prescriptions p ON pm.prescription_id = p.prescription_id
-        WHERE $where_clause
+        WHERE $where_clause AND pm.status IN ('dispensed', 'unavailable')
         GROUP BY pm.status
         ORDER BY count DESC
     ";
     
     $status_breakdown_stmt = $pdo->prepare($status_breakdown_query);
     $status_breakdown_stmt->execute($params);
-    $status_breakdown = $status_breakdown_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $status_breakdown_raw = $status_breakdown_stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Calculate total for percentage calculation
+    $total_status_count = array_sum(array_column($status_breakdown_raw, 'count'));
+    
+    // Add percentage calculation
+    $status_breakdown = [];
+    foreach ($status_breakdown_raw as $status) {
+        $status['percentage'] = $total_status_count > 0 ? round(($status['count'] / $total_status_count) * 100, 2) : 0;
+        $status_breakdown[] = $status;
+    }
 
     // 3. TOP DISPENSED MEDICATIONS
     $top_medications_query = "
@@ -129,11 +127,10 @@ try {
             COUNT(*) as prescription_count,
             SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) as dispensed_count,
             SUM(CASE WHEN pm.status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_count,
-            SUM(CASE WHEN pm.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
             ROUND((SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) as fulfillment_rate
         FROM prescribed_medications pm
         JOIN prescriptions p ON pm.prescription_id = p.prescription_id
-        WHERE $where_clause
+        WHERE $where_clause AND pm.status IN ('dispensed', 'unavailable')
         GROUP BY pm.medication_name
         ORDER BY prescription_count DESC
         LIMIT 20
@@ -143,40 +140,16 @@ try {
     $top_medications_stmt->execute($params);
     $top_medications = $top_medications_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 4. DISPENSING BY PRESCRIBING EMPLOYEE
-    $employee_dispensing_query = "
-        SELECT 
-            CONCAT(e.first_name, ' ', e.last_name) as employee_name,
-            e.role,
-            COUNT(DISTINCT pm.prescribed_medication_id) as total_medications,
-            COUNT(DISTINCT p.prescription_id) as prescriptions_count,
-            SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) as dispensed_count,
-            SUM(CASE WHEN pm.status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_count,
-            ROUND((SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) * 100.0 / COUNT(pm.prescribed_medication_id)), 2) as fulfillment_rate
-        FROM prescribed_medications pm
-        JOIN prescriptions p ON pm.prescription_id = p.prescription_id
-        JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
-        WHERE $where_clause
-        GROUP BY e.employee_id, e.first_name, e.last_name, e.role
-        ORDER BY total_medications DESC
-        LIMIT 15
-    ";
-    
-    $employee_dispensing_stmt = $pdo->prepare($employee_dispensing_query);
-    $employee_dispensing_stmt->execute($params);
-    $employee_dispensing = $employee_dispensing_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // 5. DAILY DISPENSING TRENDS
+    // 4. DAILY DISPENSING TRENDS
     $daily_trends_query = "
         SELECT 
             DATE(pm.updated_at) as dispensing_date,
             COUNT(*) as total_actions,
             SUM(CASE WHEN pm.status = 'dispensed' THEN 1 ELSE 0 END) as dispensed_count,
-            SUM(CASE WHEN pm.status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_count,
-            SUM(CASE WHEN pm.status = 'pending' THEN 1 ELSE 0 END) as pending_count
+            SUM(CASE WHEN pm.status = 'unavailable' THEN 1 ELSE 0 END) as unavailable_count
         FROM prescribed_medications pm
         JOIN prescriptions p ON pm.prescription_id = p.prescription_id
-        WHERE $where_clause
+        WHERE $where_clause AND pm.status IN ('dispensed', 'unavailable')
         GROUP BY DATE(pm.updated_at)
         ORDER BY dispensing_date DESC
         LIMIT 30
@@ -186,7 +159,7 @@ try {
     $daily_trends_stmt->execute($params);
     $daily_trends = $daily_trends_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 6. RECENT DISPENSING ACTIVITIES
+    // 5. RECENT DISPENSING ACTIVITIES
     $recent_activities_query = "
         SELECT 
             pm.prescribed_medication_id,
@@ -201,7 +174,7 @@ try {
         JOIN prescriptions p ON pm.prescription_id = p.prescription_id
         JOIN patients pt ON p.patient_id = pt.patient_id
         JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
-        WHERE $where_clause AND pm.status != 'pending'
+        WHERE $where_clause AND pm.status IN ('dispensed', 'unavailable')
         ORDER BY pm.updated_at DESC
         LIMIT 50
     ";
@@ -210,7 +183,7 @@ try {
     $recent_activities_stmt->execute($params);
     $recent_activities = $recent_activities_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 7. UNAVAILABLE MEDICATIONS ANALYSIS
+    // 6. UNAVAILABLE MEDICATIONS ANALYSIS
     $unavailable_analysis_query = "
         SELECT 
             pm.medication_name,
@@ -235,17 +208,30 @@ try {
         $summary_stats = [
             'total_medications' => 0,
             'total_prescriptions' => 0,
-            'total_patients' => 0,
             'dispensed_count' => 0,
             'unavailable_count' => 0,
-            'pending_count' => 0,
             'dispensing_rate' => 0
         ];
     }
 
 } catch (Exception $e) {
-    error_log("Dispensed Logs Report Error: " . $e->getMessage());
-    $error = "Error generating dispensed logs report. Please try again.";
+    error_log("Dispensed Logs Report Error: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+    $error = "Error generating dispensed logs report: " . $e->getMessage();
+    
+    // Initialize empty arrays to prevent undefined variable errors
+    $summary_stats = [
+        'total_medications' => 0,
+        'total_prescriptions' => 0,
+        'dispensed_count' => 0,
+        'unavailable_count' => 0,
+        'dispensing_rate' => 0
+    ];
+    $status_breakdown = [];
+    $top_medications = [];
+    $daily_trends = [];
+    $recent_activities = [];
+    $unavailable_analysis = [];
+    $medications = [];
 }
 ?>
 
@@ -825,7 +811,6 @@ try {
                                 <option value="">All Statuses</option>
                                 <option value="dispensed" <?php echo $status_filter == 'dispensed' ? 'selected' : ''; ?>>Dispensed</option>
                                 <option value="unavailable" <?php echo $status_filter == 'unavailable' ? 'selected' : ''; ?>>Unavailable</option>
-                                <option value="pending" <?php echo $status_filter == 'pending' ? 'selected' : ''; ?>>Pending</option>
                             </select>
                         </div>
                         <div class="filter-group">
@@ -836,18 +821,6 @@ try {
                                     <option value="<?php echo htmlspecialchars($medication['medication_name']); ?>" 
                                         <?php echo $medication_filter == $medication['medication_name'] ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars($medication['medication_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="employee_filter">Prescribed By</label>
-                            <select id="employee_filter" name="employee_filter">
-                                <option value="">All Employees</option>
-                                <?php foreach ($employees as $employee): ?>
-                                    <option value="<?php echo $employee['employee_id']; ?>" 
-                                        <?php echo $employee_filter == $employee['employee_id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($employee['full_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -880,11 +853,6 @@ try {
                     <div class="label">Total Prescriptions</div>
                 </div>
                 <div class="summary-card">
-                    <i class="fas fa-users"></i>
-                    <div class="number"><?php echo number_format($summary_stats['total_patients'] ?? 0); ?></div>
-                    <div class="label">Unique Patients</div>
-                </div>
-                <div class="summary-card">
                     <i class="fas fa-check-circle"></i>
                     <div class="number"><?php echo number_format($summary_stats['dispensed_count'] ?? 0); ?></div>
                     <div class="label">Dispensed</div>
@@ -894,11 +862,6 @@ try {
                     <i class="fas fa-times-circle"></i>
                     <div class="number"><?php echo number_format($summary_stats['unavailable_count'] ?? 0); ?></div>
                     <div class="label">Unavailable</div>
-                </div>
-                <div class="summary-card">
-                    <i class="fas fa-clock"></i>
-                    <div class="number"><?php echo number_format($summary_stats['pending_count'] ?? 0); ?></div>
-                    <div class="label">Pending</div>
                 </div>
             </div>
 
@@ -920,7 +883,7 @@ try {
                         </thead>
                         <tbody>
                             <?php 
-                            $all_statuses = ['dispensed', 'unavailable', 'pending'];
+                            $all_statuses = ['dispensed', 'unavailable'];
                             $existing_status_data = [];
                             
                             if (!empty($status_breakdown)) {
@@ -1007,10 +970,7 @@ try {
             <!-- Tabbed Analytics -->
             <div class="tab-container">
                 <div class="tab-buttons">
-                    <button class="tab-button active" onclick="showTab('employee-analysis')">
-                        <i class="fas fa-user-md"></i> Employee Analysis
-                    </button>
-                    <button class="tab-button" onclick="showTab('daily-trends')">
+                    <button class="tab-button active" onclick="showTab('daily-trends')">
                         <i class="fas fa-chart-line"></i> Daily Trends
                     </button>
                     <button class="tab-button" onclick="showTab('recent-activities')">
@@ -1021,68 +981,8 @@ try {
                     </button>
                 </div>
 
-                <!-- Employee Analysis Tab -->
-                <div id="employee-analysis" class="tab-content active">
-                    <div class="full-width-section">
-                        <h3><i class="fas fa-user-md"></i> Dispensing by Prescribing Employee</h3>
-                        <table class="analytics-table">
-                            <thead>
-                                <tr>
-                                    <th>Employee</th>
-                                    <th>Role</th>
-                                    <th>Medications</th>
-                                    <th>Prescriptions</th>
-                                    <th>Dispensed</th>
-                                    <th>Unavailable</th>
-                                    <th>Rate</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (!empty($employee_dispensing)): ?>
-                                    <?php foreach (array_slice($employee_dispensing, 0, 15) as $employee): ?>
-                                        <tr>
-                                            <td><?php echo htmlspecialchars($employee['employee_name']); ?></td>
-                                            <td><?php echo htmlspecialchars(ucfirst($employee['role'])); ?></td>
-                                            <td class="count"><?php echo number_format($employee['total_medications']); ?></td>
-                                            <td class="count"><?php echo number_format($employee['prescriptions_count']); ?></td>
-                                            <td class="count"><?php echo number_format($employee['dispensed_count']); ?></td>
-                                            <td class="count"><?php echo number_format($employee['unavailable_count']); ?></td>
-                                            <td class="percentage"><?php echo $employee['fulfillment_rate']; ?>%</td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    <!-- Fill remaining rows if less than 15 -->
-                                    <?php for ($i = count($employee_dispensing); $i < 15; $i++): ?>
-                                        <tr style="opacity: 0.5;">
-                                            <td style="font-style: italic; color: var(--text-light);">No data</td>
-                                            <td>-</td>
-                                            <td class="count">0</td>
-                                            <td class="count">0</td>
-                                            <td class="count">0</td>
-                                            <td class="count">0</td>
-                                            <td class="percentage">0.00%</td>
-                                        </tr>
-                                    <?php endfor; ?>
-                                <?php else: ?>
-                                    <!-- Show 15 empty rows when no data -->
-                                    <?php for ($i = 1; $i <= 15; $i++): ?>
-                                        <tr style="opacity: 0.5;">
-                                            <td style="font-style: italic; color: var(--text-light);">No employee data</td>
-                                            <td>-</td>
-                                            <td class="count">0</td>
-                                            <td class="count">0</td>
-                                            <td class="count">0</td>
-                                            <td class="count">0</td>
-                                            <td class="percentage">0.00%</td>
-                                        </tr>
-                                    <?php endfor; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
                 <!-- Daily Trends Tab -->
-                <div id="daily-trends" class="tab-content">
+                <div id="daily-trends" class="tab-content active">
                     <div class="full-width-section">
                         <h3><i class="fas fa-chart-line"></i> Daily Dispensing Trends</h3>
                         <table class="analytics-table">
@@ -1092,7 +992,6 @@ try {
                                     <th>Total Actions</th>
                                     <th>Dispensed</th>
                                     <th>Unavailable</th>
-                                    <th>Pending</th>
                                     <th>Success Rate</th>
                                 </tr>
                             </thead>
@@ -1105,7 +1004,6 @@ try {
                                             <td class="count"><?php echo number_format($trend['total_actions']); ?></td>
                                             <td class="count"><?php echo number_format($trend['dispensed_count']); ?></td>
                                             <td class="count"><?php echo number_format($trend['unavailable_count']); ?></td>
-                                            <td class="count"><?php echo number_format($trend['pending_count']); ?></td>
                                             <td class="percentage"><?php echo $success_rate; ?>%</td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -1113,7 +1011,6 @@ try {
                                     <?php for ($i = count($daily_trends); $i < 20; $i++): ?>
                                         <tr style="opacity: 0.5;">
                                             <td style="font-style: italic; color: var(--text-light);">No data</td>
-                                            <td class="count">0</td>
                                             <td class="count">0</td>
                                             <td class="count">0</td>
                                             <td class="count">0</td>
@@ -1125,7 +1022,6 @@ try {
                                     <?php for ($i = 1; $i <= 20; $i++): ?>
                                         <tr style="opacity: 0.5;">
                                             <td style="font-style: italic; color: var(--text-light);">No trend data</td>
-                                            <td class="count">0</td>
                                             <td class="count">0</td>
                                             <td class="count">0</td>
                                             <td class="count">0</td>
@@ -1173,7 +1069,7 @@ try {
                                             <td>-</td>
                                             <td>-</td>
                                             <td>-</td>
-                                            <td><span class="status-badge status-pending">No Status</span></td>
+                                            <td><span class="status-badge status-unavailable">No Status</span></td>
                                             <td>-</td>
                                         </tr>
                                     <?php endfor; ?>
@@ -1185,7 +1081,7 @@ try {
                                             <td>-</td>
                                             <td>-</td>
                                             <td>-</td>
-                                            <td><span class="status-badge status-pending">No Status</span></td>
+                                            <td><span class="status-badge status-unavailable">No Status</span></td>
                                             <td>-</td>
                                         </tr>
                                     <?php endfor; ?>
