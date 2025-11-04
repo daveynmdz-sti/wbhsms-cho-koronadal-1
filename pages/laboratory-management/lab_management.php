@@ -161,10 +161,12 @@ $ordersResult = $ordersStmt->get_result();
 $recentSql = "SELECT loi.item_id as lab_order_item_id, loi.lab_order_id, loi.test_type, loi.status,
                      loi.result_date, loi.result_file, loi.updated_at,
                      p.first_name, p.last_name, p.username as patient_id_display,
-                     'System' as uploaded_by_first_name, '' as uploaded_by_last_name
+                     COALESCE(emp.first_name, 'System') as uploaded_by_first_name, 
+                     COALESCE(emp.last_name, '') as uploaded_by_last_name
               FROM lab_order_items loi
               LEFT JOIN lab_orders lo ON loi.lab_order_id = lo.lab_order_id
               LEFT JOIN patients p ON lo.patient_id = p.patient_id
+              LEFT JOIN employees emp ON loi.employee_id = emp.employee_id
               WHERE loi.status IN ('completed', 'in_progress', 'pending')";
 
 $recentParams = [];

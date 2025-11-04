@@ -233,10 +233,19 @@ $recentDispensedSql = "SELECT p.prescription_id,
                        pt.first_name, pt.last_name, pt.middle_name, 
                        COALESCE(pt.username, pt.patient_id) as patient_id_display,
                        e.first_name as doctor_first_name, e.last_name as doctor_last_name,
-                       '' as pharmacist_first_name, '' as pharmacist_last_name
+                       COALESCE(pharm.first_name, 'System') as pharmacist_first_name, 
+                       COALESCE(pharm.last_name, '') as pharmacist_last_name
                        FROM prescriptions p 
                        LEFT JOIN patients pt ON p.patient_id = pt.patient_id
                        LEFT JOIN employees e ON p.prescribed_by_employee_id = e.employee_id
+                       LEFT JOIN (
+                           SELECT pl.prescription_id, emp.first_name, emp.last_name
+                           FROM prescription_logs pl
+                           JOIN employees emp ON pl.changed_by_employee_id = emp.employee_id
+                           WHERE pl.action_type = 'medication_updated'
+                           GROUP BY pl.prescription_id
+                           ORDER BY pl.created_at DESC
+                       ) pharm ON p.prescription_id = pharm.prescription_id
                        WHERE pt.status = 'active'
                        AND NOT EXISTS (
                            -- Exclude prescriptions that have any pending medications
