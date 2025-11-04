@@ -103,9 +103,9 @@ try {
             fputcsv($output, []);
             fputcsv($output, ['Service Demand Summary']);
             fputcsv($output, ['Service Name', 'Total Referrals', 'Total Consultations', 'Total Demand', 'Demand Share %']);
-            
+
             // We'll add the actual data export here after we build the queries
-            
+
             fclose($output);
             exit();
         }
@@ -191,18 +191,26 @@ try {
     // Build parameters array for the complex query
     $params = [];
     // Parameters for percentage calculation subqueries (2 sets)
-    $params[] = $start_date; $params[] = $end_date;
-    $params[] = $start_date; $params[] = $end_date;
-    
+    $params[] = $start_date;
+    $params[] = $end_date;
+    $params[] = $start_date;
+    $params[] = $end_date;
+
     // Parameters for second percentage calculation subqueries (2 sets)
-    $params[] = $start_date; $params[] = $end_date;
-    $params[] = $start_date; $params[] = $end_date;
-    
+    $params[] = $start_date;
+    $params[] = $end_date;
+    $params[] = $start_date;
+    $params[] = $end_date;
+
     // Parameters for main LEFT JOIN subqueries
-    $params[] = $start_date; $params[] = $end_date;
-    $params[] = $start_date; $params[] = $end_date;
-    
-    if ($service_filter) { $params[] = $service_filter; }
+    $params[] = $start_date;
+    $params[] = $end_date;
+    $params[] = $start_date;
+    $params[] = $end_date;
+
+    if ($service_filter) {
+        $params[] = $service_filter;
+    }
 
     $stmt->execute($params);
     $service_demand = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -288,9 +296,11 @@ try {
     ");
 
     $trend_params = [];
-    $trend_params[] = $start_date; $trend_params[] = $end_date;
+    $trend_params[] = $start_date;
+    $trend_params[] = $end_date;
     if ($service_filter) $trend_params[] = $service_filter;
-    $trend_params[] = $start_date; $trend_params[] = $end_date;
+    $trend_params[] = $start_date;
+    $trend_params[] = $end_date;
     if ($service_filter) $trend_params[] = $service_filter;
 
     $stmt->execute($trend_params);
@@ -326,7 +336,8 @@ try {
     ");
 
     $summary_params = [$start_date, $end_date];
-    $summary_params[] = $start_date; $summary_params[] = $end_date;
+    $summary_params[] = $start_date;
+    $summary_params[] = $end_date;
     if ($service_filter) $summary_params[] = $service_filter;
 
     $stmt->execute($summary_params);
@@ -336,7 +347,6 @@ try {
     $stmt = $pdo->prepare("SELECT service_id, name FROM services ORDER BY name");
     $stmt->execute();
     $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 } catch (PDOException $e) {
     $error = "Database error: " . $e->getMessage();
     error_log("Service Utilization Report Error: " . $e->getMessage());
@@ -866,266 +876,269 @@ try {
                 </form>
             </div>
 
-            <!-- Service Summary Statistics -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h4>Total Services</h4>
-                    <div class="stat-value"><?php echo number_format($service_summary['total_services'] ?? 0); ?></div>
-                    <div class="stat-change">Available healthcare services</div>
-                </div>
-                <!--<div class="stat-card">
+            <div class="report-overview">
+                <h3 style="margin-bottom: 15px;"><i class="fas fa-chart-pie"></i> Key Statistics</h3>
+                <!-- Service Summary Statistics -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4>Total Services</h4>
+                        <div class="stat-value"><?php echo number_format($service_summary['total_services'] ?? 0); ?></div>
+                        <div class="stat-change">Available healthcare services</div>
+                    </div>
+                    <!--<div class="stat-card">
                     <h4>Active Services</h4>
                     <div class="stat-value"><?php echo number_format($service_summary['active_services'] ?? 0); ?></div>
                     <div class="stat-change">Services with activity</div>
                 </div>-->
-                <div class="stat-card">
-                    <h4>Total Referrals</h4>
-                    <div class="stat-value"><?php echo number_format($service_summary['total_referrals'] ?? 0); ?></div>
-                    <div class="stat-change">Referral requests</div>
+                    <div class="stat-card">
+                        <h4>Total Referrals</h4>
+                        <div class="stat-value"><?php echo number_format($service_summary['total_referrals'] ?? 0); ?></div>
+                        <div class="stat-change">Referral requests</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Total Consultations</h4>
+                        <div class="stat-value"><?php echo number_format($service_summary['total_consultations'] ?? 0); ?></div>
+                        <div class="stat-change">Consultation sessions</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Combined Demand</h4>
+                        <div class="stat-value"><?php echo number_format($service_summary['total_service_demand'] ?? 0); ?></div>
+                        <div class="stat-change">Total service requests</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <h4>Total Consultations</h4>
-                    <div class="stat-value"><?php echo number_format($service_summary['total_consultations'] ?? 0); ?></div>
-                    <div class="stat-change">Consultation sessions</div>
-                </div>
-                <div class="stat-card">
-                    <h4>Combined Demand</h4>
-                    <div class="stat-value"><?php echo number_format($service_summary['total_service_demand'] ?? 0); ?></div>
-                    <div class="stat-change">Total service requests</div>
-                </div>
-            </div>
 
-            <!-- Export Controls -->
-            <div class="export-controls">
-                <a href="?<?php echo http_build_query(array_merge($_GET, ['export' => 'pdf'])); ?>" class="btn-export">
-                    <i class="fas fa-file-pdf"></i> Export PDF
-                </a>
-                <a href="?<?php echo http_build_query(array_merge($_GET, ['export' => 'csv'])); ?>" class="btn-export">
-                    <i class="fas fa-file-csv"></i> Export CSV
-                </a>
-            </div>
-
-            <!-- Combined Service Demand Analysis -->
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3 class="chart-title"><i class="fas fa-chart-bar"></i> Service Demand Analysis (Combined Referrals + Consultations)</h3>
+                <!-- Export Controls -->
+                <div class="export-controls">
+                    <a href="?<?php echo http_build_query(array_merge($_GET, ['export' => 'pdf'])); ?>" class="btn-export">
+                        <i class="fas fa-file-pdf"></i> Export PDF
+                    </a>
+                    <a href="?<?php echo http_build_query(array_merge($_GET, ['export' => 'csv'])); ?>" class="btn-export">
+                        <i class="fas fa-file-csv"></i> Export CSV
+                    </a>
                 </div>
-                <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
-                    <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
-                    This comprehensive analysis shows total service demand by combining referral and consultation requests. Services with high demand may need additional resources or capacity expansion.
-                </p>
-                <?php if (!empty($service_demand)): ?>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Service Name</th>
-                                <th>Referrals</th>
-                                <th>Consultations</th>
-                                <th>Total Demand</th>
-                                <th>Demand Share</th>
-                                <th>Demand Level</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($service_demand as $service): ?>
+
+                <!-- Combined Service Demand Analysis -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title"><i class="fas fa-chart-bar"></i> Service Demand Analysis (Combined Referrals + Consultations)</h3>
+                    </div>
+                    <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
+                        <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
+                        This comprehensive analysis shows total service demand by combining referral and consultation requests. Services with high demand may need additional resources or capacity expansion.
+                    </p>
+                    <?php if (!empty($service_demand)): ?>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Service Name</th>
+                                    <th>Referrals</th>
+                                    <th>Consultations</th>
+                                    <th>Total Demand</th>
+                                    <th>Demand Share</th>
+                                    <th>Demand Level</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($service_demand as $service): ?>
+                                    <?php
+                                    $demand_level = '';
+                                    $demand_class = '';
+                                    if ($service['total_demand'] == 0) {
+                                        $demand_level = 'No Activity';
+                                        $demand_class = 'badge-zero';
+                                    } elseif ($service['demand_percentage'] >= 10) {
+                                        $demand_level = 'High Demand';
+                                        $demand_class = 'badge-high';
+                                    } elseif ($service['demand_percentage'] >= 5) {
+                                        $demand_level = 'Medium Demand';
+                                        $demand_class = 'badge-medium';
+                                    } else {
+                                        $demand_level = 'Low Demand';
+                                        $demand_class = 'badge-low';
+                                    }
+                                    ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($service['service_name']); ?></strong>
+                                            <?php if (!empty($service['service_description'])): ?>
+                                                <br><small style="color: #666;"><?php echo htmlspecialchars($service['service_description']); ?></small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo number_format($service['referral_count']); ?></td>
+                                        <td><?php echo number_format($service['consultation_count']); ?></td>
+                                        <td><strong><?php echo number_format($service['total_demand']); ?></strong></td>
+                                        <td>
+                                            <?php echo round($service['demand_percentage'], 2); ?>%
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" style="width: <?php echo min($service['demand_percentage'] * 2, 100); ?>%;"></div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge <?php echo $demand_class; ?>"><?php echo $demand_level; ?></span></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="chart-placeholder">
+                            <div>
+                                <i class="fas fa-chart-bar"></i>
+                                <p>No service demand data available for the selected period.</p>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Top Referral Services -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title"><i class="fas fa-share-square"></i> Most Requested Referral Services</h3>
+                    </div>
+                    <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
+                        <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
+                        Services most frequently requested through the referral system. High referral volumes may indicate specialized service needs or capacity limitations.
+                    </p>
+                    <?php if (!empty($top_referral_services)): ?>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Service Name</th>
+                                    <th>Total Referrals</th>
+                                    <th>Unique Patients</th>
+                                    <th>Completion Rate</th>
+                                    <th>Utilization</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($top_referral_services as $service): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($service['service_name']); ?></td>
+                                        <td><?php echo number_format($service['referral_count']); ?></td>
+                                        <td><?php echo number_format($service['unique_patients']); ?></td>
+                                        <td><?php echo round($service['completion_rate'], 1); ?>%</td>
+                                        <td>
+                                            <?php
+                                            $max_referrals = max(array_column($top_referral_services, 'referral_count'));
+                                            $utilization_percent = $max_referrals > 0 ? ($service['referral_count'] / $max_referrals) * 100 : 0;
+                                            ?>
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" style="width: <?php echo $utilization_percent; ?>%;"></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="chart-placeholder">
+                            <div>
+                                <i class="fas fa-share-square"></i>
+                                <p>No referral data available for the selected period.</p>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Top Consultation Services -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title"><i class="fas fa-user-md"></i> Most Requested Consultation Services</h3>
+                    </div>
+                    <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
+                        <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
+                        Services most frequently used for direct consultations. High consultation volumes indicate popular services and regular patient demand patterns.
+                    </p>
+                    <?php if (!empty($top_consultation_services)): ?>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Service Name</th>
+                                    <th>Total Consultations</th>
+                                    <th>Unique Patients</th>
+                                    <th>Completion Rate</th>
+                                    <th>Utilization</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($top_consultation_services as $service): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($service['service_name']); ?></td>
+                                        <td><?php echo number_format($service['consultation_count']); ?></td>
+                                        <td><?php echo number_format($service['unique_patients']); ?></td>
+                                        <td><?php echo round($service['completion_rate'], 1); ?>%</td>
+                                        <td>
+                                            <?php
+                                            $max_consultations = max(array_column($top_consultation_services, 'consultation_count'));
+                                            $utilization_percent = $max_consultations > 0 ? ($service['consultation_count'] / $max_consultations) * 100 : 0;
+                                            ?>
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" style="width: <?php echo $utilization_percent; ?>%;"></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="chart-placeholder">
+                            <div>
+                                <i class="fas fa-user-md"></i>
+                                <p>No consultation data available for the selected period.</p>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Service Utilization Trends -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title"><i class="fas fa-chart-line"></i> Service Utilization Trends</h3>
+                    </div>
+                    <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
+                        <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
+                        Monthly breakdown of service utilization showing trends in referrals and consultations over time. Use this data to identify seasonal patterns and plan resource allocation.
+                    </p>
+                    <?php if (!empty($service_trends)): ?>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Month</th>
+                                    <th>Referrals</th>
+                                    <th>Consultations</th>
+                                    <th>Total Activities</th>
+                                    <th>Monthly Trend</th>
+                                </tr>
+                            </thead>
+                            <tbody>
                                 <?php
-                                $demand_level = '';
-                                $demand_class = '';
-                                if ($service['total_demand'] == 0) {
-                                    $demand_level = 'No Activity';
-                                    $demand_class = 'badge-zero';
-                                } elseif ($service['demand_percentage'] >= 10) {
-                                    $demand_level = 'High Demand';
-                                    $demand_class = 'badge-high';
-                                } elseif ($service['demand_percentage'] >= 5) {
-                                    $demand_level = 'Medium Demand';
-                                    $demand_class = 'badge-medium';
-                                } else {
-                                    $demand_level = 'Low Demand';
-                                    $demand_class = 'badge-low';
-                                }
+                                $max_monthly_total = max(array_column($service_trends, 'monthly_total'));
+                                foreach ($service_trends as $trend):
                                 ?>
-                                <tr>
-                                    <td>
-                                        <strong><?php echo htmlspecialchars($service['service_name']); ?></strong>
-                                        <?php if (!empty($service['service_description'])): ?>
-                                            <br><small style="color: #666;"><?php echo htmlspecialchars($service['service_description']); ?></small>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo number_format($service['referral_count']); ?></td>
-                                    <td><?php echo number_format($service['consultation_count']); ?></td>
-                                    <td><strong><?php echo number_format($service['total_demand']); ?></strong></td>
-                                    <td>
-                                        <?php echo round($service['demand_percentage'], 2); ?>%
-                                        <div class="progress-bar">
-                                            <div class="progress-fill" style="width: <?php echo min($service['demand_percentage'] * 2, 100); ?>%;"></div>
-                                        </div>
-                                    </td>
-                                    <td><span class="badge <?php echo $demand_class; ?>"><?php echo $demand_level; ?></span></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else: ?>
-                    <div class="chart-placeholder">
-                        <div>
-                            <i class="fas fa-chart-bar"></i>
-                            <p>No service demand data available for the selected period.</p>
+                                    <tr>
+                                        <td><?php echo date('M Y', strtotime($trend['month_year'] . '-01')); ?></td>
+                                        <td><?php echo number_format($trend['monthly_referrals']); ?></td>
+                                        <td><?php echo number_format($trend['monthly_consultations']); ?></td>
+                                        <td><strong><?php echo number_format($trend['monthly_total']); ?></strong></td>
+                                        <td>
+                                            <?php
+                                            $trend_percent = $max_monthly_total > 0 ? ($trend['monthly_total'] / $max_monthly_total) * 100 : 0;
+                                            ?>
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" style="width: <?php echo $trend_percent; ?>%;"></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="chart-placeholder">
+                            <div>
+                                <i class="fas fa-chart-line"></i>
+                                <p>No trend data available for the selected period.</p>
+                            </div>
                         </div>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <!-- Top Referral Services -->
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3 class="chart-title"><i class="fas fa-share-square"></i> Most Requested Referral Services</h3>
+                    <?php endif; ?>
                 </div>
-                <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
-                    <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
-                    Services most frequently requested through the referral system. High referral volumes may indicate specialized service needs or capacity limitations.
-                </p>
-                <?php if (!empty($top_referral_services)): ?>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Service Name</th>
-                                <th>Total Referrals</th>
-                                <th>Unique Patients</th>
-                                <th>Completion Rate</th>
-                                <th>Utilization</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($top_referral_services as $service): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($service['service_name']); ?></td>
-                                    <td><?php echo number_format($service['referral_count']); ?></td>
-                                    <td><?php echo number_format($service['unique_patients']); ?></td>
-                                    <td><?php echo round($service['completion_rate'], 1); ?>%</td>
-                                    <td>
-                                        <?php
-                                        $max_referrals = max(array_column($top_referral_services, 'referral_count'));
-                                        $utilization_percent = $max_referrals > 0 ? ($service['referral_count'] / $max_referrals) * 100 : 0;
-                                        ?>
-                                        <div class="progress-bar">
-                                            <div class="progress-fill" style="width: <?php echo $utilization_percent; ?>%;"></div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else: ?>
-                    <div class="chart-placeholder">
-                        <div>
-                            <i class="fas fa-share-square"></i>
-                            <p>No referral data available for the selected period.</p>
-                        </div>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <!-- Top Consultation Services -->
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3 class="chart-title"><i class="fas fa-user-md"></i> Most Requested Consultation Services</h3>
-                </div>
-                <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
-                    <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
-                    Services most frequently used for direct consultations. High consultation volumes indicate popular services and regular patient demand patterns.
-                </p>
-                <?php if (!empty($top_consultation_services)): ?>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Service Name</th>
-                                <th>Total Consultations</th>
-                                <th>Unique Patients</th>
-                                <th>Completion Rate</th>
-                                <th>Utilization</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($top_consultation_services as $service): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($service['service_name']); ?></td>
-                                    <td><?php echo number_format($service['consultation_count']); ?></td>
-                                    <td><?php echo number_format($service['unique_patients']); ?></td>
-                                    <td><?php echo round($service['completion_rate'], 1); ?>%</td>
-                                    <td>
-                                        <?php
-                                        $max_consultations = max(array_column($top_consultation_services, 'consultation_count'));
-                                        $utilization_percent = $max_consultations > 0 ? ($service['consultation_count'] / $max_consultations) * 100 : 0;
-                                        ?>
-                                        <div class="progress-bar">
-                                            <div class="progress-fill" style="width: <?php echo $utilization_percent; ?>%;"></div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else: ?>
-                    <div class="chart-placeholder">
-                        <div>
-                            <i class="fas fa-user-md"></i>
-                            <p>No consultation data available for the selected period.</p>
-                        </div>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <!-- Service Utilization Trends -->
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3 class="chart-title"><i class="fas fa-chart-line"></i> Service Utilization Trends</h3>
-                </div>
-                <p style="color: var(--text-light); margin-bottom: 15px; font-size: 14px;">
-                    <i class="fas fa-info-circle" style="color: var(--primary-color); margin-right: 5px;"></i>
-                    Monthly breakdown of service utilization showing trends in referrals and consultations over time. Use this data to identify seasonal patterns and plan resource allocation.
-                </p>
-                <?php if (!empty($service_trends)): ?>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Month</th>
-                                <th>Referrals</th>
-                                <th>Consultations</th>
-                                <th>Total Activities</th>
-                                <th>Monthly Trend</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $max_monthly_total = max(array_column($service_trends, 'monthly_total'));
-                            foreach ($service_trends as $trend):
-                            ?>
-                                <tr>
-                                    <td><?php echo date('M Y', strtotime($trend['month_year'] . '-01')); ?></td>
-                                    <td><?php echo number_format($trend['monthly_referrals']); ?></td>
-                                    <td><?php echo number_format($trend['monthly_consultations']); ?></td>
-                                    <td><strong><?php echo number_format($trend['monthly_total']); ?></strong></td>
-                                    <td>
-                                        <?php
-                                        $trend_percent = $max_monthly_total > 0 ? ($trend['monthly_total'] / $max_monthly_total) * 100 : 0;
-                                        ?>
-                                        <div class="progress-bar">
-                                            <div class="progress-fill" style="width: <?php echo $trend_percent; ?>%;"></div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else: ?>
-                    <div class="chart-placeholder">
-                        <div>
-                            <i class="fas fa-chart-line"></i>
-                            <p>No trend data available for the selected period.</p>
-                        </div>
-                    </div>
-                <?php endif; ?>
             </div>
         </div>
     </section>
