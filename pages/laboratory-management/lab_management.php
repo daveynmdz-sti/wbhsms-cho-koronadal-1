@@ -1052,7 +1052,7 @@ try {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 20px;
+            margin: 25px;
             padding: 15px 0;
             border-top: 1px solid #ddd;
         }

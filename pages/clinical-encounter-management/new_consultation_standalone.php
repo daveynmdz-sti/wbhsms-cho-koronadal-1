@@ -395,6 +395,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Keep the patient selected and show saved vitals
             $selected_patient_id = $patient_id;
             $saved_vitals_id = $vitals_id;
+            
+            // Set a flag to prevent redirect and maintain current state
+            $vitals_updated = true;
         } catch (Exception $e) {
             $conn->rollback();
             $error_message = $e->getMessage();
@@ -910,6 +913,7 @@ if ($selected_patient_id) {
             border-radius: 8px;
             margin-bottom: 1.5rem;
             font-weight: 500;
+            position: relative;
         }
 
         .alert-success {
@@ -922,6 +926,24 @@ if ($selected_patient_id) {
             background-color: #f8d7da;
             color: #721c24;
             border: 1px solid #f1b2b7;
+        }
+
+        .btn-close {
+            background: none !important;
+            border: none !important;
+            position: absolute;
+            top: 0.5rem;
+            right: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: inherit;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+        }
+
+        .btn-close:hover {
+            opacity: 1;
         }
 
         .role-info {
@@ -1151,48 +1173,53 @@ if ($selected_patient_id) {
             </div>
 
             <?php if (!empty($success_message)): ?>
-                <div class="alert alert-success">
+                <div class="alert alert-success" id="successAlert">
                     <i class="fas fa-check-circle"></i> <?= htmlspecialchars($success_message) ?>
+                    <?php if (isset($vitals_updated) && $vitals_updated): ?>
+                        <button type="button" class="btn-close" onclick="closeSuccessAlert()">&times;</button>
+                    <?php endif; ?>
                 </div>
 
-                <!-- Loading Screen for Redirect -->
-                <div id="successRedirectOverlay" class="redirect-overlay">
-                    <div class="redirect-content">
-                        <div class="loading">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            <h3>Consultation Created Successfully!</h3>
-                            <p>Redirecting you back to the main consultation page...</p>
-                            <div class="countdown">Redirecting in <span id="countdown">3</span> seconds</div>
+                <?php if (isset($saved_consultation_id) && !isset($vitals_updated)): ?>
+                    <!-- Loading Screen for Redirect - Only for consultation saves -->
+                    <div id="successRedirectOverlay" class="redirect-overlay">
+                        <div class="redirect-content">
+                            <div class="loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <h3>Consultation Created Successfully!</h3>
+                                <p>Redirecting you back to the main consultation page...</p>
+                                <div class="countdown">Redirecting in <span id="countdown">3</span> seconds</div>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <script>
-                    // Auto-redirect after successful consultation creation
-                    let countdownValue = 3;
-                    const countdownElement = document.getElementById('countdown');
-                    const overlay = document.getElementById('successRedirectOverlay');
+                    <script>
+                        // Auto-redirect after successful consultation creation
+                        let countdownValue = 3;
+                        const countdownElement = document.getElementById('countdown');
+                        const overlay = document.getElementById('successRedirectOverlay');
 
-                    // Show the overlay immediately
-                    overlay.style.display = 'flex';
+                        // Show the overlay immediately
+                        overlay.style.display = 'flex';
 
-                    // Start countdown
-                    const countdownInterval = setInterval(() => {
-                        countdownValue--;
-                        countdownElement.textContent = countdownValue;
+                        // Start countdown
+                        const countdownInterval = setInterval(() => {
+                            countdownValue--;
+                            countdownElement.textContent = countdownValue;
 
-                        if (countdownValue <= 0) {
+                            if (countdownValue <= 0) {
+                                clearInterval(countdownInterval);
+                                window.location.href = 'index.php';
+                            }
+                        }, 1000);
+
+                        // Allow manual click to redirect immediately
+                        overlay.addEventListener('click', () => {
                             clearInterval(countdownInterval);
                             window.location.href = 'index.php';
-                        }
-                    }, 1000);
-
-                    // Allow manual click to redirect immediately
-                    overlay.addEventListener('click', () => {
-                        clearInterval(countdownInterval);
-                        window.location.href = 'index.php';
-                    });
-                </script>
+                        });
+                    </script>
+                <?php endif; ?>
             <?php endif; ?>
 
             <?php if (!empty($error_message)): ?>
@@ -1486,6 +1513,31 @@ if ($selected_patient_id) {
         let selectedPatient = null;
 
         document.addEventListener('DOMContentLoaded', function() {
+            // Auto-hide success message for vitals updates after 5 seconds
+            <?php if (isset($vitals_updated) && $vitals_updated): ?>
+                setTimeout(function() {
+                    const successAlert = document.querySelector('.alert-success');
+                    if (successAlert) {
+                        successAlert.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                        successAlert.style.opacity = '0';
+                        successAlert.style.transform = 'translateY(-10px)';
+                        setTimeout(() => {
+                            successAlert.remove();
+                        }, 500);
+                    }
+                }, 8000);
+
+                // Add a temporary glow effect to the vitals section to indicate update
+                const vitalsSection = document.getElementById('vitalsSection');
+                if (vitalsSection) {
+                    vitalsSection.style.transition = 'box-shadow 0.3s ease';
+                    vitalsSection.style.boxShadow = '0 0 20px rgba(40, 167, 69, 0.3)';
+                    setTimeout(() => {
+                        vitalsSection.style.boxShadow = '';
+                    }, 3000);
+                }
+            <?php endif; ?>
+
             // Check if we have a patient selected from PHP (after form submission)
             <?php if ($selected_patient_data): ?>
                 selectedPatient = {
@@ -1798,9 +1850,12 @@ if ($selected_patient_id) {
                 <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist', 'nurse'])): ?>
                     if (vitalsData && vitalsData.vitals_id) {
                         document.getElementById('consultationVitalsId').value = vitalsData.vitals_id;
+                        // Update selectedPatient object as well
+                        selectedPatient.vitalsId = vitalsData.vitals_id;
                         showVitalsInfo('Vitals from today will be automatically linked to this consultation.');
                     } else {
                         document.getElementById('consultationVitalsId').value = '';
+                        selectedPatient.vitalsId = null;
                         showVitalsInfo('No vitals recorded today. You can record vitals first or create consultation without vitals.');
                     }
                 <?php endif; ?>
@@ -1847,6 +1902,18 @@ if ($selected_patient_id) {
 
         function showSuccess(message) {
             alert(message);
+        }
+
+        function closeSuccessAlert() {
+            const successAlert = document.getElementById('successAlert');
+            if (successAlert) {
+                successAlert.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                successAlert.style.opacity = '0';
+                successAlert.style.transform = 'translateY(-10px)';
+                setTimeout(() => {
+                    successAlert.remove();
+                }, 300);
+            }
         }
     </script>
 </body>

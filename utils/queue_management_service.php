@@ -274,6 +274,7 @@ class QueueManagementService {
                     asch.is_active as assignment_status,
                     e.first_name,
                     e.last_name,
+                    e.employee_number,
                     CONCAT(e.first_name, ' ', e.last_name) as employee_name,
                     r.role_name as employee_role
                 FROM stations s
@@ -303,6 +304,7 @@ class QueueManagementService {
             $sql = "
                 SELECT 
                     e.employee_id,
+                    e.employee_number,
                     e.first_name,
                     e.last_name,
                     CONCAT(e.first_name, ' ', e.last_name) as full_name,
@@ -544,5 +546,147 @@ class QueueManagementService {
      */
     public function getActiveStationByEmployee($employee_id, $date = null) {
         return $this->getEmployeeStationAssignment($employee_id, $date);
+    }
+
+    /**
+     * Get station details with current assignment information
+     */
+    public function getStationDetails($station_id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    s.station_id,
+                    s.station_name,
+                    s.station_type,
+                    s.station_number,
+                    s.is_active,
+                    s.is_open,
+                    srv.name as service_name,
+                    srv.service_id,
+                    asch.schedule_id,
+                    asch.employee_id,
+                    asch.start_date,
+                    asch.end_date,
+                    asch.assignment_type,
+                    asch.shift_start_time,
+                    asch.shift_end_time,
+                    asch.is_active as assignment_status,
+                    e.first_name,
+                    e.last_name,
+                    e.employee_number,
+                    CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+                    r.role_name as employee_role
+                FROM stations s
+                LEFT JOIN services srv ON s.service_id = srv.service_id
+                LEFT JOIN assignment_schedules asch ON s.station_id = asch.station_id 
+                    AND asch.is_active = 1
+                    AND (asch.start_date <= CURDATE() AND (asch.end_date IS NULL OR asch.end_date >= CURDATE()))
+                LEFT JOIN employees e ON asch.employee_id = e.employee_id AND e.status = 'active'
+                LEFT JOIN roles r ON e.role_id = r.role_id
+                WHERE s.station_id = ?
+            ");
+            
+            $stmt->execute([$station_id]);
+            return $stmt->fetch(PDO::FETCH_ASSOC);
+            
+        } catch (Exception $e) {
+            error_log('QueueManagementService::getStationDetails Error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get current queue for a specific station
+     */
+    public function getStationQueue($station_id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    qe.queue_entry_id,
+                    qe.queue_number,
+                    qe.queue_code,
+                    qe.status,
+                    qe.priority_level,
+                    qe.created_at,
+                    qe.updated_at,
+                    p.patient_id,
+                    CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+                    v.visit_type,
+                    v.visit_id,
+                    a.appointment_id,
+                    TIMESTAMPDIFF(MINUTE, qe.created_at, NOW()) as wait_time_minutes
+                FROM queue_entries qe
+                INNER JOIN patients p ON qe.patient_id = p.patient_id
+                LEFT JOIN visits v ON qe.visit_id = v.visit_id
+                LEFT JOIN appointments a ON qe.appointment_id = a.appointment_id
+                WHERE qe.station_id = ? 
+                    AND qe.status IN ('waiting', 'in_progress')
+                    AND DATE(qe.created_at) = CURDATE()
+                ORDER BY 
+                    CASE qe.priority_level 
+                        WHEN 'emergency' THEN 1 
+                        WHEN 'urgent' THEN 2 
+                        WHEN 'normal' THEN 3 
+                        ELSE 4 
+                    END,
+                    qe.created_at ASC
+            ");
+            
+            $stmt->execute([$station_id]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+        } catch (Exception $e) {
+            error_log('QueueManagementService::getStationQueue Error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get station statistics for a specific date
+     */
+    public function getStationStatistics($station_id, $date = null) {
+        try {
+            if ($date === null) {
+                $date = date('Y-m-d');
+            }
+            
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    COUNT(*) as total_served,
+                    COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_today,
+                    COUNT(CASE WHEN status = 'skipped' THEN 1 END) as skipped_today,
+                    COUNT(CASE WHEN status IN ('waiting', 'in_progress') THEN 1 END) as current_waiting,
+                    AVG(CASE 
+                        WHEN status = 'completed' AND updated_at IS NOT NULL 
+                        THEN TIMESTAMPDIFF(MINUTE, created_at, updated_at)
+                        ELSE NULL 
+                    END) as avg_wait_time
+                FROM queue_entries 
+                WHERE station_id = ? 
+                    AND DATE(created_at) = ?
+            ");
+            
+            $stmt->execute([$station_id, $date]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Format average wait time
+            if ($result['avg_wait_time']) {
+                $result['avg_wait_time'] = round($result['avg_wait_time'], 1);
+            } else {
+                $result['avg_wait_time'] = 0;
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            error_log('QueueManagementService::getStationStatistics Error: ' . $e->getMessage());
+            return [
+                'total_served' => 0,
+                'completed_today' => 0,
+                'skipped_today' => 0,
+                'current_waiting' => 0,
+                'avg_wait_time' => 0
+            ];
+        }
     }
 }

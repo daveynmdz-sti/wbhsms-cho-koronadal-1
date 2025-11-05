@@ -34,6 +34,16 @@ if (strtolower($_SESSION['role']) !== 'admin') {
 require_once $root_path . '/config/db.php';
 require_once $root_path . '/utils/queue_management_service.php';
 
+// Simple input sanitization function
+if (!function_exists('sanitize_input')) {
+    function sanitize_input($input) {
+        if (is_string($input)) {
+            return trim(htmlspecialchars($input, ENT_QUOTES, 'UTF-8'));
+        }
+        return $input;
+    }
+}
+
 // Initialize queue management service with error handling
 try {
     $queueService = new QueueManagementService($pdo);
@@ -720,9 +730,7 @@ $activePage = 'staff_assignments';
             <div class="breadcrumb" style="margin-top: 50px;">
                 <a href="../dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
                 <i class="fas fa-chevron-right"></i>
-                <a href="../staff-management/">Staff Management</a>
-                <i class="fas fa-chevron-right"></i>
-                <span>Station Staff Assignments</span>
+                <span>Station Assignments</span>
             </div>
 
             <div class="page-header">
@@ -801,11 +809,12 @@ $activePage = 'staff_assignments';
                                 <th>Station</th>
                                 <th>Type</th>
                                 <th>Service</th>
+                                <th>Employee ID</th>
                                 <th>Assigned Employee</th>
                                 <th>Role</th>
                                 <th>Shift</th>
                                 <th>Status</th>
-                                <th style="width: 120px;">Actions</th>
+                                <th style="width: 160px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -824,6 +833,13 @@ $activePage = 'staff_assignments';
                                             </span>
                                         </td>
                                         <td><?php echo htmlspecialchars($station['service_name']); ?></td>
+                                        <td>
+                                            <?php if ($station['employee_number']): ?>
+                                                <span class="badge bg-primary"><?php echo htmlspecialchars($station['employee_number']); ?></span>
+                                            <?php else: ?>
+                                                <span class="text-muted">-</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td>
                                             <?php if ($station['employee_name']): ?>
                                                 <?php echo htmlspecialchars($station['employee_name']); ?>
@@ -855,6 +871,11 @@ $activePage = 'staff_assignments';
                                         </td>
                                         <td>
                                             <div class="action-buttons">
+                                                <!-- View Station Dashboard button -->
+                                                <button type="button" class="action-btn btn-info" onclick="window.open('../../../../pages/queueing/station_dashboard.php?station_id=<?php echo $station['station_id']; ?>', '_blank')" title="View Station Dashboard">
+                                                    <i class="fas fa-tachometer-alt"></i>
+                                                </button>
+                                                
                                                 <?php if ($station['employee_id']): ?>
                                                     <!-- Reassign button -->
                                                     <button type="button" class="action-btn btn-warning" onclick="openReassignModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', <?php echo $station['employee_id']; ?>, '<?php echo htmlspecialchars($station['station_type']); ?>')" title="Reassign Employee">
@@ -886,7 +907,7 @@ $activePage = 'staff_assignments';
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="8" class="text-center">
+                                    <td colspan="9" class="text-center">
                                         <div style="padding: 30px 0;">
                                             <i class="fas fa-users-cog" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
                                             <p>No stations found.</p>
