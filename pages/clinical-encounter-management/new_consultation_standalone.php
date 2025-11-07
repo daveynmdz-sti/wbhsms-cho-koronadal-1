@@ -22,6 +22,13 @@ require_once $root_path . '/config/session/employee_session.php';
 require_once $root_path . '/config/production_security.php';
 require_once $root_path . '/config/db.php';
 
+// Define sanitize_input function if not already defined
+if (!function_exists('sanitize_input')) {
+    function sanitize_input($input) {
+        return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+    }
+}
+
 // Check database connection
 if (!isset($conn) || $conn->connect_error) {
     die("Database connection failed. Please contact administrator.");
@@ -83,7 +90,7 @@ if (isset($_GET['action'])) {
                 LIMIT 1
             ");
 
-            $stmt->bind_param('s', $patient_id);
+            $stmt->bind_param('i', $patient_id);
             $stmt->execute();
             $result = $stmt->get_result();
             $vitals = $result->fetch_assoc();
@@ -246,6 +253,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'save_vitals') {
         try {
+            // Add debugging
+            error_log("DEBUG: save_vitals action received");
+            error_log("DEBUG: POST data: " . print_r($_POST, true));
+            
             $conn->begin_transaction();
 
             // Get and validate form data
@@ -338,56 +349,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
             $existing_vitals = $stmt->get_result()->fetch_assoc();
 
-            if ($existing_vitals) {
-                // Update existing vitals
-                $stmt = $conn->prepare("
-                    UPDATE vitals SET
-                        systolic_bp = ?, diastolic_bp = ?, heart_rate = ?, 
-                        respiratory_rate = ?, temperature = ?, weight = ?, height = ?, bmi = ?, 
-                        recorded_by = ?, remarks = ?
-                    WHERE vitals_id = ?
-                ");
-                $stmt->bind_param(
-                    'iiiiddddisi',
-                    $systolic_bp,
-                    $diastolic_bp,
-                    $heart_rate,
-                    $respiratory_rate,
-                    $temperature,
-                    $weight,
-                    $height,
-                    $bmi,
-                    $employee_id,
-                    $vitals_remarks,
-                    $existing_vitals['vitals_id']
-                );
-                $vitals_id = $existing_vitals['vitals_id'];
-            } else {
-                // Insert new vitals
-                $stmt = $conn->prepare("
-                    INSERT INTO vitals (
-                        patient_id, systolic_bp, diastolic_bp, heart_rate, 
-                        respiratory_rate, temperature, weight, height, bmi, 
-                        recorded_by, remarks, recorded_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                ");
-                $stmt->bind_param(
-                    'iiiiddddiss',
-                    $patient_id,
-                    $systolic_bp,
-                    $diastolic_bp,
-                    $heart_rate,
-                    $respiratory_rate,
-                    $temperature,
-                    $weight,
-                    $height,
-                    $bmi,
-                    $employee_id,
-                    $vitals_remarks
-                );
-                $stmt->execute();
-                $vitals_id = $conn->insert_id;
+            // ALWAYS INSERT NEW VITALS (allow multiple per day)
+            // Insert new vitals
+            error_log("DEBUG: Inserting new vitals for patient ID: " . $patient_id);
+            $stmt = $conn->prepare("
+                INSERT INTO vitals (
+                    patient_id, systolic_bp, diastolic_bp, heart_rate, 
+                    respiratory_rate, temperature, weight, height, bmi, 
+                    recorded_by, remarks, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+            $stmt->bind_param(
+                'iiiiddddiss',
+                $patient_id,
+                $systolic_bp,
+                $diastolic_bp,
+                $heart_rate,
+                $respiratory_rate,
+                $temperature,
+                $weight,
+                $height,
+                $bmi,
+                $employee_id,
+                $vitals_remarks
+            );
+            if (!$stmt->execute()) {
+                throw new Exception('Failed to insert vitals: ' . $stmt->error);
             }
+            $vitals_id = $conn->insert_id;
+            error_log("DEBUG: Successfully inserted new vitals ID: " . $vitals_id);
 
             $conn->commit();
             $success_message = "Patient vitals saved successfully! Vitals ID: " . $vitals_id;
@@ -1323,24 +1313,21 @@ if ($selected_patient_id) {
             </div>
 
             <!-- Selected Patient Info -->
-            <?php if ($selected_patient_data): ?>
-                <div class="selected-patient-info" style="display: block;">
-                    <strong>Selected Patient:</strong> <?= htmlspecialchars($selected_patient_data['full_name']) ?>
-                    <?php if ($saved_vitals_data): ?>
-                        <span style="color: #28a745;"> (Vitals recorded today)</span>
-                    <?php else: ?>
-                        <span style="color: #856404;"> (No vitals today)</span>
-                    <?php endif; ?><br>
-                    <small>ID: <?= htmlspecialchars($selected_patient_data['patient_code']) ?> |
-                        Age/Sex: <?= htmlspecialchars(($selected_patient_data['age'] ?? '-') . '/' . $selected_patient_data['sex']) ?> |
-                        Barangay: <?= htmlspecialchars($selected_patient_data['barangay']) ?></small>
-                </div>
-            <?php else: ?>
-                <div class="selected-patient-info" id="selectedPatientInfo">
-                    <strong>Selected Patient:</strong> <span id="selectedPatientName"></span><br>
-                    <small>ID: <span id="selectedPatientId"></span> | Age/Sex: <span id="selectedPatientAge"></span> | Barangay: <span id="selectedPatientBarangay"></span></small>
-                </div>
-            <?php endif; ?>
+            <div class="selected-patient-info" id="selectedPatientInfo" style="<?= $selected_patient_data ? 'display: block;' : 'display: none;' ?>">
+                <strong>Selected Patient:</strong> <span id="selectedPatientName"><?php 
+                    if ($selected_patient_data) {
+                        echo htmlspecialchars($selected_patient_data['full_name']);
+                        if ($saved_vitals_data) {
+                            echo ' <span style="color: #28a745;">(Vitals recorded today)</span>';
+                        } else {
+                            echo ' <span style="color: #856404;">(No vitals today)</span>';
+                        }
+                    }
+                ?></span><br>
+                <small>ID: <span id="selectedPatientId"><?= $selected_patient_data ? htmlspecialchars($selected_patient_data['patient_code']) : '' ?></span> | 
+                Age/Sex: <span id="selectedPatientAge"><?= $selected_patient_data ? htmlspecialchars(($selected_patient_data['age'] ?? '-') . '/' . $selected_patient_data['sex']) : '' ?></span> | 
+                Barangay: <span id="selectedPatientBarangay"><?= $selected_patient_data ? htmlspecialchars($selected_patient_data['barangay']) : '' ?></span></small>
+            </div>
 
             <!-- Vitals Form Section -->
             <div class="form-section <?= $selected_patient_data ? 'enabled' : '' ?>" id="vitalsSection">
@@ -1352,7 +1339,7 @@ if ($selected_patient_id) {
                     <p class="text-muted">Record patient's vital signs measurements</p>
 
                     <?php if ($saved_vitals_data): ?>
-                        <div style="background: #d4edda; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #28a745;">
+                        <div class="current-vitals-info" style="background: #d4edda; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #28a745;">
                             <strong><i class="fas fa-check-circle"></i> Current Vitals (Recorded Today)</strong><br>
                             <small>Recorded by: <?= htmlspecialchars(($saved_vitals_data['recorded_by_name'] ?? '') . ' ' . ($saved_vitals_data['recorded_by_lastname'] ?? '')) ?>
                                 at <?= date('g:i A', strtotime($saved_vitals_data['recorded_at'])) ?></small>
@@ -1542,11 +1529,11 @@ if ($selected_patient_id) {
             <?php if ($selected_patient_data): ?>
                 selectedPatient = {
                     id: <?= $selected_patient_data['patient_id'] ?>,
-                    name: '<?= addslashes($selected_patient_data['full_name']) ?>',
-                    code: '<?= addslashes($selected_patient_data['patient_code']) ?>',
-                    age: '<?= $selected_patient_data['age'] ?? '-' ?>',
-                    sex: '<?= addslashes($selected_patient_data['sex']) ?>',
-                    barangay: '<?= addslashes($selected_patient_data['barangay']) ?>',
+                    name: <?= json_encode($selected_patient_data['full_name']) ?>,
+                    code: <?= json_encode($selected_patient_data['patient_code']) ?>,
+                    age: <?= json_encode($selected_patient_data['age'] ?? '-') ?>,
+                    sex: <?= json_encode($selected_patient_data['sex']) ?>,
+                    barangay: <?= json_encode($selected_patient_data['barangay']) ?>,
                     vitalsId: <?= $saved_vitals_data ? $saved_vitals_data['vitals_id'] : 'null' ?>
                 };
 
@@ -1563,6 +1550,25 @@ if ($selected_patient_id) {
                     }
                 });
             });
+
+            // Add debugging for vitals form submission
+            const vitalsForm = document.getElementById('vitalsForm');
+            if (vitalsForm) {
+                vitalsForm.addEventListener('submit', function(e) {
+                    console.log('DEBUG: Vitals form submitted');
+                    console.log('DEBUG: Form data:', new FormData(this));
+                    
+                    // Check if patient is selected
+                    const patientId = document.getElementById('vitalsPatientId').value;
+                    console.log('DEBUG: Patient ID:', patientId);
+                    
+                    if (!patientId) {
+                        e.preventDefault();
+                        alert('Please select a patient first');
+                        return false;
+                    }
+                });
+            }
         });
 
         function searchPatients() {
@@ -1633,14 +1639,22 @@ if ($selected_patient_id) {
             const searchResults = document.getElementById('searchResults');
             const tableBody = document.getElementById('patientsTableBody');
 
-            tableBody.innerHTML = patients.map(patient => `
-                <tr onclick="selectPatientFromTable(this, ${patient.patient_id}, '${patient.full_name}', '${patient.patient_code}', '${patient.age || '-'}', '${patient.sex}', '${patient.barangay}', ${patient.today_vitals_id || 'null'})">
+            tableBody.innerHTML = patients.map(patient => {
+                // Safely escape strings for JavaScript
+                const safeName = patient.full_name.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                const safeCode = patient.patient_code.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                const safeBarangay = patient.barangay.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                const safeAge = String(patient.age || '-').replace(/'/g, "\\'");
+                const safeSex = patient.sex.replace(/'/g, "\\'");
+                
+                return `
+                <tr onclick="selectPatientFromTable(this, ${patient.patient_id}, '${safeName}', '${safeCode}', '${safeAge}', '${safeSex}', '${safeBarangay}', ${patient.today_vitals_id || 'null'})">
                     <td>
                         <input type="radio" 
                                name="selected_patient" 
                                value="${patient.patient_id}" 
                                class="patient-radio"
-                               onchange="selectPatientFromTable(this.closest('tr'), ${patient.patient_id}, '${patient.full_name}', '${patient.patient_code}', '${patient.age || '-'}', '${patient.sex}', '${patient.barangay}', ${patient.today_vitals_id || 'null'})">
+                               onchange="selectPatientFromTable(this.closest('tr'), ${patient.patient_id}, '${safeName}', '${safeCode}', '${safeAge}', '${safeSex}', '${safeBarangay}', ${patient.today_vitals_id || 'null'})">
                     </td>
                     <td><strong>${patient.patient_code}</strong></td>
                     <td class="patient-name">${patient.full_name}</td>
@@ -1657,13 +1671,15 @@ if ($selected_patient_id) {
                             </span>
                         </div>
                     </td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
 
             searchResults.style.display = 'block';
         }
 
         function selectPatientFromTable(row, patientId, fullName, patientCode, age, sex, barangay, vitalsId) {
+            console.log('DEBUG: Selecting patient:', { patientId, fullName, patientCode, age, sex, barangay, vitalsId });
+            
             selectedPatient = {
                 id: patientId,
                 name: fullName,
@@ -1673,6 +1689,8 @@ if ($selected_patient_id) {
                 barangay: barangay,
                 vitalsId: vitalsId
             };
+
+            console.log('DEBUG: Selected patient object:', selectedPatient);
 
             // Remove selection from all rows
             document.querySelectorAll('.patients-table tbody tr').forEach(tr => {
@@ -1688,23 +1706,35 @@ if ($selected_patient_id) {
                 radio.checked = true;
             }
 
-            // Update selected patient info with vitals status
+            // Update selected patient info with vitals status - use defensive programming
             let vitalsStatus = vitalsId ? ' (Vitals recorded today)' : ' (No vitals today)';
-            document.getElementById('selectedPatientName').textContent = fullName + vitalsStatus;
-            document.getElementById('selectedPatientId').textContent = patientCode;
-            document.getElementById('selectedPatientAge').textContent = `${age}/${sex}`;
-            document.getElementById('selectedPatientBarangay').textContent = barangay;
-            document.getElementById('selectedPatientInfo').style.display = 'block';
+            const nameElement = document.getElementById('selectedPatientName');
+            const idElement = document.getElementById('selectedPatientId');
+            const ageElement = document.getElementById('selectedPatientAge');
+            const barangayElement = document.getElementById('selectedPatientBarangay');
+            const infoElement = document.getElementById('selectedPatientInfo');
+            
+            if (nameElement) nameElement.textContent = fullName + vitalsStatus;
+            if (idElement) idElement.textContent = patientCode;
+            if (ageElement) ageElement.textContent = `${age}/${sex}`;
+            if (barangayElement) barangayElement.textContent = barangay;
+            if (infoElement) infoElement.style.display = 'block';
 
             // Enable forms and populate patient IDs
-            document.getElementById('vitalsSection').classList.add('enabled');
-            document.getElementById('vitalsPatientId').value = patientId;
+            const vitalsSection = document.getElementById('vitalsSection');
+            const vitalsPatientId = document.getElementById('vitalsPatientId');
+            if (vitalsSection) vitalsSection.classList.add('enabled');
+            if (vitalsPatientId) vitalsPatientId.value = patientId;
 
             <?php if (in_array($employee_role, ['admin', 'doctor', 'pharmacist', 'nurse'])): ?>
-                document.getElementById('consultationSection').classList.add('enabled');
-                document.getElementById('consultationPatientId').value = patientId;
+                const consultationSection = document.getElementById('consultationSection');
+                const consultationPatientId = document.getElementById('consultationPatientId');
+                const consultationVitalsId = document.getElementById('consultationVitalsId');
+                
+                if (consultationSection) consultationSection.classList.add('enabled');
+                if (consultationPatientId) consultationPatientId.value = patientId;
                 // Auto-link today's vitals if available
-                document.getElementById('consultationVitalsId').value = vitalsId || '';
+                if (consultationVitalsId) consultationVitalsId.value = vitalsId || '';
 
                 // Show vitals info in consultation form if available
                 if (vitalsId) {

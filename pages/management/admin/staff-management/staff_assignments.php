@@ -32,6 +32,7 @@ if (strtolower($_SESSION['role']) !== 'admin') {
 }
 
 require_once $root_path . '/config/db.php';
+require_once $root_path . '/config/auth_helpers.php';
 require_once $root_path . '/utils/queue_management_service.php';
 
 // Simple input sanitization function
@@ -70,12 +71,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['assign_employee'])) {
         $employee_id = intval($_POST['employee_id']);
         $station_id = intval($_POST['station_id']);
-        $start_date = $_POST['start_date'] ?? ($_POST['assigned_date'] ?? $date); // Check both field names
+        $start_date = $_POST['start_date'] ?? ($_POST['assigned_date'] ?? $date);
         $assignment_type = $_POST['assignment_type'] ?? 'permanent';
         $end_date = $_POST['end_date'] ?? null;
         $shift_start = $_POST['shift_start'] ?? '08:00:00';
         $shift_end = $_POST['shift_end'] ?? '17:00:00';
-        $assigned_by = $_SESSION['employee_id'];
+        $assigned_by = $_SESSION['employee_id'] ?? null;
         
         // Validate required fields
         if ($employee_id <= 0) {
@@ -84,11 +85,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Invalid station selected.";
         } elseif (empty($start_date)) {
             $error = "Start date is required.";
+        } elseif (!$assigned_by) {
+            $error = "Session error: Not properly logged in.";
         } else {
-            // Debug: Log assignment parameters
-            error_log("Assignment Parameters: employee_id=$employee_id, station_id=$station_id, start_date=$start_date, assignment_type=$assignment_type, shift_start=$shift_start, shift_end=$shift_end, assigned_by=$assigned_by, end_date=$end_date");
-            
-            // Use new efficient assignment method with correct parameter order
+            // Use assignment method
             $result = $queueService->assignEmployeeToStation(
                 $employee_id, $station_id, $start_date, $assignment_type, 
                 $shift_start, $shift_end, $assigned_by, $end_date
@@ -154,8 +154,176 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get stations with assignments
 $stations = $queueService->getAllStationsWithAssignments($date);
 
-// Get all employees for assignment dropdown (facility_id = 1 only)
-$employees = $queueService->getActiveEmployees(1);
+// Debug information (remove in production)
+if (isset($_GET['debug']) && $_GET['debug'] == '1') {
+    echo "<div style='background-color: #e3f2fd; padding: 15px; margin: 20px 0; border-radius: 8px; border: 1px solid #2196f3;'>";
+    echo "<h4>🐛 Debug Information</h4>";
+    echo "<p><strong>Retrieved stations:</strong> " . count($stations) . " for date: $date</p>";
+    
+    if (empty($stations)) {
+        echo "<p style='color: #d32f2f;'><strong>Issue:</strong> No stations found. Testing alternative queries...</p>";
+        
+        // Test 1: Simple station count
+        try {
+            $stationCount = $pdo->query("SELECT COUNT(*) FROM stations")->fetchColumn();
+            echo "<p><strong>Total stations in database:</strong> $stationCount</p>";
+            
+            if ($stationCount > 0) {
+                // Test 2: Check facility_id
+                $facilityCheck = $pdo->query("SHOW COLUMNS FROM stations LIKE 'facility_id'")->fetch();
+                if ($facilityCheck) {
+                    $facilityValues = $pdo->query("SELECT DISTINCT facility_id FROM stations")->fetchAll(PDO::FETCH_COLUMN);
+                    echo "<p><strong>Available facility_ids:</strong> " . implode(', ', $facilityValues) . "</p>";
+                } else {
+                    echo "<p><strong>facility_id column:</strong> Not found</p>";
+                }
+                
+                // Test 3: Simple stations without conditions
+                $simpleStations = $pdo->query("SELECT station_id, station_name, station_type FROM stations LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
+                echo "<p><strong>Sample stations:</strong></p>";
+                echo "<ul>";
+                foreach ($simpleStations as $station) {
+                    echo "<li>ID: {$station['station_id']}, Name: {$station['station_name']}, Type: {$station['station_type']}</li>";
+                }
+                echo "</ul>";
+            }
+        } catch (Exception $e) {
+            echo "<p style='color: #d32f2f;'><strong>Debug error:</strong> " . htmlspecialchars($e->getMessage()) . "</p>";
+        }
+    } else {
+        echo "<p style='color: #2e7d32;'><strong>Success:</strong> Stations loaded correctly!</p>";
+        echo "<p><strong>First few stations:</strong></p>";
+        echo "<pre style='background: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 12px;'>";
+        print_r(array_slice($stations, 0, 3));
+        echo "</pre>";
+    }
+    echo "</div>";
+}
+
+// Fallback: If no stations found, try a simplified query
+if (empty($stations)) {
+    try {
+        // Simple fallback query without date conditions
+        $fallbackStmt = $pdo->query("
+            SELECT 
+                s.station_id,
+                s.station_name,
+                s.station_type,
+                COALESCE(s.station_number, 1) as station_number,
+                COALESCE(s.is_active, 1) as is_active,
+                COALESCE(s.is_open, 1) as is_open,
+                srv.name as service_name,
+                srv.service_id,
+                asch.schedule_id,
+                asch.employee_id,
+                asch.start_date,
+                asch.end_date,
+                asch.assignment_type,
+                asch.shift_start_time,
+                asch.shift_end_time,
+                asch.is_active as assignment_status,
+                e.first_name,
+                e.last_name,
+                e.employee_number,
+                CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+                r.role_name as employee_role
+            FROM stations s
+            LEFT JOIN services srv ON s.service_id = srv.service_id
+            LEFT JOIN assignment_schedules asch ON s.station_id = asch.station_id AND asch.is_active = 1
+            LEFT JOIN employees e ON asch.employee_id = e.employee_id
+            LEFT JOIN roles r ON e.role_id = r.role_id
+            WHERE s.is_active = 1
+            ORDER BY s.station_id
+        ");
+        $stations = $fallbackStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (!empty($stations)) {
+            $message = "Using fallback query - found " . count($stations) . " stations. Date filtering may have been the issue.";
+        }
+    } catch (Exception $e) {
+        $error = "Database error: " . $e->getMessage();
+    }
+}
+
+// Get all employees for assignment dropdown
+$employees = $queueService->getActiveEmployees();
+
+// Handle AJAX request for assignment history
+if (isset($_GET['ajax_history']) && $_GET['ajax_history'] == '1') {
+    try {
+        $historyStmt = $pdo->prepare("
+            SELECT 
+                al.*, 
+                CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+                s.station_name,
+                CONCAT(p.first_name, ' ', p.last_name) as performed_by_name
+            FROM assignment_logs al
+            LEFT JOIN employees e ON al.employee_id = e.employee_id
+            LEFT JOIN stations s ON al.station_id = s.station_id
+            LEFT JOIN employees p ON al.performed_by = p.employee_id
+            ORDER BY al.created_at DESC 
+            LIMIT 20
+        ");
+        $historyStmt->execute();
+        $history = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (!empty($history)) {
+            echo '<div style="max-height: 400px; overflow-y: auto;">';
+            echo '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">';
+            echo '<thead style="position: sticky; top: 0; background-color: #f8f9fa; z-index: 10;">';
+            echo '<tr>';
+            echo '<th style="padding: 10px; border: 1px solid #dee2e6; background-color: #e9ecef;">Date & Time</th>';
+            echo '<th style="padding: 10px; border: 1px solid #dee2e6; background-color: #e9ecef;">Action</th>';
+            echo '<th style="padding: 10px; border: 1px solid #dee2e6; background-color: #e9ecef;">Station</th>';
+            echo '<th style="padding: 10px; border: 1px solid #dee2e6; background-color: #e9ecef;">Employee</th>';
+            echo '<th style="padding: 10px; border: 1px solid #dee2e6; background-color: #e9ecef;">Performed By</th>';
+            echo '<th style="padding: 10px; border: 1px solid #dee2e6; background-color: #e9ecef;">Notes</th>';
+            echo '</tr>';
+            echo '</thead>';
+            echo '<tbody>';
+            
+            foreach ($history as $log) {
+                $actionColor = match($log['action_type']) {
+                    'created' => '#28a745',
+                    'reassigned' => '#ffc107', 
+                    'ended' => '#dc3545',
+                    'cleanup' => '#6f42c1',
+                    default => '#6c757d'
+                };
+                
+                echo '<tr>';
+                echo '<td style="padding: 8px; border: 1px solid #dee2e6; font-size: 12px;">' . date('M j, Y g:i A', strtotime($log['created_at'])) . '</td>';
+                echo '<td style="padding: 8px; border: 1px solid #dee2e6;">';
+                echo '<span class="badge" style="background-color: ' . $actionColor . '; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px;">';
+                echo ucfirst($log['action_type']);
+                echo '</span>';
+                echo '</td>';
+                echo '<td style="padding: 8px; border: 1px solid #dee2e6;">' . htmlspecialchars($log['station_name'] ?: 'N/A') . '</td>';
+                echo '<td style="padding: 8px; border: 1px solid #dee2e6;">' . htmlspecialchars($log['employee_name'] ?: 'N/A') . '</td>';
+                echo '<td style="padding: 8px; border: 1px solid #dee2e6;">' . htmlspecialchars($log['performed_by_name'] ?: 'System') . '</td>';
+                echo '<td style="padding: 8px; border: 1px solid #dee2e6; font-size: 12px; max-width: 200px; word-wrap: break-word;">' . htmlspecialchars($log['notes'] ?: 'No additional notes') . '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody>';
+            echo '</table>';
+            echo '</div>';
+            echo '<div style="margin-top: 15px; padding: 10px; background-color: #e3f2fd; border-radius: 5px; font-size: 12px; color: #1976d2;">';
+            echo '<i class="fas fa-info-circle"></i> Showing last 20 assignment changes. ';
+            echo 'Total records found: ' . count($history);
+            echo '</div>';
+        } else {
+            echo '<div class="alert" style="background-color: #fff3cd; color: #856404; border-left: 4px solid #ffc107; padding: 15px;">';
+            echo '<i class="fas fa-info-circle"></i> No assignment history found for this facility.';
+            echo '</div>';
+        }
+    } catch (Exception $e) {
+        echo '<div class="alert alert-danger">';
+        echo '<i class="fas fa-exclamation-triangle"></i> Error loading assignment history: ' . htmlspecialchars($e->getMessage());
+        echo '</div>';
+    }
+    exit(); // Stop execution for AJAX request
+}
 
 // Create role-to-employees mapping for JavaScript
 $employeesByRole = [];
@@ -718,6 +886,61 @@ $activePage = 'staff_assignments';
                 text-align: center;
             }
         }
+
+        /* Inactive station styling */
+        .inactive-station {
+            opacity: 0.6;
+            background-color: #f8f9fa !important;
+        }
+
+        .inactive-station .station-name {
+            color: #6c757d;
+        }
+
+        .inactive-label {
+            background-color: #dc3545;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        /* Station Toggle Confirmation Modal Styling */
+        #toggleConfirmModal .modal-dialog {
+            max-width: 400px;
+        }
+
+        #toggleConfirmModal .modal-body {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        #toggleConfirmModal .modal-body i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        #toggleConfirmModal .modal-body p {
+            font-size: 16px;
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        #toggleConfirmModal .modal-footer {
+            justify-content: center;
+            gap: 10px;
+            border-top: 1px solid #dee2e6;
+            padding: 20px;
+        }
+
+        #toggleConfirmModal .action-btn {
+            min-width: 120px;
+            padding: 10px 20px;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -735,11 +958,6 @@ $activePage = 'staff_assignments';
 
             <div class="page-header">
                 <h1><i class="fas fa-users-cog"></i> Station Staff Assignments</h1>
-                <div class="total-count">
-                    <span class="badge bg-primary"><?php echo count($stations); ?> Total Stations</span>
-                    <span class="badge bg-success"><?php echo count(array_filter($stations, function($s) { return $s['is_active']; })); ?> Active</span>
-                    <span class="badge bg-warning"><?php echo count(array_filter($stations, function($s) { return $s['employee_id']; })); ?> Assigned</span>
-                </div>
             </div>
             
             <!-- Date Selection Section -->
@@ -771,37 +989,106 @@ $activePage = 'staff_assignments';
             </div>
 
             <?php if ($message): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($message); ?>
+                <div class="alert alert-success" style="background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 1px solid #28a745; border-radius: 8px; padding: 20px; margin-bottom: 25px; box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2); animation: slideInFromTop 0.5s ease-out;">
+                    <div style="display: flex; align-items: center;">
+                        <i class="fas fa-check-circle" style="color: #28a745; font-size: 24px; margin-right: 15px;"></i>
+                        <div>
+                            <strong style="color: #155724; font-size: 16px;">Success!</strong>
+                            <div style="color: #155724; margin-top: 5px;"><?php echo htmlspecialchars($message); ?></div>
+                        </div>
+                    </div>
                 </div>
+                <script>
+                    // Auto-hide success message after 5 seconds
+                    setTimeout(function() {
+                        const successAlert = document.querySelector('.alert-success');
+                        if (successAlert) {
+                            successAlert.style.transition = 'opacity 0.5s ease-out';
+                            successAlert.style.opacity = '0';
+                            setTimeout(() => successAlert.remove(), 500);
+                        }
+                    }, 5000);
+                </script>
             <?php endif; ?>
 
             <?php if ($error): ?>
                 <div class="alert alert-danger" style="border-left: 4px solid #dc3545; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(220, 53, 69, 0.2);">
                     <div style="display: flex; align-items: center; margin-bottom: 10px;">
                         <i class="fas fa-exclamation-triangle" style="color: #dc3545; font-size: 20px; margin-right: 10px;"></i>
-                        <strong style="color: #721c24;">Assignment Conflict!</strong>
+                        <strong style="color: #721c24;">Assignment Error!</strong>
                     </div>
                     <div style="color: #721c24; line-height: 1.5;">
                         <?php echo nl2br(htmlspecialchars($error)); ?>
                     </div>
-                    <?php if (strpos($error, 'Duplicate entry') !== false): ?>
+                    <?php if (strpos($error, 'already assigned') !== false): ?>
                         <div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;">
-                            <strong style="color: #856404;">🔧 Fix Available:</strong><br>
-                            <span style="color: #856404;">This error occurs when there are inactive assignment records blocking new assignments.</span><br>
-                            <a href="../../../../cleanup_assignments.php" target="_blank" style="color: #0056b3; text-decoration: underline; margin-top: 5px; display: inline-block;">
-                                → Open Assignment Cleanup Tool
-                            </a>
+                            <strong style="color: #856404;">� Tip:</strong><br>
+                            <span style="color: #856404;">This error occurs when trying to assign an employee who is already assigned to another station. Use the "Reassign" button instead, or remove their current assignment first.</span>
                         </div>
                     <?php endif; ?>
                 </div>
             <?php endif; ?>
+
+            <!-- Assignment Summary -->
+            <div class="card-container" style="margin-bottom: 20px;">
+                <div class="section-header">
+                    <h4><i class="fas fa-chart-bar"></i> Assignment Summary for <?php echo date('F j, Y', strtotime($date)); ?></h4>
+                </div>
+                <div class="row">
+                    <?php
+                    $totalStations = count($stations);
+                    $assignedStations = count(array_filter($stations, function($s) { return !empty($s['employee_id']); }));
+                    $unassignedStations = $totalStations - $assignedStations;
+                    $activeStations = count(array_filter($stations, function($s) { return $s['is_active']; }));
+                    ?>
+                    <div class="col-md-3">
+                        <div style="background: linear-gradient(135deg, #48cae4, #0096c7); color: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                            <i class="fas fa-building" style="font-size: 24px; margin-bottom: 10px;"></i>
+                            <h3 style="margin: 0; font-size: 28px;"><?php echo $totalStations; ?></h3>
+                            <p style="margin: 0; opacity: 0.9;">Total Stations</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div style="background: linear-gradient(135deg, #52b788, #2d6a4f); color: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                            <i class="fas fa-user-check" style="font-size: 24px; margin-bottom: 10px;"></i>
+                            <h3 style="margin: 0; font-size: 28px;"><?php echo $assignedStations; ?></h3>
+                            <p style="margin: 0; opacity: 0.9;">Assigned</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div style="background: linear-gradient(135deg, #ffba08, #faa307); color: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                            <i class="fas fa-user-times" style="font-size: 24px; margin-bottom: 10px;"></i>
+                            <h3 style="margin: 0; font-size: 28px;"><?php echo $unassignedStations; ?></h3>
+                            <p style="margin: 0; opacity: 0.9;">Unassigned</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div style="background: linear-gradient(135deg, #0077b6, #03045e); color: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                            <i class="fas fa-power-off" style="font-size: 24px; margin-bottom: 10px;"></i>
+                            <h3 style="margin: 0; font-size: 28px;"><?php echo $activeStations; ?></h3>
+                            <p style="margin: 0; opacity: 0.9;">Active</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <?php if ($unassignedStations > 0): ?>
+                    <div style="margin-top: 15px; padding: 12px; background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 5px;">
+                        <i class="fas fa-exclamation-triangle" style="color: #856404; margin-right: 8px;"></i>
+                        <strong style="color: #856404;">Attention:</strong>
+                        <span style="color: #856404;"><?php echo $unassignedStations; ?> station(s) need employee assignments.</span>
+                    </div>
+                <?php endif; ?>
+            </div>
             
             <!-- Station Assignments Table -->
             <div class="card-container">
-                <div class="section-header">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h4><i class="fas fa-list"></i> Station Assignments for <?php echo date('F j, Y', strtotime($date)); ?></h4>
+                    <button type="button" class="action-btn btn-info" onclick="openHistoryModal()" style="font-size: 14px;">
+                        <i class="fas fa-history"></i> Show Assignment History
+                    </button>
                 </div>
+                
                 <div class="table-responsive">
                     <table id="stationTable">
                         <thead>
@@ -820,11 +1107,14 @@ $activePage = 'staff_assignments';
                         <tbody>
                             <?php if (!empty($stations)): ?>
                                 <?php foreach ($stations as $station): ?>
-                                    <tr>
+                                    <tr class="<?php echo !$station['is_active'] ? 'station-inactive' : ''; ?>">
                                         <td>
                                             <strong><?php echo htmlspecialchars($station['station_name']); ?></strong>
                                             <?php if ($station['station_number'] > 1): ?>
                                                 <br><small class="text-muted">#<?php echo $station['station_number']; ?></small>
+                                            <?php endif; ?>
+                                            <?php if (!$station['is_active']): ?>
+                                                <br><small class="text-danger"><i class="fas fa-ban"></i> INACTIVE</small>
                                             <?php endif; ?>
                                         </td>
                                         <td>
@@ -849,7 +1139,7 @@ $activePage = 'staff_assignments';
                                         </td>
                                         <td>
                                             <?php if ($station['employee_role']): ?>
-                                                <span class="badge bg-secondary"><?php echo htmlspecialchars(ucfirst($station['employee_role'])); ?></span>
+                                                <span class="badge bg-secondary"><?php echo htmlspecialchars(format_role_name($station['employee_role'])); ?></span>
                                             <?php else: ?>
                                                 -
                                             <?php endif; ?>
@@ -868,6 +1158,12 @@ $activePage = 'staff_assignments';
                                             <?php else: ?>
                                                 <span class="badge bg-danger">Inactive</span>
                                             <?php endif; ?>
+                                            
+                                            <?php if (!empty($station['assignment_status']) && $station['assignment_status'] != $station['is_active']): ?>
+                                                <br><small class="text-muted">
+                                                    Assignment: <?php echo $station['assignment_status'] ? 'Active' : 'Inactive'; ?>
+                                                </small>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <div class="action-buttons">
@@ -876,28 +1172,33 @@ $activePage = 'staff_assignments';
                                                     <i class="fas fa-tachometer-alt"></i>
                                                 </button>
                                                 
-                                                <?php if ($station['employee_id']): ?>
-                                                    <!-- Reassign button -->
-                                                    <button type="button" class="action-btn btn-warning" onclick="openReassignModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', <?php echo $station['employee_id']; ?>, '<?php echo htmlspecialchars($station['station_type']); ?>')" title="Reassign Employee">
-                                                        <i class="fas fa-exchange-alt"></i>
-                                                    </button>
-                                                    <!-- Remove assignment button -->
-                                                    <button type="button" class="action-btn btn-danger" onclick="openRemoveModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', '<?php echo htmlspecialchars($station['employee_name']); ?>')" title="Remove Assignment">
-                                                        <i class="fas fa-user-minus"></i>
-                                                    </button>
+                                                <?php if ($station['is_active']): ?>
+                                                    <?php if ($station['employee_id']): ?>
+                                                        <!-- Reassign button -->
+                                                        <button type="button" class="action-btn btn-warning" onclick="openReassignModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', <?php echo $station['employee_id']; ?>, '<?php echo htmlspecialchars($station['station_type']); ?>')" title="Reassign Employee">
+                                                            <i class="fas fa-exchange-alt"></i>
+                                                        </button>
+                                                        <!-- Remove assignment button -->
+                                                        <button type="button" class="action-btn btn-danger" onclick="openRemoveModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', '<?php echo htmlspecialchars($station['employee_name']); ?>')" title="Remove Assignment">
+                                                            <i class="fas fa-user-minus"></i>
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <!-- Assign button -->
+                                                        <button type="button" class="action-btn btn-primary" onclick="openAssignModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', '<?php echo htmlspecialchars($station['station_type']); ?>')" title="Assign Employee">
+                                                            <i class="fas fa-user-plus"></i>
+                                                        </button>
+                                                    <?php endif; ?>
                                                 <?php else: ?>
-                                                    <!-- Assign button -->
-                                                    <button type="button" class="action-btn btn-primary" onclick="openAssignModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', '<?php echo htmlspecialchars($station['station_type']); ?>')" title="Assign Employee">
-                                                        <i class="fas fa-user-plus"></i>
-                                                    </button>
+                                                    <span class="text-muted" style="font-size: 0.8rem;"><i class="fas fa-ban"></i> Station Inactive</span>
                                                 <?php endif; ?>
                                                 
                                                 <!-- Toggle station status -->
-                                                <form method="post" style="display: inline;" onsubmit="return confirm('<?php echo $station['is_active'] ? 'Deactivate' : 'Activate'; ?> this station?');">
+                                                <form method="post" style="display: inline;" id="toggleForm_<?php echo $station['station_id']; ?>">
                                                     <input type="hidden" name="station_id" value="<?php echo $station['station_id']; ?>">
                                                     <input type="hidden" name="is_active" value="<?php echo $station['is_active'] ? 0 : 1; ?>">
                                                     <input type="hidden" name="assigned_date" value="<?php echo htmlspecialchars($date); ?>">
-                                                    <button type="submit" name="toggle_station" class="action-btn <?php echo $station['is_active'] ? 'btn-secondary' : 'btn-success'; ?>" title="<?php echo $station['is_active'] ? 'Deactivate Station' : 'Activate Station'; ?>">
+                                                    <input type="hidden" name="toggle_station" value="1">
+                                                    <button type="button" onclick="openToggleConfirmModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', <?php echo $station['is_active'] ? 'true' : 'false'; ?>)" class="action-btn <?php echo $station['is_active'] ? 'btn-secondary' : 'btn-success'; ?>" title="<?php echo $station['is_active'] ? 'Deactivate Station' : 'Activate Station'; ?>">
                                                         <i class="fas <?php echo $station['is_active'] ? 'fa-power-off' : 'fa-play'; ?>"></i>
                                                     </button>
                                                 </form>
@@ -909,8 +1210,23 @@ $activePage = 'staff_assignments';
                                 <tr>
                                     <td colspan="9" class="text-center">
                                         <div style="padding: 30px 0;">
-                                            <i class="fas fa-users-cog" style="font-size: 48px; color: #ccc; margin-bottom: 15px;"></i>
-                                            <p>No stations found.</p>
+                                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #f39c12; margin-bottom: 15px;"></i>
+                                            <h5 style="color: #666; margin-bottom: 10px;">No Station Assignments Found</h5>
+                                            <p style="color: #999; margin-bottom: 20px;">No station assignments found for <?= $date ?>.</p>
+                                            <?php if (!empty($message)): ?>
+                                                <div style="background: #e3f2fd; padding: 15px; margin: 10px auto; border-radius: 8px; max-width: 500px; border: 1px solid #2196f3;">
+                                                    <i class="fas fa-info-circle" style="color: #2196f3;"></i>
+                                                    <span style="color: #1976d2;"><?= htmlspecialchars($message) ?></span>
+                                                </div>
+                                            <?php endif; ?>
+                                            <div>
+                                                <button onclick="window.location.reload()" class="btn btn-primary" style="margin-right: 10px;">
+                                                    <i class="fas fa-sync-alt"></i> Refresh
+                                                </button>
+                                                <a href="?debug=1" class="btn btn-outline-info">
+                                                    <i class="fas fa-bug"></i> Debug Info
+                                                </a>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -1084,8 +1400,35 @@ $activePage = 'staff_assignments';
     </div>
 
     <script>
-        // Employee data organized by role
-        const employeesByRole = <?php echo json_encode($employeesByRole); ?>;
+        // Employee data organized by role (with error handling)
+        let employeesByRole = {};
+        try {
+            employeesByRole = <?php echo json_encode($employeesByRole, JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS); ?>;
+        } catch (e) {
+            console.error('Error parsing employeesByRole:', e);
+            employeesByRole = {};
+        }
+        
+        // Format role names to proper title case (JavaScript equivalent of PHP function)
+        function formatRoleName(role) {
+            if (!role) return '';
+            
+            // Replace underscores with spaces and convert to title case
+            let formatted = role.replace(/_/g, ' ');
+            formatted = formatted.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+            
+            // Handle special cases
+            const specialCases = {
+                'Dho': 'DHO',
+                'Bhw': 'BHW'
+            };
+            
+            for (const [search, replace] of Object.entries(specialCases)) {
+                formatted = formatted.replace(search, replace);
+            }
+            
+            return formatted;
+        }
         
         // Station type to allowed roles mapping (matching stations table)
         const stationRoles = {
@@ -1123,7 +1466,7 @@ $activePage = 'staff_assignments';
                         
                         const option = document.createElement('option');
                         option.value = emp.employee_id;
-                        option.textContent = emp.full_name + ' (' + emp.role_name.charAt(0).toUpperCase() + emp.role_name.slice(1) + ')';
+                        option.textContent = emp.full_name + ' (' + formatRoleName(emp.role_name) + ')';
                         selectElement.appendChild(option);
                         addedCount++;
                     });
@@ -1303,6 +1646,100 @@ $activePage = 'staff_assignments';
         function openAssignModal(stationId, stationName, stationType) {
             openAssignModalWithCheck(stationId, stationName, stationType);
         }
+        
+        // Open assignment history modal
+        function openHistoryModal() {
+            const modal = document.getElementById('historyModal');
+            const modalContent = document.getElementById('historyModalContent');
+            
+            if (!modal || !modalContent) {
+                console.error('History modal elements not found');
+                return;
+            }
+            
+            modal.classList.add('show');
+            
+            // Reset modal content with loading state
+            modalContent.innerHTML = `
+                <div class="text-center">
+                    <div class="loader" style="display: block; margin: 20px auto;"></div>
+                    <p>Loading assignment history...</p>
+                </div>
+            `;
+            
+            // Load history via AJAX
+            fetch(window.location.href + '&ajax_history=1')
+                .then(response => response.text())
+                .then(data => {
+                    modalContent.innerHTML = data;
+                })
+                .catch(error => {
+                    modalContent.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Error loading assignment history: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+
+        // Station toggle confirmation functions
+        let toggleStationData = {};
+
+        function openToggleConfirmModal(stationId, stationName, isActive) {
+            // Store the toggle data for later use
+            toggleStationData = {
+                stationId: stationId,
+                stationName: stationName,
+                isActive: isActive
+            };
+
+            const modal = document.getElementById('toggleConfirmModal');
+            const title = document.getElementById('toggleConfirmTitle');
+            const message = document.getElementById('toggleConfirmMessage');
+            const icon = document.getElementById('toggleConfirmIcon');
+            const confirmBtn = document.getElementById('confirmToggleBtn');
+            const confirmBtnText = document.getElementById('confirmToggleBtnText');
+
+            // Set modal content based on current station status
+            if (isActive) {
+                // Station is active, asking to deactivate
+                title.textContent = 'Deactivate Station';
+                message.innerHTML = `Are you sure you want to <strong>deactivate</strong> the <strong>${stationName}</strong> station?`;
+                icon.className = 'fas fa-power-off';
+                icon.style.color = '#dc3545';
+                confirmBtn.className = 'action-btn btn-danger';
+                confirmBtnText.textContent = 'Deactivate';
+            } else {
+                // Station is inactive, asking to activate
+                title.textContent = 'Activate Station';
+                message.innerHTML = `Are you sure you want to <strong>activate</strong> the <strong>${stationName}</strong> station?`;
+                icon.className = 'fas fa-play';
+                icon.style.color = '#28a745';
+                confirmBtn.className = 'action-btn btn-success';
+                confirmBtnText.textContent = 'Activate';
+            }
+
+            modal.classList.add('show');
+        }
+
+        function confirmStationToggle() {
+            if (!toggleStationData.stationId) {
+                console.error('No station data available for toggle');
+                return;
+            }
+
+            // Submit the form
+            const form = document.getElementById(`toggleForm_${toggleStationData.stationId}`);
+            if (form) {
+                form.submit();
+            } else {
+                console.error(`Form not found for station ${toggleStationData.stationId}`);
+            }
+
+            // Close the modal
+            closeModal('toggleConfirmModal');
+        }
     </script>
     
     <!-- Assignment Conflict Warning Modal -->
@@ -1410,6 +1847,56 @@ $activePage = 'staff_assignments';
                     </button>
                     <button type="button" class="action-btn btn-primary" onclick="closeModal('reassignmentWarningModal')">
                         <i class="fas fa-check"></i> I Understand
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Assignment History Modal -->
+    <div class="modal" id="historyModal" tabindex="-1">
+        <div class="modal-dialog" style="max-width: 900px;">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #0077b6;">
+                    <h5 style="color: white;"><i class="fas fa-history"></i> Assignment History</h5>
+                    <button type="button" class="btn-close" onclick="closeModal('historyModal')" style="color: white;">&times;</button>
+                </div>
+                <div class="modal-body" id="historyModalContent">
+                    <div class="text-center">
+                        <div class="loader" id="historyLoader"></div>
+                        <p id="historyLoading">Loading assignment history...</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="action-btn btn-secondary" onclick="closeModal('historyModal')">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Station Toggle Confirmation Modal -->
+    <div class="modal" id="toggleConfirmModal" tabindex="-1">
+        <div class="modal-dialog" style="max-width: 400px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 id="toggleConfirmTitle">Confirm Station Status Change</h5>
+                    <button type="button" class="btn-close" onclick="closeModal('toggleConfirmModal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="text-align: center; margin: 20px 0;">
+                        <i id="toggleConfirmIcon" class="fas fa-power-off" style="font-size: 48px; margin-bottom: 15px;"></i>
+                        <p id="toggleConfirmMessage" style="font-size: 16px; margin-bottom: 10px;"></p>
+                        <p style="color: #6c757d; font-size: 14px;">This action will change the station status immediately.</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="action-btn btn-secondary" onclick="closeModal('toggleConfirmModal')">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="button" class="action-btn" id="confirmToggleBtn" onclick="confirmStationToggle()">
+                        <i class="fas fa-check"></i> <span id="confirmToggleBtnText">Confirm</span>
                     </button>
                 </div>
             </div>

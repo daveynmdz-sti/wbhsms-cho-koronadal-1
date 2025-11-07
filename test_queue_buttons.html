@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue Management Buttons Demo</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root {
+            --station-primary: #2563eb;
+            --station-secondary: #1e40af;
+            --station-accent: #60a5fa;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --light: #f8fafc;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+            --border-radius: 0.5rem;
+            --transition: all 0.3s ease;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: var(--light);
+            line-height: 1.6;
+        }
+
+        .demo-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .demo-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .demo-header h1 {
+            color: var(--station-primary);
+            margin-bottom: 1rem;
+        }
+
+        .demo-header p {
+            color: #6b7280;
+            font-size: 1.1rem;
+        }
+
+        /* Queue Management Grid */
+        .queue-management-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 1200px) {
+            .queue-management-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Queue Display */
+        .queue-section {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+
+        .queue-header {
+            color: white;
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        .queue-content {
+            padding: 1.5rem;
+        }
+
+        /* Queue Type Specific Headers */
+        .waiting-queue .queue-header {
+            background: var(--info);
+        }
+
+        .in-progress-queue .queue-header {
+            background: var(--success);
+        }
+
+        .completed-queue .queue-header {
+            background: #6b7280;
+        }
+
+        .skipped-queue .queue-header {
+            background: var(--warning);
+        }
+
+        /* Patient Cards */
+        .patient-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .patient-card {
+            background: var(--light);
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+            border-left: 4px solid #ddd;
+        }
+
+        .patient-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .patient-card.waiting {
+            border-left-color: var(--info);
+        }
+
+        .patient-card.in-progress {
+            border-left-color: var(--success);
+            background: #f0fdf4;
+        }
+
+        .patient-card.completed {
+            border-left-color: #6b7280;
+            background: #f9fafb;
+        }
+
+        .patient-card.skipped {
+            border-left-color: var(--warning);
+            background: #fffbeb;
+        }
+
+        .patient-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .patient-card-content h4 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.1rem;
+            color: #1f2937;
+        }
+
+        .patient-card-content p {
+            margin: 0.25rem 0;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+
+        .patient-card-actions {
+            margin-top: 1rem;
+        }
+
+        .action-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .special-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .queue-number {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--station-primary);
+        }
+
+        .priority-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .priority-normal { background: #e5e7eb; color: #374151; }
+        .priority-priority { background: #fef3c7; color: #92400e; }
+        .priority-emergency { 
+            background: #fee2e2; 
+            color: #991b1b; 
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status-in-progress { background: #d1fae5; color: #065f46; }
+        .status-completed { background: #f3f4f6; color: #374151; }
+        .status-skipped { background: #fef3c7; color: #92400e; }
+
+        /* Action Buttons */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: var(--border-radius);
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: var(--transition);
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: var(--station-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--station-secondary);
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-info {
+            background: var(--info);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-sm {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.8rem;
+        }
+
+        .dropdown-toggle::after {
+            content: ' ▼';
+            font-size: 0.7rem;
+        }
+
+        /* Transfer Dropdown */
+        .transfer-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .transfer-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            min-width: 200px;
+        }
+
+        .transfer-menu.active {
+            display: block;
+        }
+
+        .transfer-option {
+            display: block;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            transition: var(--transition);
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .transfer-option:last-child {
+            border-bottom: none;
+        }
+
+        .transfer-option:hover {
+            background: var(--light);
+            color: var(--station-primary);
+        }
+
+        .transfer-option i {
+            margin-right: 0.5rem;
+            color: var(--station-primary);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: #6b7280;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .button-showcase {
+            background: white;
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+        }
+
+        .button-showcase h3 {
+            color: var(--station-primary);
+            margin-bottom: 1.5rem;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <div class="demo-header">
+            <h1><i class="fas fa-stethoscope"></i> Triage Station Queue Management</h1>
+            <p>Complete Queue Management System with Patient Flow Controls</p>
+        </div>
+
+        <!-- Button Showcase -->
+        <div class="button-showcase">
+            <h3><i class="fas fa-mouse-pointer"></i> Available Action Buttons</h3>
+            <div class="button-grid">
+                <button class="btn btn-primary" onclick="showAlert('Call Next Patient')">
+                    <i class="fas fa-bell"></i> Call Next Patient
+                </button>
+                <button class="btn btn-success" onclick="showAlert('Complete Triage')">
+                    <i class="fas fa-check"></i> Complete Triage
+                </button>
+                <button class="btn btn-warning" onclick="showAlert('Skip Patient')">
+                    <i class="fas fa-forward"></i> Skip Patient
+                </button>
+                <button class="btn btn-secondary" onclick="showAlert('Recall Patient')">
+                    <i class="fas fa-undo"></i> Recall Patient
+                </button>
+                <button class="btn btn-info" onclick="showAlert('Record Vitals')">
+                    <i class="fas fa-heartbeat"></i> Record Vitals
+                </button>
+                <button class="btn btn-secondary" onclick="showAlert('View History')">
+                    <i class="fas fa-history"></i> View History
+                </button>
+                
+                <!-- Transfer Dropdown Demo -->
+                <div class="transfer-dropdown">
+                    <button class="btn btn-primary dropdown-toggle" onclick="toggleTransferMenu(this)">
+                        <i class="fas fa-arrow-right"></i> Transfer
+                    </button>
+                    <div class="transfer-menu">
+                        <button class="transfer-option" onclick="showAlert('Transfer to Primary Care 1')">
+                            <i class="fas fa-user-md"></i> Primary Care 1
+                        </button>
+                        <button class="transfer-option" onclick="showAlert('Transfer to Laboratory')">
+                            <i class="fas fa-flask"></i> Laboratory
+                        </button>
+                        <button class="transfer-option" onclick="showAlert('Transfer to Pharmacy')">
+                            <i class="fas fa-pills"></i> Pharmacy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue Management Grid -->
+        <div class="queue-management-grid">
+            
+            <!-- Waiting Queue Section -->
+            <div class="queue-section waiting-queue">
+                <div class="queue-header">
+                    <h3><i class="fas fa-clock"></i> Waiting Queue (3 patients)</h3>
+                    <button class="btn btn-primary btn-sm" onclick="showAlert('Call Next Patient')">
+                        <i class="fas fa-bell"></i> Call Next
+                    </button>
+                </div>
+                <div class="queue-content">
+                    <div class="patient-cards">
+                        <div class="patient-card waiting">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T001</div>
+                                <span class="priority-badge priority-normal">Normal</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Maria Santos</h4>
+                                <p>Wait: 15 min</p>
+                                <p>Type: Regular Checkup</p>
+                            </div>
+                            <div class="patient-card-actions">
+                                <button class="btn btn-primary btn-sm" onclick="showAlert('Called Maria Santos')">
+                                    <i class="fas fa-bell"></i> Call Now
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="patient-card waiting">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T002</div>
+                                <span class="priority-badge priority-priority">Priority</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Juan Cruz</h4>
+                                <p>Wait: 8 min</p>
+                                <p>Type: Follow-up</p>
+                            </div>
+                        </div>
+
+                        <div class="patient-card waiting">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T003</div>
+                                <span class="priority-badge priority-emergency">Emergency</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Ana Reyes</h4>
+                                <p>Wait: 2 min</p>
+                                <p>Type: Emergency</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- In Progress Queue Section -->
+            <div class="queue-section in-progress-queue">
+                <div class="queue-header">
+                    <h3><i class="fas fa-user-check"></i> In Progress (1 patient)</h3>
+                </div>
+                <div class="queue-content">
+                    <div class="patient-cards">
+                        <div class="patient-card in-progress">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T004</div>
+                                <span class="status-badge status-in-progress">Active</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Pedro Garcia</h4>
+                                <p>Service Time: 12 min</p>
+                            </div>
+                            <div class="patient-card-actions">
+                                <div class="action-group">
+                                    <button class="btn btn-success btn-sm" onclick="showAlert('Completed Pedro Garcia')">
+                                        <i class="fas fa-check"></i> Complete
+                                    </button>
+                                    
+                                    <div class="transfer-dropdown">
+                                        <button class="btn btn-primary btn-sm dropdown-toggle" onclick="toggleTransferMenu(this)">
+                                            <i class="fas fa-arrow-right"></i> Transfer
+                                        </button>
+                                        <div class="transfer-menu">
+                                            <button class="transfer-option" onclick="showAlert('Transferred to Primary Care 1')">
+                                                <i class="fas fa-user-md"></i> Primary Care 1
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <button class="btn btn-warning btn-sm" onclick="showAlert('Skipped Pedro Garcia')">
+                                        <i class="fas fa-forward"></i> Skip
+                                    </button>
+                                </div>
+                                
+                                <div class="special-actions">
+                                    <button class="btn btn-info btn-sm" onclick="showAlert('Opening vitals for Pedro Garcia')">
+                                        <i class="fas fa-heartbeat"></i> Vitals
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="showAlert('Opening history for Pedro Garcia')">
+                                        <i class="fas fa-history"></i> History
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Queue Section -->
+            <div class="queue-section completed-queue">
+                <div class="queue-header">
+                    <h3><i class="fas fa-check-circle"></i> Completed Today (5 patients)</h3>
+                </div>
+                <div class="queue-content">
+                    <div class="patient-cards">
+                        <div class="patient-card completed">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T010</div>
+                                <span class="status-badge status-completed">Completed</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Rosa Martinez</h4>
+                                <p>Completed: 14:30</p>
+                            </div>
+                        </div>
+
+                        <div class="patient-card completed">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T009</div>
+                                <span class="status-badge status-completed">Completed</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Carlos Lopez</h4>
+                                <p>Completed: 14:15</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Skipped Queue Section -->
+            <div class="queue-section skipped-queue">
+                <div class="queue-header">
+                    <h3><i class="fas fa-forward"></i> Skipped Patients (2 patients)</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="showAlert('Recalled first skipped patient')">
+                        <i class="fas fa-undo"></i> Recall First
+                    </button>
+                </div>
+                <div class="queue-content">
+                    <div class="patient-cards">
+                        <div class="patient-card skipped">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T007</div>
+                                <span class="status-badge status-skipped">Skipped</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Linda Gonzalez</h4>
+                                <p>Skipped: 13:45</p>
+                            </div>
+                            <div class="patient-card-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="showAlert('Recalled Linda Gonzalez')">
+                                    <i class="fas fa-undo"></i> Recall
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="patient-card skipped">
+                            <div class="patient-card-header">
+                                <div class="queue-number">T005</div>
+                                <span class="status-badge status-skipped">Skipped</span>
+                            </div>
+                            <div class="patient-card-content">
+                                <h4>Miguel Torres</h4>
+                                <p>Skipped: 13:20</p>
+                            </div>
+                            <div class="patient-card-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="showAlert('Recalled Miguel Torres')">
+                                    <i class="fas fa-undo"></i> Recall
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleTransferMenu(button) {
+            const menu = button.nextElementSibling;
+            const isActive = menu.classList.contains('active');
+            
+            // Close all open menus
+            document.querySelectorAll('.transfer-menu').forEach(m => m.classList.remove('active'));
+            
+            // Toggle current menu
+            if (!isActive) {
+                menu.classList.add('active');
+            }
+        }
+
+        // Close transfer menus when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.transfer-dropdown')) {
+                document.querySelectorAll('.transfer-menu').forEach(menu => {
+                    menu.classList.remove('active');
+                });
+            }
+        });
+
+        function showAlert(action) {
+            alert('Demo Action: ' + action + '\n\nThis would perform the actual queue management action in the real system.');
+        }
+
+        // Patient card hover effects
+        document.addEventListener('DOMContentLoaded', function() {
+            const patientCards = document.querySelectorAll('.patient-card');
+            patientCards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-3px)';
+                    this.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.15)';
+                });
+                
+                card.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0)';
+                    this.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

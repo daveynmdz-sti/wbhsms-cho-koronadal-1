@@ -60,162 +60,285 @@ class QueueManagementService {
     }
     
     /**
-     * Assign an employee to a station
+     * Assign an employee to a station (CORRECTED VERSION)
+     * This method now properly updates existing records instead of creating duplicates
      */
     public function assignEmployeeToStation($employee_id, $station_id, $start_date, $assignment_type = 'permanent', $shift_start = '08:00:00', $shift_end = '17:00:00', $assigned_by = null, $end_date = null) {
         try {
-            // Check if employee is already assigned to any station for overlapping dates
+            // Ensure end_date is properly NULL if empty
+            if (empty($end_date) || $end_date === '0000-00-00') {
+                $end_date = null;
+            }
+            
+            $this->pdo->beginTransaction();
+            
+            // Check if employee is already assigned to any OTHER station
             $overlap_check = "
                 SELECT asch.*, s.station_name 
                 FROM assignment_schedules asch
                 JOIN stations s ON asch.station_id = s.station_id
                 WHERE asch.employee_id = ? 
+                AND asch.station_id != ?
                 AND asch.is_active = 1
-                AND asch.start_date <= ?
-                AND (asch.end_date IS NULL OR asch.end_date >= ?)
             ";
             
-            $check_end_date = $end_date ?: $start_date;
             $check_stmt = $this->pdo->prepare($overlap_check);
-            $check_stmt->execute([$employee_id, $check_end_date, $start_date]);
+            $check_stmt->execute([$employee_id, $station_id]);
             $existing_assignment = $check_stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($existing_assignment) {
+                $this->pdo->rollBack();
                 return [
                     'success' => false, 
-                    'error' => "Employee is already assigned to {$existing_assignment['station_name']} from {$existing_assignment['start_date']} to " . ($existing_assignment['end_date'] ?: 'ongoing') . ". Please remove or end the existing assignment first."
+                    'error' => "Employee is already assigned to {$existing_assignment['station_name']}. Please remove the existing assignment first."
                 ];
             }
             
-            // Check if station is already assigned to another employee for overlapping dates
+            // Check if this station already has an assignment record
             $station_check = "
                 SELECT asch.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name
                 FROM assignment_schedules asch
-                JOIN employees e ON asch.employee_id = e.employee_id
-                WHERE asch.station_id = ? 
-                AND asch.is_active = 1
-                AND asch.start_date <= ?
-                AND (asch.end_date IS NULL OR asch.end_date >= ?)
+                LEFT JOIN employees e ON asch.employee_id = e.employee_id
+                WHERE asch.station_id = ?
+                ORDER BY asch.schedule_id DESC
+                LIMIT 1
             ";
             
             $station_stmt = $this->pdo->prepare($station_check);
-            $station_stmt->execute([$station_id, $check_end_date, $start_date]);
+            $station_stmt->execute([$station_id]);
             $existing_station_assignment = $station_stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($existing_station_assignment) {
-                return [
-                    'success' => false, 
-                    'error' => "Station is already assigned to {$existing_station_assignment['employee_name']} from {$existing_station_assignment['start_date']} to " . ($existing_station_assignment['end_date'] ?: 'ongoing') . ". Please remove the existing assignment first."
-                ];
+                // UPDATE existing record instead of creating new one
+                if ($existing_station_assignment['is_active'] && $existing_station_assignment['employee_id'] && $existing_station_assignment['employee_id'] != $employee_id) {
+                    $this->pdo->rollBack();
+                    return [
+                        'success' => false, 
+                        'error' => "Station is already assigned to {$existing_station_assignment['employee_name']}. Please remove the existing assignment first."
+                    ];
+                }
+                
+                // Update the existing assignment record
+                $update_stmt = $this->pdo->prepare("
+                    UPDATE assignment_schedules 
+                    SET employee_id = ?, start_date = ?, end_date = ?, assignment_type = ?,
+                        shift_start_time = ?, shift_end_time = ?, assigned_by = ?, is_active = 1,
+                        assigned_at = NOW()
+                    WHERE schedule_id = ?
+                ");
+                
+                $result = $update_stmt->execute([
+                    $employee_id, $start_date, $end_date, $assignment_type,
+                    $shift_start, $shift_end, $assigned_by, $existing_station_assignment['schedule_id']
+                ]);
+                
+                $schedule_id = $existing_station_assignment['schedule_id'];
+                $action_type = $existing_station_assignment['employee_id'] ? 'reassigned' : 'created';
+                
+            } else {
+                // Create new assignment record (only if station has never had an assignment)
+                $insert_stmt = $this->pdo->prepare("
+                    INSERT INTO assignment_schedules (
+                        employee_id, station_id, start_date, end_date, assignment_type,
+                        shift_start_time, shift_end_time, assigned_by, is_active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ");
+                
+                $result = $insert_stmt->execute([
+                    $employee_id, $station_id, $start_date, $end_date, $assignment_type,
+                    $shift_start, $shift_end, $assigned_by
+                ]);
+                
+                $schedule_id = $this->pdo->lastInsertId();
+                $action_type = 'created';
             }
             
-            // Insert new assignment
-            $stmt = $this->pdo->prepare("
-                INSERT INTO assignment_schedules (
-                    employee_id, station_id, start_date, end_date, assignment_type,
-                    shift_start_time, shift_end_time, assigned_by, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-            ");
-            
-            $result = $stmt->execute([
-                $employee_id, $station_id, $start_date, $end_date, $assignment_type,
-                $shift_start, $shift_end, $assigned_by
-            ]);
-            
             if ($result) {
+                // Log the assignment change
+                $log_stmt = $this->pdo->prepare("
+                    INSERT INTO assignment_logs (
+                        schedule_id, employee_id, station_id, action_type, action_date, performed_by, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                
+                $notes = $action_type === 'reassigned' ? 
+                    "Reassigned from employee {$existing_station_assignment['employee_id']} to {$employee_id}" :
+                    "New assignment created";
+                
+                $log_stmt->execute([
+                    $schedule_id, $employee_id, $station_id, $action_type, $start_date, $assigned_by, $notes
+                ]);
+                
+                $this->pdo->commit();
+                
                 return [
                     'success' => true, 
                     'message' => 'Employee assigned to station successfully.',
-                    'schedule_id' => $this->pdo->lastInsertId()
+                    'schedule_id' => $schedule_id
                 ];
             }
             
+            $this->pdo->rollBack();
             return ['success' => false, 'error' => 'Failed to create assignment'];
             
         } catch (Exception $e) {
+            $this->pdo->rollBack();
             error_log('QueueManagementService::assignEmployeeToStation Error: ' . $e->getMessage());
             return ['success' => false, 'error' => 'Database error occurred: ' . $e->getMessage()];
         }
     }
     
     /**
-     * Remove an employee assignment from a station
+     * Remove an employee assignment from a station (CORRECTED VERSION)
+     * This method now properly updates the record and logs changes
      */
     public function removeEmployeeAssignment($station_id, $removal_date, $removal_type = 'end_assignment', $performed_by = null) {
         try {
+            $this->pdo->beginTransaction();
+            
             // Find active assignment for this station
             $find_stmt = $this->pdo->prepare("
-                SELECT * FROM assignment_schedules 
-                WHERE station_id = ? 
-                AND is_active = 1 
-                AND start_date <= ? 
-                AND (end_date IS NULL OR end_date >= ?)
+                SELECT asch.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name
+                FROM assignment_schedules asch
+                LEFT JOIN employees e ON asch.employee_id = e.employee_id
+                WHERE asch.station_id = ? 
+                AND asch.is_active = 1
             ");
-            $find_stmt->execute([$station_id, $removal_date, $removal_date]);
+            $find_stmt->execute([$station_id]);
             $assignment = $find_stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$assignment) {
+                $this->pdo->rollBack();
                 return ['success' => false, 'error' => 'No active assignment found for this station'];
             }
             
             if ($removal_type === 'end_assignment') {
-                // Set end date to the day before removal date
-                $end_date = date('Y-m-d', strtotime($removal_date . ' -1 day'));
+                // Set end date to the removal date
                 $stmt = $this->pdo->prepare("
                     UPDATE assignment_schedules 
-                    SET end_date = ?, notes = CONCAT(IFNULL(notes, ''), ' [Ended on ', ?, ']')
-                    WHERE schedule_id = ?
-                ");
-                $result = $stmt->execute([$end_date, $removal_date, $assignment['schedule_id']]);
-            } else { // deactivate
-                $stmt = $this->pdo->prepare("
-                    UPDATE assignment_schedules 
-                    SET is_active = 0, notes = CONCAT(IFNULL(notes, ''), ' [Deactivated on ', ?, ']')
+                    SET end_date = ?, is_active = 0
                     WHERE schedule_id = ?
                 ");
                 $result = $stmt->execute([$removal_date, $assignment['schedule_id']]);
+                $action_type = 'ended';
+                $notes = "Assignment ended on {$removal_date}";
+                
+            } else { // deactivate - keep assignment but mark inactive
+                $stmt = $this->pdo->prepare("
+                    UPDATE assignment_schedules 
+                    SET is_active = 0
+                    WHERE schedule_id = ?
+                ");
+                $result = $stmt->execute([$assignment['schedule_id']]);
+                $action_type = 'deactivated';
+                $notes = "Assignment deactivated on {$removal_date}";
             }
             
             if ($result) {
+                // Log the removal
+                $log_stmt = $this->pdo->prepare("
+                    INSERT INTO assignment_logs (
+                        schedule_id, employee_id, station_id, action_type, action_date, performed_by, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                
+                $log_stmt->execute([
+                    $assignment['schedule_id'], $assignment['employee_id'], $station_id, 
+                    $action_type, $removal_date, $performed_by, $notes
+                ]);
+                
+                $this->pdo->commit();
                 return ['success' => true, 'message' => 'Assignment removed successfully'];
             }
             
+            $this->pdo->rollBack();
             return ['success' => false, 'error' => 'Failed to remove assignment'];
             
         } catch (Exception $e) {
+            $this->pdo->rollBack();
             error_log('QueueManagementService::removeEmployeeAssignment Error: ' . $e->getMessage());
             return ['success' => false, 'error' => 'Database error occurred: ' . $e->getMessage()];
         }
     }
     
     /**
-     * Reassign a station to a different employee
+     * Reassign a station to a different employee (CORRECTED VERSION)
+     * This method now properly updates the same record instead of creating new ones
      */
     public function reassignStation($station_id, $new_employee_id, $reassign_date, $assigned_by) {
         try {
             $this->pdo->beginTransaction();
             
-            // Remove current assignment (end it the day before reassign date)
-            $remove_result = $this->removeEmployeeAssignment($station_id, $reassign_date, 'end_assignment', $assigned_by);
+            // Find the current assignment for this station
+            $find_stmt = $this->pdo->prepare("
+                SELECT asch.*, CONCAT(e.first_name, ' ', e.last_name) as current_employee_name
+                FROM assignment_schedules asch
+                LEFT JOIN employees e ON asch.employee_id = e.employee_id
+                WHERE asch.station_id = ? 
+                AND asch.is_active = 1
+            ");
+            $find_stmt->execute([$station_id]);
+            $current_assignment = $find_stmt->fetch(PDO::FETCH_ASSOC);
             
-            if ($remove_result['success']) {
-                // Create new assignment starting from reassign date
-                $assign_result = $this->assignEmployeeToStation(
-                    $new_employee_id, $station_id, $reassign_date, 'permanent', 
-                    '08:00:00', '17:00:00', $assigned_by, null
-                );
-                
-                if ($assign_result['success']) {
-                    $this->pdo->commit();
-                    return ['success' => true, 'message' => 'Station reassigned successfully'];
-                } else {
-                    $this->pdo->rollBack();
-                    return ['success' => false, 'error' => $assign_result['error'] ?? 'Failed to assign new employee'];
-                }
-            } else {
+            if (!$current_assignment) {
                 $this->pdo->rollBack();
-                return ['success' => false, 'error' => $remove_result['error'] ?? 'Failed to remove current assignment'];
+                return ['success' => false, 'error' => 'No active assignment found for this station'];
             }
+            
+            // Check if new employee is already assigned elsewhere
+            $conflict_check = "
+                SELECT s.station_name 
+                FROM assignment_schedules asch
+                JOIN stations s ON asch.station_id = s.station_id
+                WHERE asch.employee_id = ? 
+                AND asch.station_id != ?
+                AND asch.is_active = 1
+            ";
+            
+            $conflict_stmt = $this->pdo->prepare($conflict_check);
+            $conflict_stmt->execute([$new_employee_id, $station_id]);
+            $conflict = $conflict_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($conflict) {
+                $this->pdo->rollBack();
+                return [
+                    'success' => false, 
+                    'error' => "Employee is already assigned to {$conflict['station_name']}. Please remove that assignment first."
+                ];
+            }
+            
+            // Update the existing assignment record (reassign to new employee)
+            $update_stmt = $this->pdo->prepare("
+                UPDATE assignment_schedules 
+                SET employee_id = ?, start_date = ?, assigned_by = ?, assigned_at = NOW()
+                WHERE schedule_id = ?
+            ");
+            
+            $result = $update_stmt->execute([
+                $new_employee_id, $reassign_date, $assigned_by, $current_assignment['schedule_id']
+            ]);
+            
+            if ($result) {
+                // Log the reassignment
+                $log_stmt = $this->pdo->prepare("
+                    INSERT INTO assignment_logs (
+                        schedule_id, employee_id, station_id, action_type, action_date, performed_by, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                
+                $notes = "Station reassigned from employee {$current_assignment['employee_id']} ({$current_assignment['current_employee_name']}) to employee {$new_employee_id}";
+                
+                $log_stmt->execute([
+                    $current_assignment['schedule_id'], $new_employee_id, $station_id, 
+                    'reassigned', $reassign_date, $assigned_by, $notes
+                ]);
+                
+                $this->pdo->commit();
+                return ['success' => true, 'message' => 'Station reassigned successfully'];
+            }
+            
+            $this->pdo->rollBack();
+            return ['success' => false, 'error' => 'Failed to reassign station'];
             
         } catch (Exception $e) {
             $this->pdo->rollBack();
@@ -246,7 +369,8 @@ class QueueManagementService {
     }
     
     /**
-     * Get all stations with their current assignments
+     * Get all stations with their current assignments (IMPROVED VERSION)
+     * This method now handles the corrected single-record-per-station approach
      */
     public function getAllStationsWithAssignments($date = null) {
         try {
@@ -254,14 +378,15 @@ class QueueManagementService {
                 $date = date('Y-m-d');
             }
             
+            // Modified query to show ALL stations (active and inactive) for management purposes
             $stmt = $this->pdo->prepare("
                 SELECT 
                     s.station_id,
                     s.station_name,
                     s.station_type,
-                    s.station_number,
+                    COALESCE(s.station_number, 1) as station_number,
                     s.is_active,
-                    s.is_open,
+                    COALESCE(s.is_open, 1) as is_open,
                     srv.name as service_name,
                     srv.service_id,
                     asch.schedule_id,
@@ -281,14 +406,18 @@ class QueueManagementService {
                 LEFT JOIN services srv ON s.service_id = srv.service_id
                 LEFT JOIN assignment_schedules asch ON s.station_id = asch.station_id 
                     AND asch.is_active = 1
-                    AND (asch.start_date <= ? AND (asch.end_date IS NULL OR asch.end_date >= ?))
                 LEFT JOIN employees e ON asch.employee_id = e.employee_id AND e.status = 'active'
                 LEFT JOIN roles r ON e.role_id = r.role_id
-                ORDER BY s.station_type, s.station_name, s.station_number
+                ORDER BY s.is_active DESC, s.station_type, s.station_name, s.station_number
             ");
             
-            $stmt->execute([$date, $date]);
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->execute();
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Enhanced debug logging
+            error_log("getAllStationsWithAssignments: Retrieved " . count($results) . " stations for date: $date");
+            
+            return $results;
             
         } catch (Exception $e) {
             error_log('QueueManagementService::getAllStationsWithAssignments Error: ' . $e->getMessage());
@@ -308,7 +437,6 @@ class QueueManagementService {
                     e.first_name,
                     e.last_name,
                     CONCAT(e.first_name, ' ', e.last_name) as full_name,
-                    e.position,
                     r.role_name,
                     LOWER(r.role_name) as role
                 FROM employees e

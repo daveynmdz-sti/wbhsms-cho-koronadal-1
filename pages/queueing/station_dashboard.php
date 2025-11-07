@@ -231,6 +231,10 @@ switch ($user_role) {
             color: white;
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 40px;
         }
 
         .status-badge.active {
@@ -475,6 +479,14 @@ switch ($user_role) {
             .station-status {
                 width: 100%;
                 justify-content: flex-start;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .status-badge {
+                font-size: 0.75rem;
+                padding: 6px 12px;
+                min-height: auto;
             }
 
             .stats-grid {
@@ -511,6 +523,18 @@ switch ($user_role) {
 
             .queue-section {
                 padding: 15px;
+            }
+
+            .status-badge {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+                font-size: 0.7rem;
+                padding: 8px 10px;
+            }
+
+            .status-badge i {
+                align-self: center;
             }
         }
     </style>
@@ -554,7 +578,15 @@ switch ($user_role) {
                     <?php if ($station['employee_name']): ?>
                         <span class="status-badge">
                             <i class="fas fa-user"></i>
-                            <?php echo htmlspecialchars($station['employee_name']); ?>
+                            <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                                <div style="font-weight: 600;">
+                                    <?php echo htmlspecialchars($station['employee_name']); ?>
+                                </div>
+                                <div style="font-size: 0.75rem; opacity: 0.9;">
+                                    <?php echo htmlspecialchars($station['employee_number']); ?> • 
+                                    <?php echo htmlspecialchars(format_role_name($station['employee_role'])); ?>
+                                </div>
+                            </div>
                         </span>
                     <?php else: ?>
                         <span class="status-badge inactive">

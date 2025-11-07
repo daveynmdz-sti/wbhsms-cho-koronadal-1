@@ -268,4 +268,34 @@ if (!function_exists('get_base_url')) {
         return rtrim($base_url, '/');
     }
 }
+
+/**
+ * Format role names to proper title case
+ * Converts database role names like 'records_officer' to 'Records Officer'
+ * @param string $role The role name from database
+ * @return string Formatted role name
+ */
+if (!function_exists('format_role_name')) {
+    function format_role_name($role) {
+        if (empty($role)) {
+            return '';
+        }
+        
+        // Replace underscores with spaces and convert to title case
+        $formatted = str_replace('_', ' ', $role);
+        $formatted = ucwords(strtolower($formatted));
+        
+        // Handle special cases
+        $special_cases = [
+            'Dho' => 'DHO',
+            'Bhw' => 'BHW'
+        ];
+        
+        foreach ($special_cases as $search => $replace) {
+            $formatted = str_replace($search, $replace, $formatted);
+        }
+        
+        return $formatted;
+    }
+}
 ?>

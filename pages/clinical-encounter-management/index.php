@@ -66,33 +66,23 @@ try {
 $activePage = 'clinical_encounters';
 
 // Pagination and filtering with input validation
-$records_per_page = 15;
+$records_per_page = 10;
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT, array("options" => array("min_range" => 1, "default" => 1))) ?? 1;
 $offset = ($page - 1) * $records_per_page;
 
 // Search and filter parameters with sanitization
-$patient_id_filter = htmlspecialchars(trim($_GET['patient_id'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-$first_name_filter = htmlspecialchars(trim($_GET['first_name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-$last_name_filter = htmlspecialchars(trim($_GET['last_name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-$status_filter = in_array($_GET['status'] ?? '', ['pending', 'completed', 'cancelled', 'follow_up_required']) ? $_GET['status'] : '';
+$general_search = htmlspecialchars(trim($_GET['search'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+$status_filter = in_array($_GET['status'] ?? '', ['pending', 'completed', 'cancelled', 'follow_up_required', 'ongoing', 'awaiting_lab_results', 'awaiting_followup']) ? $_GET['status'] : '';
 $date_from = htmlspecialchars(trim($_GET['date_from'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-$date_to = htmlspecialchars(trim($_GET['date_to'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-$doctor_filter = filter_input(INPUT_GET, 'doctor', FILTER_VALIDATE_INT);
+$barangay_filter = filter_input(INPUT_GET, 'barangay', FILTER_VALIDATE_INT);
 
-// Validate date formats if provided
+// Validate date format if provided
 if ($date_from && !DateTime::createFromFormat('Y-m-d', $date_from)) {
     $date_from = '';
 }
-if ($date_to && !DateTime::createFromFormat('Y-m-d', $date_to)) {
-    $date_to = '';
-}
 
-// Limit search string lengths
-$patient_id_filter = substr($patient_id_filter, 0, 50);
-$first_name_filter = substr($first_name_filter, 0, 50);
-$last_name_filter = substr($last_name_filter, 0, 50);
-$barangay_filter = $_GET['barangay'] ?? '';
-$district_filter = $_GET['district'] ?? '';
+// Limit search string length
+$general_search = substr($general_search, 0, 100);
 
 // Build WHERE conditions with role-based access control
 $where_conditions = ['1=1'];
@@ -157,23 +147,14 @@ switch ($employee_role) {
         break;
 }
 
-// Apply individual search filters
-if (!empty($patient_id_filter)) {
-    $where_conditions[] = "p.username LIKE ?";
-    $params[] = "%$patient_id_filter%";
-    $param_types .= 's';
-}
-
-if (!empty($first_name_filter)) {
-    $where_conditions[] = "p.first_name LIKE ?";
-    $params[] = "%$first_name_filter%";
-    $param_types .= 's';
-}
-
-if (!empty($last_name_filter)) {
-    $where_conditions[] = "p.last_name LIKE ?";
-    $params[] = "%$last_name_filter%";
-    $param_types .= 's';
+// Apply search filters
+if (!empty($general_search)) {
+    $where_conditions[] = "(p.username LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?)";
+    $params[] = "%$general_search%";
+    $params[] = "%$general_search%";
+    $params[] = "%$general_search%";
+    $params[] = "%$general_search%";
+    $param_types .= 'ssss';
 }
 
 if (!empty($status_filter)) {
@@ -183,32 +164,14 @@ if (!empty($status_filter)) {
 }
 
 if (!empty($date_from)) {
-    $where_conditions[] = "DATE(c.consultation_date) >= ?";
+    $where_conditions[] = "DATE(c.consultation_date) = ?";
     $params[] = $date_from;
     $param_types .= 's';
-}
-
-if (!empty($date_to)) {
-    $where_conditions[] = "DATE(c.consultation_date) <= ?";
-    $params[] = $date_to;
-    $param_types .= 's';
-}
-
-if (!empty($doctor_filter)) {
-    $where_conditions[] = "c.consulted_by = ?";
-    $params[] = $doctor_filter;
-    $param_types .= 'i';
 }
 
 if (!empty($barangay_filter)) {
     $where_conditions[] = "p.barangay_id = ?";
     $params[] = $barangay_filter;
-    $param_types .= 'i';
-}
-
-if (!empty($district_filter)) {
-    $where_conditions[] = "b.district_id = ?";
-    $params[] = $district_filter;
     $param_types .= 'i';
 }
 
@@ -272,7 +235,7 @@ $sql = "
     LEFT JOIN districts dist ON b.district_id = dist.district_id
     LEFT JOIN services s ON c.service_id = s.service_id
     WHERE $where_clause
-    ORDER BY c.consultation_date DESC, c.created_at DESC
+    ORDER BY c.created_at DESC, c.consultation_date DESC, c.consultation_id DESC
     LIMIT ? OFFSET ?
 ";
 
@@ -844,7 +807,7 @@ try {
 
         .filters-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
             gap: 1rem;
             align-items: end;
         }
@@ -1558,6 +1521,20 @@ try {
             text-decoration: none;
         }
 
+        .edit-btn.disabled {
+            background: #f3f4f6 !important;
+            color: #9ca3af !important;
+            border-color: #e5e7eb !important;
+            cursor: not-allowed !important;
+            opacity: 0.4 !important;
+            pointer-events: none !important;
+        }
+
+        .edit-btn.disabled:hover {
+            transform: none !important;
+            background: #f3f4f6 !important;
+        }
+
         /* Empty State Styles */
         .empty-state-new {
             display: flex;
@@ -2039,25 +2016,18 @@ try {
                 </div>
                 <form method="GET" class="filters-grid">
                     <div class="form-group">
-                        <label for="patient_id">Patient ID</label>
-                        <input type="text" id="patient_id" name="patient_id" value="<?= htmlspecialchars($_GET['patient_id'] ?? '') ?>"
-                            placeholder="Enter Patient ID...">
+                        <label for="search"><i class="fas fa-search"></i> General Search</label>
+                        <input type="text" id="search" name="search" value="<?= htmlspecialchars($general_search) ?>"
+                            placeholder="Search by Patient ID, First Name, or Last Name...">
                     </div>
 
                     <div class="form-group">
-                        <label for="first_name">First Name</label>
-                        <input type="text" id="first_name" name="first_name" value="<?= htmlspecialchars($_GET['first_name'] ?? '') ?>"
-                            placeholder="Enter first name...">
+                        <label for="date_from"><i class="fas fa-calendar"></i> Date of Consultation</label>
+                        <input type="date" id="date_from" name="date_from" value="<?= htmlspecialchars($date_from) ?>">
                     </div>
 
                     <div class="form-group">
-                        <label for="last_name">Last Name</label>
-                        <input type="text" id="last_name" name="last_name" value="<?= htmlspecialchars($_GET['last_name'] ?? '') ?>"
-                            placeholder="Enter last name...">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="status">Status</label>
+                        <label for="status"><i class="fas fa-flag"></i> Status</label>
                         <select id="status" name="status">
                             <option value="">All Statuses</option>
                             <option value="ongoing" <?= $status_filter === 'ongoing' ? 'selected' : '' ?>>Ongoing</option>
@@ -2069,67 +2039,29 @@ try {
                     </div>
 
                     <div class="form-group">
-                        <label for="date_from">Date From</label>
-                        <input type="date" id="date_from" name="date_from" value="<?= htmlspecialchars($date_from) ?>">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="date_to">Date To</label>
-                        <input type="date" id="date_to" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="doctor">Doctor</label>
-                        <select id="doctor" name="doctor">
-                            <option value="">All Doctors</option>
-                            <?php foreach ($doctors as $doctor): ?>
-                                <option value="<?= $doctor['employee_id'] ?>" <?= $doctor_filter == $doctor['employee_id'] ? 'selected' : '' ?>>
-                                    Dr. <?= htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']) ?>
+                        <label for="barangay"><i class="fas fa-map-marker-alt"></i> Barangay</label>
+                        <select id="barangay" name="barangay">
+                            <option value="">All Barangays</option>
+                            <?php foreach ($barangays as $barangay): ?>
+                                <option value="<?= $barangay['barangay_id'] ?>" <?= $barangay_filter == $barangay['barangay_id'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($barangay['barangay_name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
 
-                    <?php if (in_array($employee_role, ['admin', 'records_officer', 'dho'])): ?>
-                        <div class="form-group">
-                            <label for="barangay">Barangay</label>
-                            <select id="barangay" name="barangay">
-                                <option value="">All Barangays</option>
-                                <?php foreach ($barangays as $barangay): ?>
-                                    <option value="<?= $barangay['barangay_id'] ?>" <?= $barangay_filter == $barangay['barangay_id'] ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($barangay['barangay_name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <div class="filter-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                            <a href="?" class="btn btn-secondary">
+                                <i class="fas fa-refresh"></i> Clear Filters
+                            </a>
                         </div>
-                    <?php endif; ?>
-
-                    <?php if (in_array($employee_role, ['admin', 'records_officer'])): ?>
-                        <div class="form-group">
-                            <label for="district">District</label>
-                            <select id="district" name="district">
-                                <option value="">All Districts</option>
-                                <?php foreach ($districts as $district): ?>
-                                    <option value="<?= $district['district_id'] ?>" <?= $district_filter == $district['district_id'] ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($district['district_name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    <?php endif; ?>
-                </form>
-
-                <div class="form-group">
-                    <label>&nbsp;</label>
-                    <div class="filter-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-search"></i> Search Consultations
-                        </button>
-                        <a href="?" class="btn btn-secondary">
-                            <i class="fas fa-refresh"></i> Reset Filters
-                        </a>
                     </div>
-                </div>
+                </form>
             </div>
 
             <!-- Encounters Table -->
@@ -2139,7 +2071,7 @@ try {
                         <div class="encounters-title">
                             <i class="fas fa-stethoscope"></i>
                             <h3>Clinical Encounters</h3>
-                            <span class="encounters-count"><?= count($encounters) ?> records</span>
+                            <span class="encounters-count"><?= count($encounters) ?>/<?= $total_records ?> records (Page <?= $page ?>/<?= $total_pages ?>)</span>
                         </div>
                         <?php if (in_array($employee_role, ['doctor', 'admin', 'nurse'])): ?>
                             <a href="new_consultation_standalone.php" class="btn-new-consultation">
@@ -2147,6 +2079,12 @@ try {
                                 <span>New Consultation</span>
                             </a>
                         <?php endif; ?>
+                    </div>
+
+                    <!-- Information Note -->
+                    <div style="padding: 0.75rem 2rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem; color: #64748b;">
+                        <i class="fas fa-info-circle" style="color: #0077b6; margin-right: 0.5rem;"></i>
+                        <strong>Note:</strong> Completed consultations are locked and cannot be edited to maintain data integrity.
                     </div>
 
                     <div class="encounters-table-container">
@@ -2357,8 +2295,10 @@ try {
                                                             <span>View</span>
                                                         </button>
                                                         <?php if (
-                                                            in_array($employee_role, ['doctor', 'admin']) ||
-                                                            ($encounter['status'] == 'ongoing' && $employee_role == 'nurse')
+                                                            $encounter['status'] !== 'completed' && (
+                                                                in_array($employee_role, ['doctor', 'admin']) ||
+                                                                ($encounter['status'] == 'ongoing' && $employee_role == 'nurse')
+                                                            )
                                                         ): ?>
                                                             <a href="edit_consultation_new.php?id=<?= $encounter['encounter_id'] ?>"
                                                                 class="action-btn edit-btn"
@@ -2366,6 +2306,13 @@ try {
                                                                 <i class="fas fa-edit"></i>
                                                                 <span>Edit</span>
                                                             </a>
+                                                        <?php elseif ($encounter['status'] === 'completed'): ?>
+                                                            <span class="action-btn edit-btn disabled" 
+                                                                  title="Completed consultations cannot be edited"
+                                                                  style="opacity: 0.4; cursor: not-allowed; pointer-events: none;">
+                                                                <i class="fas fa-lock"></i>
+                                                                <span>Locked</span>
+                                                            </span>
                                                         <?php endif; ?>
                                                     </div>
                                                 </td>
@@ -2389,33 +2336,34 @@ try {
                                 </div>
                             </div>
                         <?php endif; ?>
+
+                        <!-- Pagination Inside Card -->
+                        <?php if ($total_pages > 1): ?>
+                            <div class="pagination" style="padding: 1.5rem 2rem; background: #f8f9fa; border-top: 1px solid #e9ecef;">
+                                <?php if ($page > 1): ?>
+                                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>">
+                                        <i class="fas fa-chevron-left"></i> Previous
+                                    </a>
+                                <?php endif; ?>
+
+                                <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
+                                    <?php if ($i == $page): ?>
+                                        <span class="current"><?= $i ?></span>
+                                    <?php else: ?>
+                                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"><?= $i ?></a>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
+
+                                <?php if ($page < $total_pages): ?>
+                                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>">
+                                        Next <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
-            <!-- Pagination -->
-            <?php if ($total_pages > 1): ?>
-                <div class="pagination">
-                    <?php if ($page > 1): ?>
-                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>">
-                            <i class="fas fa-chevron-left"></i> Previous
-                        </a>
-                    <?php endif; ?>
-
-                    <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
-                        <?php if ($i == $page): ?>
-                            <span class="current"><?= $i ?></span>
-                        <?php else: ?>
-                            <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"><?= $i ?></a>
-                        <?php endif; ?>
-                    <?php endfor; ?>
-
-                    <?php if ($page < $total_pages): ?>
-                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>">
-                            Next <i class="fas fa-chevron-right"></i>
-                        </a>
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
         </div>
     </section>
 
@@ -2742,17 +2690,26 @@ try {
                         if (printBtn) printBtn.style.display = 'inline-flex';
                         if (downloadBtn) downloadBtn.style.display = 'inline-flex';
 
-                        // Show edit button if user has permission (records officers excluded)
+                        // Show edit button if user has permission and consultation is not completed
                         const userRole = '<?= $employee_role ?>';
                         const authorizedRoles = ['doctor', 'admin'];
                         const isOngoing = data.consultation.status === 'ongoing';
                         const isNurse = userRole === 'nurse';
+                        const isCompleted = data.consultation.status === 'completed';
 
-                        if (editBtn && (authorizedRoles.includes(userRole) || (isOngoing && isNurse))) {
+                        if (editBtn && !isCompleted && (authorizedRoles.includes(userRole) || (isOngoing && isNurse))) {
                             editBtn.style.display = 'inline-flex';
                             editBtn.onclick = () => {
                                 window.location.href = `edit_consultation_new.php?id=${consultationId}`;
                             };
+                        } else if (editBtn && isCompleted) {
+                            // Show disabled edit button for completed consultations
+                            editBtn.style.display = 'inline-flex';
+                            editBtn.innerHTML = '<i class="fas fa-lock"></i> Locked';
+                            editBtn.style.opacity = '0.4';
+                            editBtn.style.cursor = 'not-allowed';
+                            editBtn.style.pointerEvents = 'none';
+                            editBtn.title = 'Completed consultations cannot be edited';
                         }
                     } else {
                         modalBody.innerHTML = `
