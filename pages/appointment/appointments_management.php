@@ -2747,7 +2747,7 @@ function getSortIcon($column, $current_sort, $current_direction)
                                                             <i class="fas fa-qrcode"></i>
                                                         </button>
                                                         <!-- Quick Manual Check In -->
-                                                        <button onclick="checkInAppointment(<?php echo $appointment['appointment_id']; ?>)"
+                                                        <button onclick="quickCheckInAppointment(<?php echo $appointment['appointment_id']; ?>)"
                                                             class="btn btn-sm btn-success" title="Quick Check In">
                                                             <i class="fas fa-sign-in-alt"></i>
                                                         </button>
@@ -4264,6 +4264,12 @@ function getSortIcon($column, $current_sort, $current_direction)
 
             function closeErrorModal() {
                 document.getElementById('errorModal').style.display = 'none';
+            }
+
+            // Quick check-in function (direct check-in modal)
+            function quickCheckInAppointment(appointmentId) {
+                document.getElementById('checkInAppointmentId').value = appointmentId;
+                openModal('checkInModal');
             }
 
             // Enhanced check-in function (original function for backward compatibility)
