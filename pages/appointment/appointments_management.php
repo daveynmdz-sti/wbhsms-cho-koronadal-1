@@ -79,6 +79,10 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $appointment_id = $_POST['appointment_id'] ?? '';
+    
+    // Debug all POST data
+    error_log("POST DEBUG: Action: '$action', Appointment ID: '$appointment_id'");
+    error_log("POST DEBUG: All POST data: " . print_r($_POST, true));
 
     if ($action === 'cancel_appointment' && !empty($appointment_id) && is_numeric($appointment_id)) {
         $cancel_reason = $_POST['cancel_reason'] ?? '';
@@ -221,14 +225,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'checkin_appointment_with_priority' && !empty($appointment_id) && is_numeric($appointment_id)) {
+        error_log("QR CHECK-IN DEBUG: Starting check-in for appointment ID: $appointment_id");
+        
         try {
             // Start transaction
             $conn->begin_transaction();
+            error_log("QR CHECK-IN DEBUG: Transaction started");
 
             // Get priority and special categories from QR scanner
             $priority = $_POST['priority'] ?? 'standard';
             $special_categories = $_POST['special_categories'] ?? '';
             $notes = $_POST['notes'] ?? '';
+            
+            error_log("QR CHECK-IN DEBUG: Priority: $priority, Categories: $special_categories");
 
             // Get appointment details
             $apt_stmt = $conn->prepare("SELECT a.*, p.first_name, p.last_name FROM appointments a JOIN patients p ON a.patient_id = p.patient_id WHERE a.appointment_id = ? AND a.status = 'confirmed'");
@@ -238,8 +247,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $appointment_data = $appointment_result->fetch_assoc();
 
             if (!$appointment_data) {
+                error_log("QR CHECK-IN DEBUG: No appointment found or not confirmed");
                 throw new Exception("Appointment not found or not in confirmed status.");
             }
+            
+            error_log("QR CHECK-IN DEBUG: Found appointment for patient: " . $appointment_data['first_name'] . " " . $appointment_data['last_name']);
 
             // Determine attendance status based on check-in time vs scheduled time
             $scheduled_datetime = $appointment_data['scheduled_date'] . ' ' . $appointment_data['scheduled_time'];
@@ -260,7 +272,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Update appointment status to checked_in 
             $update_stmt = $conn->prepare("UPDATE appointments SET status = 'checked_in' WHERE appointment_id = ?");
             $update_stmt->bind_param("i", $appointment_id);
-            $update_stmt->execute();
+            if (!$update_stmt->execute()) {
+                error_log("QR CHECK-IN DEBUG: Failed to update appointment status: " . $conn->error);
+                throw new Exception("Failed to update appointment status: " . $conn->error);
+            }
+            
+            $affected_rows = $conn->affected_rows;
+            error_log("QR CHECK-IN DEBUG: Updated appointment status, affected rows: $affected_rows");
 
             // Create enhanced remarks with QR verification info
             $remarks = "QR-verified check-in - Priority: " . ucfirst($priority);
@@ -274,7 +292,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Create new visit record with enhanced data from QR check-in
             $visit_stmt = $conn->prepare("INSERT INTO visits (patient_id, facility_id, appointment_id, visit_date, time_in, attending_employee_id, visit_status, attendance_status, remarks) VALUES (?, ?, ?, CURDATE(), NOW(), ?, 'ongoing', ?, ?)");
             $visit_stmt->bind_param("iiiiss", $appointment_data['patient_id'], $appointment_data['facility_id'], $appointment_id, $employee_id, $attendance_status, $remarks);
-            $visit_stmt->execute();
+            if (!$visit_stmt->execute()) {
+                throw new Exception("Failed to create visit record: " . $conn->error);
+            }
 
             $visit_id = $conn->insert_id;
 
@@ -317,32 +337,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $appointment_data['first_name'] . ' ' . $appointment_data['last_name'],
                 $visit_id, 
                 $appointment_id, 
-                $appointment_data['service_id'],
+                $appointment_data['service_id'] ?? 1, // Default to service 1 if NULL
                 $queue_priority,
                 $queue_remarks
             );
-            $queue_stmt->execute();
+            
+            if (!$queue_stmt->execute()) {
+                throw new Exception("Failed to add patient to queue: " . $conn->error);
+            }
 
             $queue_entry_id = $conn->insert_id;
 
             // Log the QR-verified check-in
-            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, employee_id, action, reason, timestamp) VALUES (?, ?, 'check_in_qr', ?, NOW())");
+            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'checked_in', 'confirmed', 'checked_in', ?, 'employee', ?)");
             $log_reason = "QR-verified check-in - Priority: " . ucfirst($priority) . ", Attendance: " . ucfirst($attendance_status);
             if (!empty($special_categories)) {
                 $log_reason .= ", Special Categories: " . $special_categories;
             }
-            $log_stmt->bind_param("iis", $appointment_id, $employee_id, $log_reason);
-            $log_stmt->execute();
+            $log_stmt->bind_param("iisi", $appointment_id, $appointment_data['patient_id'], $log_reason, $employee_id);
+            if (!$log_stmt->execute()) {
+                error_log("Warning: Failed to log QR check-in: " . $conn->error);
+                // Don't throw exception for logging failure - continue with check-in
+            }
 
             $conn->commit();
+            error_log("QR CHECK-IN DEBUG: Transaction committed successfully");
 
             // Generate queue number for display
             $queue_number = 'T-' . str_pad($queue_entry_id, 3, '0', STR_PAD_LEFT);
             
             $message = "Patient " . htmlspecialchars($appointment_data['first_name'] . ' ' . $appointment_data['last_name']) . " successfully checked in with QR verification. Queue Number: " . $queue_number . " - Priority: " . ucfirst($priority) . ", Attendance: " . ucfirst($attendance_status);
             
+            error_log("QR CHECK-IN DEBUG: Success message set: $message");
+            
         } catch (Exception $e) {
             $conn->rollback();
+            error_log("QR CHECK-IN DEBUG: Exception caught: " . $e->getMessage());
             $error = "Error during check-in: " . $e->getMessage();
         }
     }
@@ -4097,6 +4127,9 @@ function getSortIcon($column, $current_sort, $current_direction)
                     return response.text();
                 })
                 .then(responseText => {
+                    // Debug: Log the response to see what we received
+                    console.log('QR Check-in Response:', responseText);
+                    
                     // Check if the response contains success or error indicators
                     if (responseText.includes('Patient successfully checked in') || 
                         responseText.includes('alert-success') ||
