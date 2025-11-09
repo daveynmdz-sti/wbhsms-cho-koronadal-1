@@ -713,6 +713,44 @@ function getSortIcon($column, $current_sort, $current_direction)
     <title><?php echo htmlspecialchars($facility_name); ?> — Appointments</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo WBHSMS_BASE_URL; ?>/assets/css/sidebar.css">
+    <!-- QR Code Scanner Library with fallbacks -->
+    <script>
+        // Try to load from multiple CDNs
+        function loadQRLibrary() {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.onload = resolve;
+                script.onerror = () => {
+                    // Fallback to second CDN
+                    const fallbackScript = document.createElement('script');
+                    fallbackScript.onload = resolve;
+                    fallbackScript.onerror = reject;
+                    fallbackScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.4/html5-qrcode.min.js';
+                    document.head.appendChild(fallbackScript);
+                };
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Load library when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadQRLibrary().catch(() => {
+                console.warn('QR Scanner library failed to load from CDN');
+                // Enable manual entry only
+                document.addEventListener('DOMContentLoaded', () => {
+                    const startBtn = document.getElementById('startScanBtn');
+                    if (startBtn) {
+                        startBtn.style.display = 'none';
+                        const manualSection = document.querySelector('#qrScannerModal .manual-entry-section');
+                        if (manualSection) {
+                            manualSection.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Camera scanner unavailable. Please use manual entry.</div>' + manualSection.innerHTML;
+                        }
+                    }
+                });
+            });
+        });
+    </script>
     <!-- CSS Files - loaded by sidebar -->
     <style>
         .content-wrapper {
@@ -2035,6 +2073,247 @@ function getSortIcon($column, $current_sort, $current_direction)
                 text-align: left;
             }
         }
+        
+        /* QR Scanner Modal Styles */
+        .scanner-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .scanner-camera-section,
+        .scanner-manual-section {
+            min-height: 280px;
+        }
+
+        .special-category-option:hover {
+            background: #e3f2fd !important;
+            border-color: #0077b6 !important;
+        }
+
+        .special-category-option input[type="checkbox"]:checked + i + span {
+            color: #0077b6;
+            font-weight: 600;
+        }
+
+        .priority-option {
+            cursor: pointer;
+            display: block;
+            margin: 0;
+        }
+
+        .priority-option input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .priority-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            background: white;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            min-height: 80px;
+        }
+
+        .priority-card:hover {
+            border-color: #0077b6;
+            background: #f8f9fa;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 119, 182, 0.1);
+        }
+
+        .priority-option input[type="radio"]:checked + .priority-card {
+            border-color: #0077b6;
+            background: #e3f2fd;
+            box-shadow: 0 2px 8px rgba(0, 119, 182, 0.2);
+        }
+
+        .priority-card i {
+            font-size: 24px;
+            min-width: 30px;
+            margin-top: 2px;
+        }
+
+        .priority-card div {
+            flex: 1;
+        }
+
+        .priority-card strong {
+            display: block;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+            line-height: 1.2;
+        }
+
+        .priority-card span {
+            font-size: 0.85rem;
+            color: #666;
+            line-height: 1.3;
+            display: block;
+        }
+
+        .priority-card.emergency {
+            border-left: 4px solid #dc3545;
+        }
+
+        .priority-card.emergency i {
+            color: #dc3545;
+        }
+
+        .priority-option input[type="radio"]:checked + .priority-card.emergency {
+            background: #fff5f5;
+            border-color: #dc3545;
+        }
+
+        .priority-card.urgent {
+            border-left: 4px solid #ffc107;
+        }
+
+        .priority-card.urgent i {
+            color: #ffc107;
+        }
+
+        .priority-option input[type="radio"]:checked + .priority-card.urgent {
+            background: #fffef7;
+            border-color: #ffc107;
+        }
+
+        .priority-card.standard {
+            border-left: 4px solid #28a745;
+        }
+
+        .priority-card.standard i {
+            color: #28a745;
+        }
+
+        .priority-option input[type="radio"]:checked + .priority-card.standard {
+            background: #f8fff8;
+            border-color: #28a745;
+        }
+
+        .priority-card.low {
+            border-left: 4px solid #6c757d;
+        }
+
+        .priority-card.low i {
+            color: #6c757d;
+        }
+
+        .priority-option input[type="radio"]:checked + .priority-card.low {
+            background: #f8f9fa;
+            border-color: #6c757d;
+        }
+
+        /* Scanner specific styles */
+        #qrVideo {
+            background: #000;
+            object-fit: cover;
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* QR Scanner container */
+        #cameraContainer {
+            position: relative;
+            text-align: center;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            min-height: 245px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #cameraContainer.active {
+            border-color: #0077b6;
+            background: #fff;
+        }
+
+        .scanner-status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .scanner-status.scanning {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .scanner-status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .scanner-status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* Mobile responsive for QR scanner modal */
+        @media (max-width: 768px) {
+            .scanner-grid {
+                grid-template-columns: 1fr !important;
+                gap: 15px;
+            }
+
+            .scanner-camera-section,
+            .scanner-manual-section {
+                min-height: auto;
+            }
+
+            #qr-reader {
+                max-width: 350px !important;
+                height: 350px !important;
+            }
+
+            .priority-card {
+                min-height: auto;
+                padding: 12px;
+            }
+
+            .priority-card i {
+                font-size: 20px;
+                min-width: 24px;
+            }
+
+            .priority-card strong {
+                font-size: 1rem;
+            }
+
+            .priority-card span {
+                font-size: 0.8rem;
+            }
+
+            #prioritySection .priority-grid {
+                grid-template-columns: 1fr !important;
+                gap: 12px;
+            }
+
+            .modal-content {
+                max-width: 95% !important;
+                margin: 10px auto;
+            }
+
+            .modal-body {
+                padding: 10px !important;
+                max-height: calc(95vh - 120px) !important;
+            }
+        }
     </style>
 </head>
 
@@ -2715,8 +2994,1117 @@ function getSortIcon($column, $current_sort, $current_direction)
             </div>
         </div>
 
+        <!-- QR Scanner Check In Modal -->
+        <div id="qrScannerModal" class="modal">
+            <div class="modal-content" style="max-width: 900px; max-height: 95vh;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-qrcode"></i> Scan Appointment QR Code</h3>
+                    <button type="button" class="close" onclick="closeQRScannerModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height: calc(95vh - 140px); overflow-y: auto; padding: 15px;">
+                    <!-- Scanner Section -->
+                    <div id="scannerSection">
+                        <div style="text-align: center; margin-bottom: 20px;">
+                            <h4 style="color: #0077b6; margin-bottom: 8px; font-size: 1.1rem;">
+                                <i class="fas fa-camera" style="margin-right: 8px;"></i>
+                                Scan Patient's Appointment QR Code
+                            </h4>
+                            <p style="color: #666; margin: 0; font-size: 0.9rem;">Position the QR code within the camera frame to verify and check in the patient</p>
+                        </div>
+                        
+                        <!-- Camera View Container -->
+                        <div class="scanner-grid">
+                            <!-- Camera Section -->
+                            <div class="scanner-camera-section">
+                                <h5 style="margin-bottom: 12px; color: #0077b6; text-align: center; font-size: 1rem;">
+                                    <i class="fas fa-video"></i> Camera Scanner
+                                </h5>
+                                <div id="cameraContainer" style="position: relative; text-align: center; margin-bottom: 12px;">
+                                    <div id="qr-reader" style="width: 400px; height: 400px; margin: 0 auto; border: 2px solid #ddd; border-radius: 8px; background: #f8f9fa;"></div>
+                                </div>
+                                
+                                <!-- Scanner Controls -->
+                                <div style="text-align: center;">
+                                    <button type="button" id="startScanBtn" class="btn btn-primary btn-sm" onclick="startQRScanner()">
+                                        <i class="fas fa-camera"></i> Start Camera
+                                    </button>
+                                    <button type="button" id="stopScanBtn" class="btn btn-secondary btn-sm" onclick="stopQRScanner()" style="display: none;">
+                                        <i class="fas fa-stop"></i> Stop Camera
+                                    </button>
+                                    <br>
+                                    <button type="button" class="btn btn-info btn-sm" onclick="debugCamera()" style="margin-top: 8px; font-size: 0.75rem; padding: 4px 8px;">
+                                        <i class="fas fa-bug"></i> Debug
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Manual Input Section -->
+                            <div class="scanner-manual-section">
+                                <h5 style="margin-bottom: 12px; color: #0077b6; text-align: center; font-size: 1rem;">
+                                    <i class="fas fa-keyboard"></i> Manual Entry
+                                </h5>
+                                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; height: 240px; display: flex; flex-direction: column; justify-content: center;">
+                                    <p style="color: #666; font-size: 0.8rem; margin-bottom: 12px; text-align: center;">
+                                        If QR code is not available or camera access is denied
+                                    </p>
+                                    <div style="margin-bottom: 12px;">
+                                        <label for="manualAppointmentId" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">
+                                            Appointment ID:
+                                        </label>
+                                        <input type="text" id="manualAppointmentId" class="search-input" 
+                                               placeholder="Enter appointment ID (e.g., APT-00000123)" 
+                                               style="width: 100%; font-size: 0.85rem; padding: 8px 12px;">
+                                    </div>
+                                    <button type="button" class="btn btn-info btn-sm" onclick="verifyManualEntry()" style="width: 100%;">
+                                        <i class="fas fa-check"></i> Verify Appointment
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Scan Result -->
+                        <div id="scanResult" style="display: none; margin-bottom: 15px;"></div>
+                    </div>
+                    
+                    <!-- Priority Selection Section (hidden initially) -->
+                    <div id="prioritySection" style="display: none;">
+                        <div style="text-align: center; margin-bottom: 15px; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #28a745;">
+                            <h4 style="margin: 0 0 8px 0; color: #155724; font-size: 1.1rem;">
+                                <i class="fas fa-check-circle" style="margin-right: 8px;"></i>Appointment Verified Successfully!
+                            </h4>
+                            <div id="verifiedPatientInfo" style="color: #155724; font-weight: 500; font-size: 0.9rem;"></div>
+                        </div>
+                        
+                        <!-- Priority Selection -->
+                        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 20px;">
+                            <h5 style="margin-bottom: 10px; color: #0077b6; display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-list-ol"></i> Select Queue Priority
+                            </h5>
+                            <p style="color: #666; font-size: 0.9rem; margin-bottom: 20px;">
+                                Choose the appropriate priority level and special category for this patient
+                            </p>
+                            
+                            <!-- Standard Priority Levels -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                                <label class="priority-option">
+                                    <input type="radio" name="queuePriority" value="emergency">
+                                    <div class="priority-card emergency">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <div>
+                                            <strong>Emergency</strong>
+                                            <span>Life-threatening conditions, immediate attention required</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                
+                                <label class="priority-option">
+                                    <input type="radio" name="queuePriority" value="urgent">
+                                    <div class="priority-card urgent">
+                                        <i class="fas fa-clock"></i>
+                                        <div>
+                                            <strong>Urgent</strong>
+                                            <span>Serious conditions, should be seen within 30 minutes</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                
+                                <label class="priority-option">
+                                    <input type="radio" name="queuePriority" value="standard" checked>
+                                    <div class="priority-card standard">
+                                        <i class="fas fa-user"></i>
+                                        <div>
+                                            <strong>Standard</strong>
+                                            <span>Regular consultation, normal queue order</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                
+                                <label class="priority-option">
+                                    <input type="radio" name="queuePriority" value="low">
+                                    <div class="priority-card low">
+                                        <i class="fas fa-calendar-check"></i>
+                                        <div>
+                                            <strong>Low Priority</strong>
+                                            <span>Follow-up visits, non-urgent consultations</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            
+                            <!-- Special Categories -->
+                            <div style="margin-bottom: 20px;">
+                                <h6 style="margin-bottom: 15px; color: #0077b6; font-size: 1rem; border-bottom: 1px solid #dee2e6; padding-bottom: 8px;">
+                                    <i class="fas fa-heart"></i> Special Categories (Optional)
+                                </h6>
+                                <div class="special-categories" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+                                    <label class="special-category-option" style="display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; background: white; border: 1px solid #e9ecef; transition: all 0.2s ease; cursor: pointer;">
+                                        <input type="checkbox" name="specialCategory" value="senior" style="margin: 0;">
+                                        <i class="fas fa-user-clock" style="color: #6c757d; font-size: 1.1rem;"></i>
+                                        <span style="font-size: 0.9rem; font-weight: 500;">Senior Citizen</span>
+                                    </label>
+                                    
+                                    <label class="special-category-option" style="display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; background: white; border: 1px solid #e9ecef; transition: all 0.2s ease; cursor: pointer;">
+                                        <input type="checkbox" name="specialCategory" value="pwd" style="margin: 0;">
+                                        <i class="fas fa-wheelchair" style="color: #6c757d; font-size: 1.1rem;"></i>
+                                        <span style="font-size: 0.9rem; font-weight: 500;">PWD</span>
+                                    </label>
+                                    
+                                    <label class="special-category-option" style="display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; background: white; border: 1px solid #e9ecef; transition: all 0.2s ease; cursor: pointer;">
+                                        <input type="checkbox" name="specialCategory" value="pregnant" style="margin: 0;">
+                                        <i class="fas fa-baby" style="color: #6c757d; font-size: 1.1rem;"></i>
+                                        <span style="font-size: 0.9rem; font-weight: 500;">Pregnant</span>
+                                    </label>
+                                    
+                                    <label class="special-category-option" style="display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; background: white; border: 1px solid #e9ecef; transition: all 0.2s ease; cursor: pointer;">
+                                        <input type="checkbox" name="specialCategory" value="injured" style="margin: 0;">
+                                        <i class="fas fa-band-aid" style="color: #6c757d; font-size: 1.1rem;"></i>
+                                        <span style="font-size: 0.9rem; font-weight: 500;">Injured</span>
+                                    </label>
+                                    
+                                    <label class="special-category-option" style="display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; background: white; border: 1px solid #e9ecef; transition: all 0.2s ease; cursor: pointer;">
+                                        <input type="checkbox" name="specialCategory" value="special_needs" style="margin: 0;">
+                                        <i class="fas fa-hands-helping" style="color: #6c757d; font-size: 1.1rem;"></i>
+                                        <span style="font-size: 0.9rem; font-weight: 500;">Special Needs</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Notes Section -->
+                            <div style="margin-bottom: 15px;">
+                                <label for="checkInNotes" style="display: block; margin-bottom: 8px; font-weight: 600; color: #0077b6;">
+                                    <i class="fas fa-sticky-note"></i> Additional Notes (Optional)
+                                </label>
+                                <textarea id="checkInNotes" rows="3" placeholder="Any additional notes or special instructions for this check-in..." 
+                                         style="width: 100%; padding: 10px; border: 2px solid #e9ecef; border-radius: 6px; resize: vertical;"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeQRScannerModal()">Cancel</button>
+                    <button type="button" id="confirmCheckInBtn" class="btn btn-success" onclick="confirmCheckIn()" style="display: none;">
+                        <i class="fas fa-sign-in-alt"></i> Confirm Check In
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Modal -->
+        <div id="successModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #28a745, #20c997); color: white;">
+                    <h3><i class="fas fa-check-circle"></i> Check-in Successful</h3>
+                </div>
+                <div class="modal-body" style="text-align: center; padding: 30px;" id="successMessage">
+                    <!-- Success message will be inserted here -->
+                </div>
+                <div class="modal-footer" style="justify-content: center;">
+                    <button type="button" class="btn btn-success" onclick="closeSuccessModal()">
+                        <i class="fas fa-check"></i> Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Modal -->
+        <div id="errorModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #dc3545, #c82333); color: white;">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Check-in Failed</h3>
+                </div>
+                <div class="modal-body" style="text-align: center; padding: 30px;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i>
+                    <div id="errorMessage" style="color: #666; font-size: 1rem;">
+                        <!-- Error message will be inserted here -->
+                    </div>
+                </div>
+                <div class="modal-footer" style="justify-content: center;">
+                    <button type="button" class="btn btn-danger" onclick="closeErrorModal()">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <script>
             let currentAppointmentId = null;
+            let html5QrCode = null;
+            let verifiedAppointmentData = null;
+
+            // QR Scanner Modal Functions
+            function openQRScannerModal(appointmentId) {
+                currentAppointmentId = appointmentId;
+                document.getElementById('qrScannerModal').style.display = 'block';
+                
+                // Reset modal state
+                document.getElementById('scannerSection').style.display = 'block';
+                document.getElementById('prioritySection').style.display = 'none';
+                document.getElementById('confirmCheckInBtn').style.display = 'none';
+                document.getElementById('scanResult').style.display = 'none';
+                document.getElementById('manualAppointmentId').value = '';
+                
+                // Reset priority selection to standard
+                document.querySelector('input[name="queuePriority"][value="standard"]').checked = true;
+                
+                // Clear notes and special categories
+                document.getElementById('checkInNotes').value = '';
+                document.querySelectorAll('input[name="specialCategory"]').forEach(cb => cb.checked = false);
+            }
+
+            function closeQRScannerModal() {
+                if (html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().then(() => {
+                        document.getElementById('qrScannerModal').style.display = 'none';
+                    }).catch(err => {
+                        console.error('Error stopping scanner:', err);
+                        document.getElementById('qrScannerModal').style.display = 'none';
+                    });
+                } else {
+                    document.getElementById('qrScannerModal').style.display = 'none';
+                }
+                
+                // Reset scanner state
+                document.getElementById('startScanBtn').style.display = 'inline-block';
+                document.getElementById('stopScanBtn').style.display = 'none';
+                verifiedAppointmentData = null;
+            }
+
+            function startQRScanner() {
+                console.log('Starting QR Scanner...');
+                
+                // Check if Html5Qrcode is available
+                if (typeof Html5Qrcode === 'undefined') {
+                    console.error('Html5Qrcode library not loaded');
+                    showScannerError('QR Scanner library not loaded. Please use manual entry.');
+                    return;
+                }
+
+                // Get the QR reader container element
+                const qrReaderElement = document.getElementById('qr-reader');
+                if (!qrReaderElement) {
+                    console.error('QR reader container not found');
+                    showScannerError('QR reader container not found.');
+                    return;
+                }
+
+                // Show loading state
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="scanner-status scanning">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <strong>Initializing Camera...</strong>
+                        <p style="margin: 5px 0;">Please allow camera access when prompted</p>
+                    </div>
+                `;
+                scanResult.style.display = 'block';
+
+                // Create new instance if needed
+                if (!html5QrCode) {
+                    try {
+                        html5QrCode = new Html5Qrcode("qr-reader");
+                        console.log('Html5Qrcode instance created');
+                    } catch (error) {
+                        console.error('Error creating Html5Qrcode instance:', error);
+                        showScannerError('Failed to initialize scanner.');
+                        return;
+                    }
+                }
+
+                // Camera configuration
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 200, height: 200 },
+                    aspectRatio: 1.0,
+                    showTorchButtonIfSupported: true,
+                    videoConstraints: {
+                        facingMode: "environment"
+                    }
+                };
+
+                // Get available cameras first
+                Html5Qrcode.getCameras().then(cameras => {
+                    console.log('Available cameras:', cameras);
+                    
+                    if (cameras && cameras.length > 0) {
+                        // Use back camera if available, otherwise use first camera
+                        const cameraId = cameras.length > 1 ? cameras[1].id : cameras[0].id;
+                        
+                        console.log('Using camera:', cameraId);
+                        
+                        // Start scanning
+                        html5QrCode.start(
+                            cameraId,
+                            config,
+                            (decodedText, decodedResult) => {
+                                console.log('QR Code scanned:', decodedText);
+                                handleQRScanResult(decodedText);
+                            },
+                            (errorMessage) => {
+                                // Scanning errors are frequent and normal, don't log them
+                            }
+                        ).then(() => {
+                            console.log('Scanner started successfully');
+                            document.getElementById('startScanBtn').style.display = 'none';
+                            document.getElementById('stopScanBtn').style.display = 'inline-block';
+                            
+                            // Add active class to camera container
+                            document.getElementById('cameraContainer').classList.add('active');
+                            
+                            // Show active status
+                            scanResult.innerHTML = `
+                                <div class="scanner-status scanning">
+                                    <i class="fas fa-camera"></i>
+                                    <strong>Camera Active</strong>
+                                    <p style="margin: 5px 0;">Position the QR code within the frame to scan</p>
+                                </div>
+                            `;
+                        }).catch(err => {
+                            console.error('Error starting camera:', err);
+                            showScannerError(`Camera error: ${err.message || 'Unable to access camera. Please check permissions.'}`);
+                        });
+                    } else {
+                        console.warn('No cameras found');
+                        showScannerError('No cameras found on this device.');
+                    }
+                }).catch(err => {
+                    console.error('Error getting cameras:', err);
+                    showScannerError('Unable to access camera. Please check permissions and try again.');
+                });
+            }
+
+            function showScannerError(message) {
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="scanner-status error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Camera Error</strong>
+                        <p style="margin: 5px 0;">${message}</p>
+                        <button type="button" class="btn btn-sm btn-info" onclick="debugCamera()" style="margin-top: 10px;">
+                            <i class="fas fa-bug"></i> Debug Info
+                        </button>
+                    </div>
+                `;
+                scanResult.style.display = 'block';
+                
+                // Hide error after 10 seconds
+                setTimeout(() => {
+                    if (scanResult.querySelector('.scanner-status.error')) {
+                        scanResult.style.display = 'none';
+                    }
+                }, 10000);
+            }
+
+            function debugCamera() {
+                console.log('=== Camera Debug Info ===');
+                console.log('Html5Qrcode available:', typeof Html5Qrcode !== 'undefined');
+                console.log('Navigator mediaDevices:', !!navigator.mediaDevices);
+                console.log('getUserMedia available:', !!navigator.mediaDevices?.getUserMedia);
+                console.log('HTTPS:', location.protocol === 'https:');
+                console.log('Localhost:', location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+                
+                // Check camera permissions
+                if (navigator.permissions) {
+                    navigator.permissions.query({ name: 'camera' }).then(result => {
+                        console.log('Camera permission:', result.state);
+                    }).catch(err => {
+                        console.log('Camera permission check failed:', err);
+                    });
+                }
+                
+                // Try to get cameras
+                if (typeof Html5Qrcode !== 'undefined') {
+                    Html5Qrcode.getCameras().then(cameras => {
+                        console.log('Available cameras:', cameras);
+                    }).catch(err => {
+                        console.log('Error getting cameras:', err);
+                    });
+                }
+                
+                alert('Debug info logged to console. Press F12 and check the Console tab.');
+            }
+
+            function stopQRScanner() {
+                if (html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().then(() => {
+                        document.getElementById('startScanBtn').style.display = 'inline-block';
+                        document.getElementById('stopScanBtn').style.display = 'none';
+                        document.getElementById('scanResult').style.display = 'none';
+                        
+                        // Remove active class from camera container
+                        document.getElementById('cameraContainer').classList.remove('active');
+                    }).catch(err => {
+                        console.error('Error stopping scanner:', err);
+                    });
+                }
+            }
+
+            function handleQRScanResult(qrData) {
+                console.log('QR Code scanned:', qrData);
+                
+                // Stop the scanner
+                stopQRScanner();
+                
+                // Parse QR data
+                let appointmentData;
+                try {
+                    // Try to parse as JSON first (proper QR codes)
+                    appointmentData = JSON.parse(qrData);
+                    console.log('Parsed QR data:', appointmentData);
+                    
+                    // Ensure we have the required fields for QR verification
+                    if (appointmentData.appointment_id && (appointmentData.qr_token || appointmentData.verification_code)) {
+                        console.log('Valid QR code with token detected');
+                        // Standardize the token field name
+                        if (appointmentData.verification_code && !appointmentData.qr_token) {
+                            appointmentData.qr_token = appointmentData.verification_code;
+                        }
+                    } else {
+                        console.log('QR code missing required verification token');
+                        appointmentData.qr_token = null; // Mark as invalid QR
+                    }
+                } catch (e) {
+                    // If not JSON, treat as plain appointment ID (legacy or manual)
+                    console.log('QR data is not JSON, treating as basic appointment ID');
+                    const cleanId = qrData.replace(/^APT-/i, '');
+                    appointmentData = { 
+                        appointment_id: cleanId,
+                        qr_token: null // No token = requires additional verification
+                    };
+                }
+                
+                // Display scan result
+                const scanResult = document.getElementById('scanResult');
+                if (appointmentData.qr_token) {
+                    scanResult.innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="fas fa-qrcode"></i> <strong>QR Code Detected</strong><br>
+                            <small>Verifying authenticity...</small>
+                        </div>
+                    `;
+                } else {
+                    scanResult.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-qrcode"></i> <strong>Basic QR Code Detected</strong><br>
+                            <small>Additional verification required for security...</small>
+                        </div>
+                    `;
+                }
+                scanResult.style.display = 'block';
+                
+                // Verify the scanned appointment
+                verifyScannedAppointment(appointmentData);
+            }
+
+            function verifyScannedAppointment(appointmentData) {
+                console.log('Verifying appointment:', appointmentData);
+                console.log('Current appointment ID:', currentAppointmentId);
+                
+                // Check if this is from QR scan (has qr_token) or manual entry
+                const isQRScan = appointmentData.qr_token || appointmentData.verification_code;
+                const scannedAppointmentId = parseInt(appointmentData.appointment_id);
+                
+                console.log('Scanned appointment ID (parsed):', scannedAppointmentId);
+                console.log('Is QR scan:', isQRScan);
+                console.log('Comparison result:', scannedAppointmentId === currentAppointmentId);
+                
+                if (scannedAppointmentId === currentAppointmentId) {
+                    if (isQRScan) {
+                        // QR scan - verify the token against database
+                        verifyQRToken(appointmentData);
+                    } else {
+                        // Manual entry - require additional verification
+                        requireAdditionalVerification(appointmentData);
+                    }
+                } else {
+                    // No match - show error
+                    console.log('Appointment mismatch detected!');
+                    showAppointmentMismatch(appointmentData, scannedAppointmentId);
+                }
+            }
+
+            function verifyQRToken(appointmentData) {
+                console.log('Verifying QR token for appointment:', appointmentData);
+                
+                // Show loading state
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="scanner-status scanning">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <strong>Verifying QR Code...</strong>
+                        <p>Checking authenticity against database</p>
+                    </div>
+                `;
+                
+                // Verify token with the server
+                const formData = new FormData();
+                formData.append('action', 'verify_qr_token');
+                formData.append('appointment_id', currentAppointmentId);
+                formData.append('qr_token', appointmentData.qr_token || appointmentData.verification_code);
+                
+                fetch('api/verify_appointment_qr.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('QR token verified successfully');
+                        showAppointmentMatch(appointmentData);
+                    } else {
+                        console.log('QR token verification failed:', data.message);
+                        showQRVerificationError(data.message || 'Invalid QR code - this may be forged or expired');
+                    }
+                })
+                .catch(error => {
+                    console.error('QR verification error:', error);
+                    showQRVerificationError('Unable to verify QR code. Please try manual entry.');
+                });
+            }
+
+            function requireAdditionalVerification(appointmentData) {
+                console.log('Requiring verification code for manual entry');
+                
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="verification-required">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-shield-alt"></i> <strong>Verification Required</strong><br>
+                            <small>Please enter the verification code from your appointment confirmation</small>
+                        </div>
+                        
+                        <div class="verification-form">
+                            <div class="form-group" style="margin: 15px 0;">
+                                <label for="verificationCodeInput" style="display: block; margin-bottom: 5px; font-weight: 600;">
+                                    <i class="fas fa-key"></i> Verification Code:
+                                </label>
+                                <input type="text" 
+                                       id="verificationCodeInput" 
+                                       placeholder="Enter 8-character code (e.g., A1B2C3D4)"
+                                       style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; text-transform: uppercase; letter-spacing: 2px; text-align: center; font-family: monospace;"
+                                       maxlength="8"
+                                       pattern="[A-Z0-9]{8}">
+                                <small style="display: block; margin-top: 5px; color: #666;">
+                                    <i class="fas fa-info-circle"></i> Find this code in your appointment confirmation or QR code
+                                </small>
+                            </div>
+                            
+                            <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin: 15px 0; font-size: 14px;">
+                                <i class="fas fa-lightbulb" style="color: #1976d2;"></i> 
+                                <strong>Where to find your verification code:</strong>
+                                <ul style="margin: 8px 0 0 20px; padding: 0;">
+                                    <li>In your appointment confirmation email/SMS</li>
+                                    <li>On your printed appointment slip</li>
+                                    <li>Ask staff if you can't locate it</li>
+                                </ul>
+                            </div>
+                            
+                            <div style="text-align: center; margin-top: 20px;">
+                                <button type="button" 
+                                        class="btn btn-primary" 
+                                        onclick="processVerificationCode()"
+                                        style="padding: 12px 25px; font-size: 16px;">
+                                    <i class="fas fa-check"></i> Verify Code
+                                </button>
+                                <button type="button" 
+                                        class="btn btn-secondary" 
+                                        onclick="cancelVerification()"
+                                        style="padding: 12px 25px; margin-left: 10px; font-size: 16px;">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                            </div>
+                            
+                            <div style="text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                                <button type="button" 
+                                        class="btn btn-link" 
+                                        onclick="requestStaffHelp()"
+                                        style="color: #007bff; text-decoration: none; font-size: 14px;">
+                                    <i class="fas fa-hands-helping"></i> Need staff assistance?
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                scanResult.style.display = 'block';
+                
+                // Auto-format and validate input
+                document.getElementById('verificationCodeInput').addEventListener('input', function(e) {
+                    let value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    e.target.value = value;
+                    
+                    // Enable/disable verify button based on length
+                    const verifyBtn = document.querySelector('button[onclick="processVerificationCode()"]');
+                    if (value.length === 8) {
+                        verifyBtn.style.background = '#28a745';
+                        verifyBtn.disabled = false;
+                    } else {
+                        verifyBtn.style.background = '#6c757d';
+                        verifyBtn.disabled = false; // Keep enabled for partial validation
+                    }
+                });
+                
+                // Allow Enter key to submit
+                document.getElementById('verificationCodeInput').addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        processVerificationCode();
+                    }
+                });
+                
+                // Focus the input
+                setTimeout(() => {
+                    document.getElementById('verificationCodeInput').focus();
+                }, 100);
+            }
+
+            function processVerificationCode() {
+                const verificationCode = document.getElementById('verificationCodeInput').value.trim().toUpperCase();
+                
+                if (!verificationCode) {
+                    showVerificationError('Please enter a verification code');
+                    return;
+                }
+                
+                if (verificationCode.length !== 8) {
+                    showVerificationError('Verification code must be exactly 8 characters');
+                    return;
+                }
+                
+                // Show loading state
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="scanner-status scanning">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <strong>Verifying Code...</strong>
+                        <p>Checking verification code against appointment records</p>
+                    </div>
+                `;
+                
+                // Verify code with the server
+                const formData = new FormData();
+                formData.append('action', 'verify_verification_code');
+                formData.append('appointment_id', currentAppointmentId);
+                formData.append('verification_code', verificationCode);
+                
+                fetch('api/verify_appointment_qr.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('Verification code verified successfully');
+                        showAppointmentMatch({ appointment_id: currentAppointmentId, verification_method: 'verification_code' });
+                    } else {
+                        console.log('Verification code verification failed:', data.message);
+                        showCodeVerificationError(data.message || 'Invalid verification code');
+                    }
+                })
+                .catch(error => {
+                    console.error('Verification code error:', error);
+                    showCodeVerificationError('Unable to verify code. Please try again or contact staff.');
+                });
+            }
+
+            function showCodeVerificationError(message) {
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="alert alert-error">
+                        <i class="fas fa-exclamation-triangle"></i> <strong>❌ Invalid Verification Code!</strong><br>
+                        <small>${message}</small>
+                        <div style="margin-top: 15px;">
+                            <button type="button" 
+                                    class="btn btn-info btn-sm" 
+                                    onclick="requireAdditionalVerification({ appointment_id: currentAppointmentId })"
+                                    style="padding: 8px 15px;">
+                                <i class="fas fa-redo"></i> Try Again
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-warning btn-sm" 
+                                    onclick="requestStaffHelp()"
+                                    style="padding: 8px 15px; margin-left: 10px;">
+                                <i class="fas fa-hands-helping"></i> Get Help
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                scanResult.style.display = 'block';
+            }
+
+            function requestStaffHelp() {
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> <strong>Staff Assistance Required</strong><br>
+                        <p>Please ask a staff member to help locate your verification code.</p>
+                        <div style="background: #e3f2fd; padding: 12px; border-radius: 4px; margin: 10px 0;">
+                            <strong>For Staff:</strong> The verification code can be found in the appointment database 
+                            or can be regenerated if necessary. Use admin verification if the patient cannot locate their code.
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <button type="button" 
+                                    class="btn btn-secondary" 
+                                    onclick="document.getElementById('scanResult').style.display = 'none'"
+                                    style="padding: 8px 15px;">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function cancelVerification() {
+                document.getElementById('scanResult').style.display = 'none';
+            }
+
+            function showQRVerificationError(message) {
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="alert alert-error" style="display: block; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                        <i class="fas fa-exclamation-triangle"></i> <strong>❌ Invalid QR Code!</strong><br>
+                        <small>${message}</small>
+                        <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; border: 1px solid #ffeaa7; color: #856404;">
+                            <strong>Security Notice:</strong> Only scan QR codes directly from the appointment confirmation.
+                            For manual entry, additional verification will be required.
+                        </div>
+                    </div>
+                `;
+                
+                // Make sure the scan result is visible
+                scanResult.style.display = 'block';
+                
+                // Allow user to try again or use manual entry
+                setTimeout(() => {
+                    const currentContent = scanResult.innerHTML;
+                    if (currentContent.includes('Invalid QR Code')) {
+                        scanResult.innerHTML = currentContent + `
+                            <div style="text-align: center; margin-top: 15px;">
+                                <button type="button" 
+                                        class="btn btn-info" 
+                                        onclick="document.getElementById('manualAppointmentId').focus()"
+                                        style="padding: 10px 20px; margin-right: 10px;">
+                                    <i class="fas fa-keyboard"></i> Use Manual Entry
+                                </button>
+                                <button type="button" 
+                                        class="btn btn-secondary" 
+                                        onclick="document.getElementById('scanResult').style.display = 'none'"
+                                        style="padding: 10px 20px;">
+                                    <i class="fas fa-times"></i> Close
+                                </button>
+                            </div>
+                        `;
+                    }
+                }, 2000);
+            }
+
+            function showAppointmentMatch(appointmentData) {
+                // Update scan result to show success
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i> <strong>✅ Appointment Verified!</strong><br>
+                        <small>QR code matches the selected appointment (ID: ${appointmentData.appointment_id})</small>
+                    </div>
+                `;
+                
+                // Get appointment details for display
+                fetch(`api/get_appointment_details.php?appointment_id=${currentAppointmentId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            verifiedAppointmentData = data.appointment;
+                            showEnhancedPrioritySelection();
+                        } else {
+                            showVerificationError('Failed to load appointment details');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching appointment details:', error);
+                        showVerificationError('Error loading appointment details');
+                    });
+            }
+
+            function showAppointmentMismatch(appointmentData, scannedId) {
+                console.log('Showing appointment mismatch error');
+                
+                // Show mismatch error
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="alert alert-error" style="display: block; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                        <i class="fas fa-exclamation-triangle"></i> <strong>❌ Appointment Mismatch!</strong><br>
+                        <small>Expected: Appointment ${currentAppointmentId}<br>
+                        Scanned: Appointment ${scannedId}<br>
+                        Please scan the correct QR code or use manual entry.</small>
+                        
+                        <div style="text-align: center; margin-top: 15px;">
+                            <button type="button" 
+                                    class="btn btn-info" 
+                                    onclick="document.getElementById('manualAppointmentId').focus(); document.getElementById('scanResult').style.display = 'none';"
+                                    style="padding: 8px 15px; margin-right: 10px; background: #17a2b8; color: white; border: none; border-radius: 4px;">
+                                <i class="fas fa-keyboard"></i> Use Manual Entry
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-secondary" 
+                                    onclick="document.getElementById('scanResult').style.display = 'none'"
+                                    style="padding: 8px 15px; background: #6c757d; color: white; border: none; border-radius: 4px;">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                // Make sure the scan result is visible
+                scanResult.style.display = 'block';
+                
+                // Auto-hide after 15 seconds
+                setTimeout(() => {
+                    if (document.getElementById('scanResult').innerHTML.includes('Appointment Mismatch')) {
+                        console.log('Auto-hiding mismatch error message');
+                        document.getElementById('scanResult').style.display = 'none';
+                    }
+                }, 15000);
+            }
+
+            function showEnhancedPrioritySelection() {
+                // Hide scanner section
+                document.getElementById('scannerSection').style.display = 'none';
+                
+                // Show patient info
+                const patientInfo = `
+                    <strong>${verifiedAppointmentData.patient_name}</strong><br>
+                    Appointment ID: ${verifiedAppointmentData.appointment_id ? 'APT-' + String(verifiedAppointmentData.appointment_id).padStart(8, '0') : 'N/A'}<br>
+                    Date: ${verifiedAppointmentData.appointment_date} at ${verifiedAppointmentData.time_slot}
+                `;
+                document.getElementById('verifiedPatientInfo').innerHTML = patientInfo;
+                
+                // Show priority section
+                document.getElementById('prioritySection').style.display = 'block';
+                document.getElementById('confirmCheckInBtn').style.display = 'inline-block';
+            }
+
+            function verifyManualEntry() {
+                const appointmentId = document.getElementById('manualAppointmentId').value.trim();
+                if (!appointmentId) {
+                    showVerificationError('Please enter an appointment ID');
+                    return;
+                }
+                
+                // Remove APT- prefix if present and extract number
+                const cleanId = appointmentId.replace(/^APT-/i, '');
+                const appointmentData = { 
+                    appointment_id: cleanId,
+                    qr_token: null // No QR token = requires additional verification
+                };
+                
+                // Verify the manually entered appointment
+                verifyScannedAppointment(appointmentData);
+            }
+
+            function showVerificationError(message) {
+                const scanResult = document.getElementById('scanResult');
+                scanResult.innerHTML = `
+                    <div class="scanner-status error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Verification Failed</strong>
+                        <p>${message}</p>
+                    </div>
+                `;
+                scanResult.style.display = 'block';
+                
+                // Allow user to try again
+                setTimeout(() => {
+                    document.getElementById('scanResult').style.display = 'none';
+                }, 5000);
+            }
+
+            function confirmCheckIn() {
+                const selectedPriority = document.querySelector('input[name="queuePriority"]:checked').value;
+                const notes = document.getElementById('checkInNotes').value.trim();
+                
+                // Get selected special categories
+                const specialCategories = Array.from(document.querySelectorAll('input[name="specialCategory"]:checked'))
+                    .map(checkbox => checkbox.value);
+                
+                // Create enhanced notes with special categories
+                let enhancedNotes = notes;
+                if (specialCategories.length > 0) {
+                    const categoriesText = specialCategories.map(cat => {
+                        switch(cat) {
+                            case 'senior': return 'Senior Citizen';
+                            case 'pwd': return 'PWD';
+                            case 'pregnant': return 'Pregnant';
+                            case 'injured': return 'Injured';
+                            case 'special_needs': return 'Special Needs';
+                            default: return cat;
+                        }
+                    }).join(', ');
+                    
+                    enhancedNotes = `Special Categories: ${categoriesText}${notes ? '\n\nAdditional Notes: ' + notes : ''}`;
+                }
+                
+                // Prepare check-in data
+                const checkInData = {
+                    action: 'checkin_appointment_with_priority',
+                    appointment_id: currentAppointmentId,
+                    priority: selectedPriority,
+                    special_categories: specialCategories.join(','),
+                    notes: enhancedNotes
+                };
+                
+                // Show loading state
+                const confirmBtn = document.getElementById('confirmCheckInBtn');
+                const originalText = confirmBtn.innerHTML;
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+                confirmBtn.disabled = true;
+                
+                // Submit check-in using fetch to handle response properly
+                fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams(checkInData)
+                })
+                .then(response => {
+                    // Parse the response text to check for success/error messages
+                    return response.text();
+                })
+                .then(responseText => {
+                    // Check if the response contains success or error indicators
+                    if (responseText.includes('Patient successfully checked in') || 
+                        responseText.includes('alert-success') ||
+                        (responseText.includes('Queue Number:') && !responseText.includes('alert-error'))) {
+                        
+                        // Success - extract queue number if possible
+                        let queueNumber = 'Unknown';
+                        const queueMatch = responseText.match(/Queue Number:\s*([A-Z0-9-]+)/i);
+                        if (queueMatch) {
+                            queueNumber = queueMatch[1];
+                        }
+                        
+                        // Close modal and show success
+                        closeQRScannerModal();
+                        
+                        // Determine the station based on priority
+                        let queueStation = 'Triage Station'; // Default station
+                        
+                        // Enhanced station assignment logic
+                        if (selectedPriority === 'emergency') {
+                            queueStation = 'Emergency Station';
+                        } else if (specialCategories.includes('injured')) {
+                            queueStation = 'Trauma/Injury Station';
+                        } else if (specialCategories.includes('pregnant')) {
+                            queueStation = 'Maternal Care Station';
+                        } else if (specialCategories.includes('senior') || specialCategories.includes('pwd')) {
+                            queueStation = 'Priority Care Station';
+                        } else {
+                            queueStation = 'General Triage Station';
+                        }
+                        
+                        // Show success modal with queue number
+                        showSuccessModalWithQueue(selectedPriority, specialCategories, queueStation, queueNumber);
+                        
+                    } else if (responseText.includes('alert-error') || 
+                              responseText.includes('Error during check-in') ||
+                              responseText.includes('Failed to')) {
+                        
+                        // Extract error message from response
+                        let errorMessage = 'Unknown error occurred during check-in';
+                        
+                        // Try to extract specific error message
+                        const errorMatch = responseText.match(/Error during check-in:\s*([^<]+)/i);
+                        if (errorMatch) {
+                            errorMessage = errorMatch[1].trim();
+                        } else {
+                            // Look for other error patterns
+                            const alertMatch = responseText.match(/<div[^>]*class="[^"]*alert-error[^"]*"[^>]*>.*?<\/div>/is);
+                            if (alertMatch) {
+                                const tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = alertMatch[0];
+                                errorMessage = tempDiv.textContent.trim().replace(/^\s*⚠️?\s*/, '');
+                            }
+                        }
+                        
+                        // Show error modal
+                        showErrorModal(errorMessage);
+                        
+                    } else {
+                        // Unclear response - assume success but warn user
+                        closeQRScannerModal();
+                        showSuccessModalWithQueue(selectedPriority, specialCategories, 'General Station', 'Please check with staff');
+                    }
+                    
+                    // Reset button state
+                    confirmBtn.innerHTML = originalText;
+                    confirmBtn.disabled = false;
+                    
+                })
+                .catch(error => {
+                    console.error('Check-in fetch error:', error);
+                    
+                    // Show error in modal
+                    showErrorModal('Network error occurred during check-in. Please try again.');
+                    
+                    // Reset button state
+                    confirmBtn.innerHTML = originalText;
+                    confirmBtn.disabled = false;
+                });
+            }
+
+            function showSuccessModalWithQueue(priority, specialCategories, station = 'Triage', queueNumber = 'Unknown') {
+                const categoryText = specialCategories.length > 0 ? 
+                    specialCategories.map(cat => {
+                        switch(cat) {
+                            case 'senior': return 'Senior Citizen';
+                            case 'pwd': return 'PWD';
+                            case 'pregnant': return 'Pregnant';
+                            case 'injured': return 'Injured';
+                            case 'special_needs': return 'Special Needs';
+                            default: return cat;
+                        }
+                    }).join(', ') : '';
+
+                const specialCategoryDisplay = categoryText ? `<br><strong>Special Categories:</strong> ${categoryText}` : '';
+                
+                const successMessage = `
+                    <h4 style="color: #28a745; margin-bottom: 15px;">Patient Successfully Checked In!</h4>
+                    <div style="background: #f8fff8; border: 1px solid #c3e6cb; border-radius: 8px; padding: 15px; margin: 15px 0;">
+                        <strong>Priority Level:</strong> ${priority.charAt(0).toUpperCase() + priority.slice(1)}${specialCategoryDisplay}
+                        <br><strong>Queue Station:</strong> ${station}
+                        <br><strong>Queue Number:</strong> <span style="background: #0077b6; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold;">${queueNumber}</span>
+                    </div>
+                    <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 12px; margin: 15px 0; text-align: center;">
+                        <i class="fas fa-info-circle" style="color: #1976d2; margin-right: 8px;"></i>
+                        <strong style="color: #1976d2;">Please keep the queue number for reference</strong>
+                    </div>
+                    <p style="color: #666; font-size: 0.9rem; margin-top: 15px;">
+                        The patient has been added to the queue and will be called when it's their turn.
+                    </p>
+                `;
+                
+                document.getElementById('successMessage').innerHTML = successMessage;
+                document.getElementById('successModal').style.display = 'block';
+            }
+
+            function closeSuccessModal() {
+                document.getElementById('successModal').style.display = 'none';
+                location.reload(); // Refresh the page to show updated appointment list
+            }
+
+            function showErrorModal(message) {
+                document.getElementById('errorMessage').innerHTML = message;
+                document.getElementById('errorModal').style.display = 'block';
+            }
+
+            function closeErrorModal() {
+                document.getElementById('errorModal').style.display = 'none';
+            }
+
+            // Enhanced check-in function (original function for backward compatibility)
+            function checkInAppointment(appointmentId) {
+                // Use QR scanner modal instead of simple check-in
+                openQRScannerModal(appointmentId);
+            }
 
             function viewAppointment(appointmentId) {
                 currentAppointmentId = appointmentId;
@@ -3553,11 +4941,6 @@ function getSortIcon($column, $current_sort, $current_direction)
                 document.getElementById('cancel_reason').value = '';
                 document.getElementById('employee_password').value = '';
                 document.getElementById('cancelAppointmentModal').style.display = 'block';
-            }
-
-            function checkInAppointment(appointmentId) {
-                document.getElementById('checkInAppointmentId').value = appointmentId;
-                document.getElementById('checkInModal').style.display = 'block';
             }
 
             function completeAppointment(appointmentId) {
