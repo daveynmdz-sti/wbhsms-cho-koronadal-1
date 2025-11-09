@@ -251,6 +251,20 @@ $employees = $queueService->getActiveEmployees();
 // Handle AJAX request for assignment history
 if (isset($_GET['ajax_history']) && $_GET['ajax_history'] == '1') {
     try {
+        // Log the request for debugging
+        error_log("Assignment History Request: User ID " . ($_SESSION['employee_id'] ?? 'unknown') . " from IP " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+        
+        // Verify PDO connection is available
+        if (!$pdo) {
+            throw new Exception('Database connection not available');
+        }
+        
+        // Test basic connectivity
+        $testStmt = $pdo->query("SELECT 1");
+        if (!$testStmt) {
+            throw new Exception('Database connection test failed');
+        }
+        
         $historyStmt = $pdo->prepare("
             SELECT 
                 al.*, 
@@ -266,6 +280,9 @@ if (isset($_GET['ajax_history']) && $_GET['ajax_history'] == '1') {
         ");
         $historyStmt->execute();
         $history = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Log the result count
+        error_log("Assignment History Query Result: Found " . count($history) . " records");
         
         if (!empty($history)) {
             echo '<div style="max-height: 400px; overflow-y: auto;">';
@@ -315,11 +332,16 @@ if (isset($_GET['ajax_history']) && $_GET['ajax_history'] == '1') {
         } else {
             echo '<div class="alert" style="background-color: #fff3cd; color: #856404; border-left: 4px solid #ffc107; padding: 15px;">';
             echo '<i class="fas fa-info-circle"></i> No assignment history found for this facility.';
+            echo '<br><small>This may be because no staff assignments have been made yet or the assignment_logs table is empty.</small>';
             echo '</div>';
         }
     } catch (Exception $e) {
+        // Log the detailed error
+        error_log('Assignment History Error: ' . $e->getMessage() . ' | File: ' . $e->getFile() . ' | Line: ' . $e->getLine());
+        
         echo '<div class="alert alert-danger">';
         echo '<i class="fas fa-exclamation-triangle"></i> Error loading assignment history: ' . htmlspecialchars($e->getMessage());
+        echo '<br><small>Please check the error logs or contact the system administrator.</small>';
         echo '</div>';
     }
     exit(); // Stop execution for AJAX request
@@ -1668,12 +1690,21 @@ $activePage = 'staff_assignments';
             `;
             
             // Load history via AJAX
-            fetch(window.location.href + '&ajax_history=1')
-                .then(response => response.text())
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('ajax_history', '1');
+            
+            fetch(currentUrl.toString())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.text();
+                })
                 .then(data => {
                     modalContent.innerHTML = data;
                 })
                 .catch(error => {
+                    console.error('Assignment history fetch error:', error);
                     modalContent.innerHTML = `
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-triangle"></i>
