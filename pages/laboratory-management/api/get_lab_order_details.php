@@ -36,10 +36,11 @@ $timingColumnsSql = "SHOW COLUMNS FROM lab_order_items WHERE Field IN ('started_
 $timingResult = $conn->query($timingColumnsSql);
 $hasTimingColumns = $timingResult->num_rows > 0;
 
-// Fetch lab order details with enhanced timing info
+# Fetch lab order details with enhanced timing info and PhilHealth information
 $orderSql = "SELECT lo.lab_order_id, lo.patient_id, lo.order_date, lo.status, lo.status as overall_status,
                     lo.ordered_by_employee_id, lo.remarks, lo.appointment_id, lo.visit_id,
                     p.first_name, p.last_name, p.middle_name, p.date_of_birth, p.sex as gender, p.username as patient_id_display,
+                    p.isPhilHealth, p.philhealth_id_number, pt.type_name as philhealth_type,
                     e.first_name as ordered_by_first_name, e.last_name as ordered_by_last_name,
                     TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age";
 
@@ -51,6 +52,7 @@ if ($avgTatCheck->num_rows > 0) {
 
 $orderSql .= " FROM lab_orders lo
                LEFT JOIN patients p ON lo.patient_id = p.patient_id
+               LEFT JOIN philhealth_types pt ON p.philhealth_type_id = pt.id
                LEFT JOIN employees e ON lo.ordered_by_employee_id = e.employee_id
                WHERE lo.lab_order_id = ?";
 
@@ -288,6 +290,60 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
         background: linear-gradient(135deg, #dcfce7, #bbf7d0);
         color: #166534;
         border: 1px solid #22c55e;
+    }
+
+    .status-philhealth-member {
+        background: linear-gradient(135deg, #d1ecf1, #b8daff);
+        color: #0c5460;
+        border: 1px solid #0ea5e9;
+    }
+
+    .status-philhealth-nonmember {
+        background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+        color: #856404;
+        border: 1px solid #ffc107;
+    }
+
+    .payment-warning {
+        margin-top: 10px;
+        padding: 12px 16px;
+        background: linear-gradient(135deg, #fee2e2, #fecaca);
+        border: 1px solid #f87171;
+        border-radius: 8px;
+        color: #dc2626;
+        font-size: 0.85em;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .payment-warning i {
+        margin-top: 2px;
+        font-size: 1.1em;
+        color: #dc2626;
+    }
+
+    .philhealth-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .philhealth-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.8em;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .philhealth-badge i {
+        font-size: 0.9em;
     }
 
     .status-cancelled {
@@ -543,6 +599,33 @@ $orderedBy = trim($order['ordered_by_first_name'] . ' ' . $order['ordered_by_las
                     <span class="info-value"><?= date('M d, Y', strtotime($order['date_of_birth'])) ?></span>
                 </div>
                 <?php endif; ?>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                    <span class="info-label">PhilHealth Status</span>
+                    <div class="philhealth-info">
+                        <?php if ($order['isPhilHealth']): ?>
+                            <span class="philhealth-badge status-philhealth-member">
+                                <i class="fas fa-id-card-alt"></i> PhilHealth Member
+                            </span>
+                            <?php if (!empty($order['philhealth_type'])): ?>
+                                <span style="font-size: 0.85em; color: #475569;">(<?= htmlspecialchars($order['philhealth_type']) ?>)</span>
+                            <?php endif; ?>
+                            <?php if (!empty($order['philhealth_id_number'])): ?>
+                                <span style="font-size: 0.8em; color: #64748b; background: #f1f5f9; padding: 2px 8px; border-radius: 12px;"><?= htmlspecialchars($order['philhealth_id_number']) ?></span>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <span class="philhealth-badge status-philhealth-nonmember">
+                                <i class="fas fa-exclamation-triangle"></i> Non-PhilHealth Member
+                            </span>
+                            <div class="payment-warning">
+                                <i class="fas fa-info-circle"></i>
+                                <div>
+                                    <strong>Payment Verification Required:</strong><br>
+                                    Please request proof of payment or invoice before processing laboratory tests for non-PhilHealth members.
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
         </div>
 

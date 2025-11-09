@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhilHealth Status Enhancement Preview</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f5f7fa;
+        }
+        
+        .preview-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .preview-title {
+            text-align: center;
+            color: #03045e;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .scenario {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+        
+        .scenario-title {
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .patient-info-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            color: #03045e;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        
+        .card-header i {
+            margin-right: 10px;
+            padding: 8px;
+            background: linear-gradient(135deg, #03045e, #0077b6);
+            color: white;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(3, 4, 94, 0.1);
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #475569;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        
+        .info-value {
+            color: #1e293b;
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+        
+        .philhealth-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .philhealth-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .philhealth-badge i {
+            font-size: 0.9em;
+        }
+        
+        .status-philhealth-member {
+            background: linear-gradient(135deg, #d1ecf1, #b8daff);
+            color: #0c5460;
+            border: 1px solid #0ea5e9;
+        }
+        
+        .status-philhealth-nonmember {
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+            color: #856404;
+            border: 1px solid #ffc107;
+        }
+        
+        .payment-warning {
+            margin-top: 10px;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            border: 1px solid #f87171;
+            border-radius: 8px;
+            color: #dc2626;
+            font-size: 0.85em;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            width: 100%;
+        }
+        
+        .payment-warning i {
+            margin-top: 2px;
+            font-size: 1.1em;
+            color: #dc2626;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .philhealth-type {
+            font-size: 0.85em;
+            color: #475569;
+        }
+        
+        .philhealth-id {
+            font-size: 0.8em;
+            color: #64748b;
+            background: #f1f5f9;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        
+        .implementation-note {
+            background: #e0f2fe;
+            border: 1px solid #0288d1;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 0.9em;
+            color: #01579b;
+        }
+        
+        .implementation-note strong {
+            color: #01579b;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <h1 class="preview-title">
+            <i class="fas fa-flask"></i>
+            PhilHealth Status Enhancement Preview
+        </h1>
+        
+        <div class="implementation-note">
+            <strong><i class="fas fa-info-circle"></i> Implementation Note:</strong><br>
+            This preview shows how the PhilHealth status will appear in the Laboratory Order Details Modal. The enhancement provides immediate visual identification of patient payment status to help laboratory staff with verification protocols.
+        </div>
+        
+        <!-- Scenario 1: PhilHealth Member with Full Information -->
+        <div class="scenario">
+            <div class="scenario-title">Scenario 1: PhilHealth Member with Complete Information</div>
+            <div class="patient-info-card">
+                <div class="card-header">
+                    <i class="fas fa-user-circle"></i>
+                    Patient Information
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Full Name</span>
+                        <span class="info-value">Juan Carlos Dela Cruz</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Patient ID</span>
+                        <span class="info-value">CHO-2025-001234</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Age</span>
+                        <span class="info-value">35 years old</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Gender</span>
+                        <span class="info-value">Male</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Date of Birth</span>
+                        <span class="info-value">Mar 15, 1989</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="info-label">PhilHealth Status</span>
+                        <div class="philhealth-info">
+                            <span class="philhealth-badge status-philhealth-member">
+                                <i class="fas fa-id-card-alt"></i> PhilHealth Member
+                            </span>
+                            <span class="philhealth-type">(Individual Paying)</span>
+                            <span class="philhealth-id">12-345678901-2</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Scenario 2: PhilHealth Member with Partial Information -->
+        <div class="scenario">
+            <div class="scenario-title">Scenario 2: PhilHealth Member with Partial Information</div>
+            <div class="patient-info-card">
+                <div class="card-header">
+                    <i class="fas fa-user-circle"></i>
+                    Patient Information
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Full Name</span>
+                        <span class="info-value">Maria Santos Rodriguez</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Patient ID</span>
+                        <span class="info-value">CHO-2025-001235</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Age</span>
+                        <span class="info-value">28 years old</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Gender</span>
+                        <span class="info-value">Female</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Date of Birth</span>
+                        <span class="info-value">Aug 22, 1996</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="info-label">PhilHealth Status</span>
+                        <div class="philhealth-info">
+                            <span class="philhealth-badge status-philhealth-member">
+                                <i class="fas fa-id-card-alt"></i> PhilHealth Member
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Scenario 3: Non-PhilHealth Member -->
+        <div class="scenario">
+            <div class="scenario-title">Scenario 3: Non-PhilHealth Member (Payment Verification Required)</div>
+            <div class="patient-info-card">
+                <div class="card-header">
+                    <i class="fas fa-user-circle"></i>
+                    Patient Information
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Full Name</span>
+                        <span class="info-value">Roberto Gonzales Mendoza</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Patient ID</span>
+                        <span class="info-value">CHO-2025-001236</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Age</span>
+                        <span class="info-value">42 years old</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Gender</span>
+                        <span class="info-value">Male</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Date of Birth</span>
+                        <span class="info-value">Nov 10, 1982</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="info-label">PhilHealth Status</span>
+                        <div class="philhealth-info">
+                            <span class="philhealth-badge status-philhealth-nonmember">
+                                <i class="fas fa-exclamation-triangle"></i> Non-PhilHealth Member
+                            </span>
+                            <div class="payment-warning">
+                                <i class="fas fa-info-circle"></i>
+                                <div>
+                                    <strong>Payment Verification Required:</strong><br>
+                                    Please request proof of payment or invoice before processing laboratory tests for non-PhilHealth members.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="implementation-note">
+            <strong><i class="fas fa-check-circle"></i> Key Features:</strong><br>
+            • <strong>Visual Identification:</strong> Immediate recognition through color-coded badges<br>
+            • <strong>Payment Guidance:</strong> Clear warnings for non-PhilHealth members<br>
+            • <strong>Complete Information:</strong> Shows membership type and PhilHealth ID when available<br>
+            • <strong>Security Reminder:</strong> Ensures proper payment verification protocols are followed
+        </div>
+    </div>
+</body>
+</html>
