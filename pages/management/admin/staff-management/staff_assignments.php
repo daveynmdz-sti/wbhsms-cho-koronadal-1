@@ -872,6 +872,16 @@ $activePage = 'staff_assignments';
         .action-buttons {
             display: flex;
             gap: 5px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .action-buttons .text-muted {
+            white-space: nowrap;
+            font-style: italic;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
         }
 
         /* Mobile responsive styling */
@@ -1117,7 +1127,6 @@ $activePage = 'staff_assignments';
                             <tr>
                                 <th>Station</th>
                                 <th>Type</th>
-                                <th>Service</th>
                                 <th>Employee ID</th>
                                 <th>Assigned Employee</th>
                                 <th>Role</th>
@@ -1144,7 +1153,6 @@ $activePage = 'staff_assignments';
                                                 <?php echo ucfirst($station['station_type']); ?>
                                             </span>
                                         </td>
-                                        <td><?php echo htmlspecialchars($station['service_name']); ?></td>
                                         <td>
                                             <?php if ($station['employee_number']): ?>
                                                 <span class="badge bg-primary"><?php echo htmlspecialchars($station['employee_number']); ?></span>
@@ -1177,52 +1185,61 @@ $activePage = 'staff_assignments';
                                         <td>
                                             <?php if ($station['is_active']): ?>
                                                 <span class="badge bg-success">Active</span>
+                                                <?php if (!empty($station['employee_id']) && isset($station['assignment_status']) && !$station['assignment_status']): ?>
+                                                    <br><small class="text-muted">
+                                                        Assignment: Inactive
+                                                    </small>
+                                                <?php endif; ?>
                                             <?php else: ?>
                                                 <span class="badge bg-danger">Inactive</span>
-                                            <?php endif; ?>
-                                            
-                                            <?php if (!empty($station['assignment_status']) && $station['assignment_status'] != $station['is_active']): ?>
-                                                <br><small class="text-muted">
-                                                    Assignment: <?php echo $station['assignment_status'] ? 'Active' : 'Inactive'; ?>
-                                                </small>
                                             <?php endif; ?>
                                         </td>
                                         <td>
                                             <div class="action-buttons">
-                                                <!-- View Station Dashboard button -->
+                                                <!-- View Station Dashboard button (always available) -->
                                                 <button type="button" class="action-btn btn-info" onclick="window.open('../../../../pages/queueing/station_dashboard.php?station_id=<?php echo $station['station_id']; ?>', '_blank')" title="View Station Dashboard">
                                                     <i class="fas fa-tachometer-alt"></i>
                                                 </button>
                                                 
                                                 <?php if ($station['is_active']): ?>
+                                                    <!-- Station is active -->
                                                     <?php if ($station['employee_id']): ?>
-                                                        <!-- Reassign button -->
+                                                        <!-- Station has assigned employee -->
                                                         <button type="button" class="action-btn btn-warning" onclick="openReassignModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', <?php echo $station['employee_id']; ?>, '<?php echo htmlspecialchars($station['station_type']); ?>')" title="Reassign Employee">
                                                             <i class="fas fa-exchange-alt"></i>
                                                         </button>
-                                                        <!-- Remove assignment button -->
                                                         <button type="button" class="action-btn btn-danger" onclick="openRemoveModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', '<?php echo htmlspecialchars($station['employee_name']); ?>')" title="Remove Assignment">
                                                             <i class="fas fa-user-minus"></i>
                                                         </button>
                                                     <?php else: ?>
-                                                        <!-- Assign button -->
+                                                        <!-- Station has no assigned employee -->
                                                         <button type="button" class="action-btn btn-primary" onclick="openAssignModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', '<?php echo htmlspecialchars($station['station_type']); ?>')" title="Assign Employee">
                                                             <i class="fas fa-user-plus"></i>
                                                         </button>
                                                     <?php endif; ?>
+                                                    
+                                                    <!-- Deactivate station button -->
+                                                    <button type="button" onclick="openToggleConfirmModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', true)" class="action-btn btn-secondary" title="Deactivate Station">
+                                                        <i class="fas fa-power-off"></i>
+                                                    </button>
                                                 <?php else: ?>
-                                                    <span class="text-muted" style="font-size: 0.8rem;"><i class="fas fa-ban"></i> Station Inactive</span>
+                                                    <!-- Station is inactive -->
+                                                    <span class="text-muted" style="font-size: 0.8rem; padding: 8px 12px;">
+                                                        <i class="fas fa-ban"></i> Station Inactive
+                                                    </span>
+                                                    
+                                                    <!-- Activate station button -->
+                                                    <button type="button" onclick="openToggleConfirmModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', false)" class="action-btn btn-success" title="Activate Station">
+                                                        <i class="fas fa-play"></i>
+                                                    </button>
                                                 <?php endif; ?>
                                                 
-                                                <!-- Toggle station status -->
-                                                <form method="post" style="display: inline;" id="toggleForm_<?php echo $station['station_id']; ?>">
+                                                <!-- Hidden form for toggling (keeping for backward compatibility) -->
+                                                <form method="post" style="display: none;" id="toggleForm_<?php echo $station['station_id']; ?>">
                                                     <input type="hidden" name="station_id" value="<?php echo $station['station_id']; ?>">
                                                     <input type="hidden" name="is_active" value="<?php echo $station['is_active'] ? 0 : 1; ?>">
                                                     <input type="hidden" name="assigned_date" value="<?php echo htmlspecialchars($date); ?>">
                                                     <input type="hidden" name="toggle_station" value="1">
-                                                    <button type="button" onclick="openToggleConfirmModal(<?php echo $station['station_id']; ?>, '<?php echo htmlspecialchars($station['station_name']); ?>', <?php echo $station['is_active'] ? 'true' : 'false'; ?>)" class="action-btn <?php echo $station['is_active'] ? 'btn-secondary' : 'btn-success'; ?>" title="<?php echo $station['is_active'] ? 'Deactivate Station' : 'Activate Station'; ?>">
-                                                        <i class="fas <?php echo $station['is_active'] ? 'fa-power-off' : 'fa-play'; ?>"></i>
-                                                    </button>
                                                 </form>
                                             </div>
                                         </td>
@@ -1230,7 +1247,7 @@ $activePage = 'staff_assignments';
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="9" class="text-center">
+                                    <td colspan="8" class="text-center">
                                         <div style="padding: 30px 0;">
                                             <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #f39c12; margin-bottom: 15px;"></i>
                                             <h5 style="color: #666; margin-bottom: 10px;">No Station Assignments Found</h5>
