@@ -10,6 +10,15 @@ $root_path = dirname(dirname(dirname(dirname(__DIR__))));
 require_once $root_path . '/config/production_security.php';
 require_once $root_path . '/config/session/employee_session.php';
 
+// Add cache-busting headers to ensure changes reflect immediately
+if (!headers_sent()) {
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    // Disable Cloudflare's analytics tracking to prevent beacon errors
+    header('CF-Analytics: false');
+}
+
 // If user is not logged in, bounce to login
 if (!isset($_SESSION['employee_id']) || !isset($_SESSION['role'])) {
     // Clean output buffer if it exists
@@ -364,6 +373,10 @@ $activePage = 'staff_assignments';
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <!-- Prevent caching to ensure changes reflect immediately -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
             <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
@@ -372,8 +385,8 @@ $activePage = 'staff_assignments';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Station Staff Assignments | CHO Koronadal</title>
     <!-- CSS Files -->
-    <link rel="stylesheet" href="../../../../assets/css/sidebar.css">
-    <link rel="stylesheet" href="../../../../assets/css/dashboard.css">
+    <link rel="stylesheet" href="../../../../assets/css/sidebar.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="../../../../assets/css/dashboard.css?v=<?php echo time(); ?>">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
