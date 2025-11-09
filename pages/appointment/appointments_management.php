@@ -220,6 +220,133 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'checkin_appointment_with_priority' && !empty($appointment_id) && is_numeric($appointment_id)) {
+        try {
+            // Start transaction
+            $conn->begin_transaction();
+
+            // Get priority and special categories from QR scanner
+            $priority = $_POST['priority'] ?? 'standard';
+            $special_categories = $_POST['special_categories'] ?? '';
+            $notes = $_POST['notes'] ?? '';
+
+            // Get appointment details
+            $apt_stmt = $conn->prepare("SELECT a.*, p.first_name, p.last_name FROM appointments a JOIN patients p ON a.patient_id = p.patient_id WHERE a.appointment_id = ? AND a.status = 'confirmed'");
+            $apt_stmt->bind_param("i", $appointment_id);
+            $apt_stmt->execute();
+            $appointment_result = $apt_stmt->get_result();
+            $appointment_data = $appointment_result->fetch_assoc();
+
+            if (!$appointment_data) {
+                throw new Exception("Appointment not found or not in confirmed status.");
+            }
+
+            // Determine attendance status based on check-in time vs scheduled time
+            $scheduled_datetime = $appointment_data['scheduled_date'] . ' ' . $appointment_data['scheduled_time'];
+            $scheduled_timestamp = strtotime($scheduled_datetime);
+            $current_timestamp = time();
+
+            $attendance_status = 'on_time'; // default
+
+            // Check if early (before scheduled time)
+            if ($current_timestamp < $scheduled_timestamp) {
+                $attendance_status = 'early';
+            }
+            // Check if late (after the scheduled hour)
+            else if ($current_timestamp > ($scheduled_timestamp + 3600)) { // 3600 seconds = 1 hour
+                $attendance_status = 'late';
+            }
+
+            // Update appointment status to checked_in 
+            $update_stmt = $conn->prepare("UPDATE appointments SET status = 'checked_in' WHERE appointment_id = ?");
+            $update_stmt->bind_param("i", $appointment_id);
+            $update_stmt->execute();
+
+            // Create enhanced remarks with QR verification info
+            $remarks = "QR-verified check-in - Priority: " . ucfirst($priority);
+            if (!empty($special_categories)) {
+                $remarks .= ", Special Categories: " . $special_categories;
+            }
+            if (!empty($notes)) {
+                $remarks .= ", Notes: " . $notes;
+            }
+
+            // Create new visit record with enhanced data from QR check-in
+            $visit_stmt = $conn->prepare("INSERT INTO visits (patient_id, facility_id, appointment_id, visit_date, time_in, attending_employee_id, visit_status, attendance_status, remarks) VALUES (?, ?, ?, CURDATE(), NOW(), ?, 'ongoing', ?, ?)");
+            $visit_stmt->bind_param("iiiiss", $appointment_data['patient_id'], $appointment_data['facility_id'], $appointment_id, $employee_id, $attendance_status, $remarks);
+            $visit_stmt->execute();
+
+            $visit_id = $conn->insert_id;
+
+            // Map priority to queue priority level
+            $queue_priority = 'normal';
+            switch($priority) {
+                case 'emergency':
+                    $queue_priority = 'emergency';
+                    break;
+                case 'urgent':
+                    $queue_priority = 'urgent';
+                    break;
+                case 'low':
+                    $queue_priority = 'low';
+                    break;
+                default:
+                    $queue_priority = 'normal';
+                    break;
+            }
+
+            // Add patient to station_1_queue for triage processing with priority
+            $queue_stmt = $conn->prepare("
+                INSERT INTO station_1_queue (
+                    patient_id, username, visit_id, appointment_id, service_id,
+                    queue_type, station_id, priority_level, status, time_in, remarks
+                ) VALUES (?, ?, ?, ?, ?, 'triage', 1, ?, 'waiting', NOW(), ?)
+            ");
+            
+            // Create queue remarks
+            $queue_remarks = "QR Check-in - Priority: " . ucfirst($priority);
+            if (!empty($special_categories)) {
+                $queue_remarks .= ", Special Categories: " . $special_categories;
+            }
+            if (!empty($notes)) {
+                $queue_remarks .= ", Notes: " . $notes;
+            }
+            
+            $queue_stmt->bind_param("isiisss", 
+                $appointment_data['patient_id'], 
+                $appointment_data['first_name'] . ' ' . $appointment_data['last_name'],
+                $visit_id, 
+                $appointment_id, 
+                $appointment_data['service_id'],
+                $queue_priority,
+                $queue_remarks
+            );
+            $queue_stmt->execute();
+
+            $queue_entry_id = $conn->insert_id;
+
+            // Log the QR-verified check-in
+            $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, employee_id, action, reason, timestamp) VALUES (?, ?, 'check_in_qr', ?, NOW())");
+            $log_reason = "QR-verified check-in - Priority: " . ucfirst($priority) . ", Attendance: " . ucfirst($attendance_status);
+            if (!empty($special_categories)) {
+                $log_reason .= ", Special Categories: " . $special_categories;
+            }
+            $log_stmt->bind_param("iis", $appointment_id, $employee_id, $log_reason);
+            $log_stmt->execute();
+
+            $conn->commit();
+
+            // Generate queue number for display
+            $queue_number = 'T-' . str_pad($queue_entry_id, 3, '0', STR_PAD_LEFT);
+            
+            $message = "Patient " . htmlspecialchars($appointment_data['first_name'] . ' ' . $appointment_data['last_name']) . " successfully checked in with QR verification. Queue Number: " . $queue_number . " - Priority: " . ucfirst($priority) . ", Attendance: " . ucfirst($attendance_status);
+            
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Error during check-in: " . $e->getMessage();
+        }
+    }
+
     if ($action === 'complete_appointment' && !empty($appointment_id) && is_numeric($appointment_id)) {
         try {
             // Start transaction
