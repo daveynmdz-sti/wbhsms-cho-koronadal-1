@@ -4266,10 +4266,11 @@ function getSortIcon($column, $current_sort, $current_direction)
                 document.getElementById('errorModal').style.display = 'none';
             }
 
-            // Quick check-in function (direct check-in modal)
+            // Quick check-in function (direct check-in modal) - Fixed
             function quickCheckInAppointment(appointmentId) {
+                console.log('Quick check-in for appointment:', appointmentId);
                 document.getElementById('checkInAppointmentId').value = appointmentId;
-                openModal('checkInModal');
+                document.getElementById('checkInModal').style.display = 'block';
             }
 
             // Enhanced check-in function (original function for backward compatibility)
