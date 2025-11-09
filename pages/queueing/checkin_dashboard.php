@@ -125,6 +125,9 @@ $search_filter = sanitize_input($_GET['search'] ?? '');
 $time_slot = sanitize_input($_GET['time_slot'] ?? '');
 $date_filter = sanitize_input($_GET['date'] ?? date('Y-m-d'));
 
+// Debug the input parameters
+error_log("DEBUG: Checkin dashboard parameters - search: '$search_filter', time_slot: '$time_slot', date: '$date_filter'");
+
 // Generate time slots from 8:00 AM to 4:00 PM
 $time_slots = [];
 for ($hour = 8; $hour <= 16; $hour++) {
@@ -182,9 +185,15 @@ $base_query .= " ORDER BY a.scheduled_time ASC, a.created_at ASC";
 
 // Execute query
 try {
+    error_log("DEBUG: Executing appointment query with params: " . json_encode($params));
+    error_log("DEBUG: Query: " . $base_query);
+    
     $stmt = $pdo->prepare($base_query);
     $stmt->execute($params);
     $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    error_log("DEBUG: Found " . count($appointments) . " appointments for date $date_filter");
+    
 } catch (Exception $e) {
     error_log('Error fetching appointments: ' . $e->getMessage());
     $appointments = [];
