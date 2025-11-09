@@ -2741,8 +2741,14 @@ function getSortIcon($column, $current_sort, $current_direction)
                                                         <i class="fas fa-eye"></i>
                                                     </button>
                                                     <?php if ($appointment['status'] === 'confirmed'): ?>
+                                                        <!-- QR Scanner Check In -->
+                                                        <button onclick="openQRScannerModal(<?php echo $appointment['appointment_id']; ?>)"
+                                                            class="btn btn-sm btn-info" title="QR Code Check In">
+                                                            <i class="fas fa-qrcode"></i>
+                                                        </button>
+                                                        <!-- Quick Manual Check In -->
                                                         <button onclick="checkInAppointment(<?php echo $appointment['appointment_id']; ?>)"
-                                                            class="btn btn-sm btn-success" title="Check In Patient">
+                                                            class="btn btn-sm btn-success" title="Quick Check In">
                                                             <i class="fas fa-sign-in-alt"></i>
                                                         </button>
                                                     <?php endif; ?>
