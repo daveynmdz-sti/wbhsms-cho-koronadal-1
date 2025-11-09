@@ -281,21 +281,24 @@ try {
     // Debug: Log appointment insertion details
     error_log("DEBUG: About to insert appointment - patient_id: $patient_id, facility_id: $facility_id, service_id: $service_id, date: $appointment_date, time: $appointment_time");
     
+    // Generate verification code for QR security
+    $verification_code = strtoupper(substr(md5(uniqid($patient_id . time(), true)), 0, 8));
+    
     // Insert appointment with confirmed status (auto-confirm for better UX)
     $stmt = $conn->prepare("
         INSERT INTO appointments (
             patient_id, facility_id, referral_id, service_id, 
-            scheduled_date, scheduled_time, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'confirmed', NOW())
+            scheduled_date, scheduled_time, status, verification_code, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'confirmed', ?, NOW())
     ");
     
     if (!$stmt) {
         throw new Exception('Failed to prepare appointment statement: ' . $conn->error);
     }
     
-    $stmt->bind_param("iiiiss", 
+    $stmt->bind_param("iiiisss", 
         $patient_id, $facility_id, $referral_id, $service_id,
-        $appointment_date, $appointment_time
+        $appointment_date, $appointment_time, $verification_code
     );
     
     if (!$stmt->execute()) {

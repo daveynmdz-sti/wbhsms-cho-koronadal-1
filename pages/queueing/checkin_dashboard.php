@@ -2411,23 +2411,48 @@ switch ($user_role) {
             // Parse QR data
             let appointmentData;
             try {
-                // Try to parse as JSON first
+                // Try to parse as JSON first (proper QR codes)
                 appointmentData = JSON.parse(qrData);
                 console.log('Parsed QR data:', appointmentData);
+                
+                // Ensure we have the required fields for QR verification
+                if (appointmentData.appointment_id && (appointmentData.qr_token || appointmentData.verification_code)) {
+                    console.log('Valid QR code with token detected');
+                    // Standardize the token field name
+                    if (appointmentData.verification_code && !appointmentData.qr_token) {
+                        appointmentData.qr_token = appointmentData.verification_code;
+                    }
+                } else {
+                    console.log('QR code missing required verification token');
+                    appointmentData.qr_token = null; // Mark as invalid QR
+                }
             } catch (e) {
-                // If not JSON, treat as plain appointment ID
-                console.log('QR data is not JSON, treating as appointment ID');
-                appointmentData = { appointment_id: qrData.replace(/^APT-/i, '') };
+                // If not JSON, treat as plain appointment ID (legacy or manual)
+                console.log('QR data is not JSON, treating as basic appointment ID');
+                const cleanId = qrData.replace(/^APT-/i, '');
+                appointmentData = { 
+                    appointment_id: cleanId,
+                    qr_token: null // No token = requires additional verification
+                };
             }
             
             // Display scan result
             const scanResult = document.getElementById('scanResult');
-            scanResult.innerHTML = `
-                <div class="alert alert-info">
-                    <i class="fas fa-qrcode"></i> <strong>QR Code Detected</strong><br>
-                    <small>Verifying appointment details...</small>
-                </div>
-            `;
+            if (appointmentData.qr_token) {
+                scanResult.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-qrcode"></i> <strong>QR Code Detected</strong><br>
+                        <small>Verifying authenticity...</small>
+                    </div>
+                `;
+            } else {
+                scanResult.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-qrcode"></i> <strong>Basic QR Code Detected</strong><br>
+                        <small>Additional verification required for security...</small>
+                    </div>
+                `;
+            }
             scanResult.style.display = 'block';
             
             // Verify the scanned appointment
@@ -2436,17 +2461,351 @@ switch ($user_role) {
 
         function verifyScannedAppointment(appointmentData) {
             console.log('Verifying appointment:', appointmentData);
+            console.log('Current appointment ID:', currentAppointmentId);
             
-            // Check if the scanned appointment matches the current appointment being checked in
+            // Check if this is from QR scan (has qr_token) or manual entry
+            const isQRScan = appointmentData.qr_token || appointmentData.verification_code;
             const scannedAppointmentId = parseInt(appointmentData.appointment_id);
             
+            console.log('Scanned appointment ID (parsed):', scannedAppointmentId);
+            console.log('Is QR scan:', isQRScan);
+            console.log('Comparison result:', scannedAppointmentId === currentAppointmentId);
+            
             if (scannedAppointmentId === currentAppointmentId) {
-                // Perfect match!
-                showAppointmentMatch(appointmentData);
+                if (isQRScan) {
+                    // QR scan - verify the token against database
+                    verifyQRToken(appointmentData);
+                } else {
+                    // Manual entry - require additional verification
+                    requireAdditionalVerification(appointmentData);
+                }
             } else {
                 // No match - show error
+                console.log('Appointment mismatch detected!');
                 showAppointmentMismatch(appointmentData, scannedAppointmentId);
             }
+        }
+
+        function verifyQRToken(appointmentData) {
+            console.log('Verifying QR token for appointment:', appointmentData);
+            
+            // Show loading state
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="scanner-status scanning">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <strong>Verifying QR Code...</strong>
+                    <p>Checking authenticity against database</p>
+                </div>
+            `;
+            
+            // Verify token with the server
+            const formData = new FormData();
+            formData.append('action', 'verify_qr_token');
+            formData.append('appointment_id', currentAppointmentId);
+            formData.append('qr_token', appointmentData.qr_token || appointmentData.verification_code);
+            
+            fetch('../../api/verify_appointment_qr.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('QR token verified successfully');
+                    showAppointmentMatch(appointmentData);
+                } else {
+                    console.log('QR token verification failed:', data.message);
+                    showQRVerificationError(data.message || 'Invalid QR code - this may be forged or expired');
+                }
+            })
+            .catch(error => {
+                console.error('QR verification error:', error);
+                showQRVerificationError('Unable to verify QR code. Please try manual entry.');
+            });
+        }
+
+        function requireAdditionalVerification(appointmentData) {
+            console.log('Requiring verification code for manual entry');
+            
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="verification-required">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-shield-alt"></i> <strong>Verification Required</strong><br>
+                        <small>Please enter the verification code from your appointment confirmation</small>
+                    </div>
+                    
+                    <div class="verification-form">
+                        <div class="form-group" style="margin: 15px 0;">
+                            <label for="verificationCodeInput" style="display: block; margin-bottom: 5px; font-weight: 600;">
+                                <i class="fas fa-key"></i> Verification Code:
+                            </label>
+                            <input type="text" 
+                                   id="verificationCodeInput" 
+                                   placeholder="Enter 8-character code (e.g., A1B2C3D4)"
+                                   style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; text-transform: uppercase; letter-spacing: 2px; text-align: center; font-family: monospace;"
+                                   maxlength="8"
+                                   pattern="[A-Z0-9]{8}">
+                            <small style="display: block; margin-top: 5px; color: #666;">
+                                <i class="fas fa-info-circle"></i> Find this code in your appointment confirmation or QR code
+                            </small>
+                        </div>
+                        
+                        <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin: 15px 0; font-size: 14px;">
+                            <i class="fas fa-lightbulb" style="color: #1976d2;"></i> 
+                            <strong>Where to find your verification code:</strong>
+                            <ul style="margin: 8px 0 0 20px; padding: 0;">
+                                <li>In your appointment confirmation email/SMS</li>
+                                <li>On your printed appointment slip</li>
+                                <li>Ask staff if you can't locate it</li>
+                            </ul>
+                        </div>
+                        
+                        <div style="text-align: center; margin-top: 20px;">
+                            <button type="button" 
+                                    class="btn btn-primary" 
+                                    onclick="processVerificationCode()"
+                                    style="padding: 12px 25px; font-size: 16px;">
+                                <i class="fas fa-check"></i> Verify Code
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-secondary" 
+                                    onclick="cancelVerification()"
+                                    style="padding: 12px 25px; margin-left: 10px; font-size: 16px;">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        </div>
+                        
+                        <div style="text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                            <button type="button" 
+                                    class="btn btn-link" 
+                                    onclick="requestStaffHelp()"
+                                    style="color: #007bff; text-decoration: none; font-size: 14px;">
+                                <i class="fas fa-hands-helping"></i> Need staff assistance?
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            scanResult.style.display = 'block';
+            
+            // Auto-format and validate input
+            document.getElementById('verificationCodeInput').addEventListener('input', function(e) {
+                let value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                e.target.value = value;
+                
+                // Enable/disable verify button based on length
+                const verifyBtn = document.querySelector('button[onclick="processVerificationCode()"]');
+                if (value.length === 8) {
+                    verifyBtn.style.background = '#28a745';
+                    verifyBtn.disabled = false;
+                } else {
+                    verifyBtn.style.background = '#6c757d';
+                    verifyBtn.disabled = false; // Keep enabled for partial validation
+                }
+            });
+            
+            // Allow Enter key to submit
+            document.getElementById('verificationCodeInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    processVerificationCode();
+                }
+            });
+            
+            // Focus the input
+            setTimeout(() => {
+                document.getElementById('verificationCodeInput').focus();
+            }, 100);
+        }
+
+        function processVerificationCode() {
+            const verificationCode = document.getElementById('verificationCodeInput').value.trim().toUpperCase();
+            
+            if (!verificationCode) {
+                showVerificationError('Please enter a verification code');
+                return;
+            }
+            
+            if (verificationCode.length !== 8) {
+                showVerificationError('Verification code must be exactly 8 characters');
+                return;
+            }
+            
+            // Show loading state
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="scanner-status scanning">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <strong>Verifying Code...</strong>
+                    <p>Checking verification code against appointment records</p>
+                </div>
+            `;
+            
+            // Verify code with the server
+            const formData = new FormData();
+            formData.append('action', 'verify_verification_code');
+            formData.append('appointment_id', currentAppointmentId);
+            formData.append('verification_code', verificationCode);
+            
+            fetch('../../api/verify_appointment_qr.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Verification code verified successfully');
+                    showAppointmentMatch({ appointment_id: currentAppointmentId, verification_method: 'verification_code' });
+                } else {
+                    console.log('Verification code verification failed:', data.message);
+                    showCodeVerificationError(data.message || 'Invalid verification code');
+                }
+            })
+            .catch(error => {
+                console.error('Verification code error:', error);
+                showCodeVerificationError('Unable to verify code. Please try again or contact staff.');
+            });
+        }
+
+        function showCodeVerificationError(message) {
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-triangle"></i> <strong>❌ Invalid Verification Code!</strong><br>
+                    <small>${message}</small>
+                    <div style="margin-top: 15px;">
+                        <button type="button" 
+                                class="btn btn-info btn-sm" 
+                                onclick="requireAdditionalVerification({ appointment_id: currentAppointmentId })"
+                                style="padding: 8px 15px;">
+                            <i class="fas fa-redo"></i> Try Again
+                        </button>
+                        <button type="button" 
+                                class="btn btn-warning btn-sm" 
+                                onclick="requestStaffHelp()"
+                                style="padding: 8px 15px; margin-left: 10px;">
+                            <i class="fas fa-hands-helping"></i> Get Help
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            scanResult.style.display = 'block';
+        }
+
+        function requestStaffHelp() {
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> <strong>Staff Assistance Required</strong><br>
+                    <p>Please ask a staff member to help locate your verification code.</p>
+                    <div style="background: #e3f2fd; padding: 12px; border-radius: 4px; margin: 10px 0;">
+                        <strong>For Staff:</strong> The verification code can be found in the appointment database 
+                        or can be regenerated if necessary. Use admin verification if the patient cannot locate their code.
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <button type="button" 
+                                class="btn btn-secondary" 
+                                onclick="document.getElementById('scanResult').style.display = 'none'"
+                                style="padding: 8px 15px;">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function cancelVerification() {
+            document.getElementById('scanResult').style.display = 'none';
+        }
+
+        function showQRVerificationError(message) {
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="alert alert-error" style="display: block; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                    <i class="fas fa-exclamation-triangle"></i> <strong>❌ Invalid QR Code!</strong><br>
+                    <small>${message}</small>
+                    <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px; border: 1px solid #ffeaa7; color: #856404;">
+                        <strong>Security Notice:</strong> Only scan QR codes directly from the appointment confirmation.
+                        For manual entry, additional verification will be required.
+                    </div>
+                </div>
+            `;
+            
+            // Make sure the scan result is visible
+            scanResult.style.display = 'block';
+            
+            // Allow user to try again or use manual entry
+            setTimeout(() => {
+                const currentContent = scanResult.innerHTML;
+                if (currentContent.includes('Invalid QR Code')) {
+                    scanResult.innerHTML = currentContent + `
+                        <div style="text-align: center; margin-top: 15px;">
+                            <button type="button" 
+                                    class="btn btn-info" 
+                                    onclick="document.getElementById('manualTab').click()"
+                                    style="padding: 10px 20px; margin-right: 10px;">
+                                <i class="fas fa-keyboard"></i> Use Manual Entry
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-secondary" 
+                                    onclick="document.getElementById('scanResult').style.display = 'none'"
+                                    style="padding: 10px 20px;">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    `;
+                }
+            }, 2000);
+        }
+
+        function showPatientVerificationError(message) {
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="alert alert-error">
+                    <i class="fas fa-user-times"></i> <strong>❌ Verification Failed!</strong><br>
+                    <small>${message}</small>
+                    <div style="margin-top: 15px;">
+                        <button type="button" 
+                                class="btn btn-info btn-sm" 
+                                onclick="requireAdditionalVerification({ appointment_id: currentAppointmentId })"
+                                style="padding: 8px 15px;">
+                            <i class="fas fa-redo"></i> Try Again
+                        </button>
+                        <button type="button" 
+                                class="btn btn-warning btn-sm" 
+                                onclick="contactStaffForHelp()"
+                                style="padding: 8px 15px; margin-left: 10px;">
+                            <i class="fas fa-hands-helping"></i> Get Staff Help
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            scanResult.style.display = 'block';
+        }
+
+        function contactStaffForHelp() {
+            const scanResult = document.getElementById('scanResult');
+            scanResult.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> <strong>Staff Assistance Required</strong><br>
+                    <p>Please ask a staff member to help with manual verification.</p>
+                    <div style="background: #e3f2fd; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                        <strong>Staff Note:</strong> Use admin override function for manual verification when patient details cannot be confirmed.
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <button type="button" 
+                                class="btn btn-secondary" 
+                                onclick="document.getElementById('scanResult').style.display = 'none'"
+                                style="padding: 8px 15px;">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+            `;
         }
 
         function showAppointmentMatch(appointmentData) {
@@ -2477,21 +2836,44 @@ switch ($user_role) {
         }
 
         function showAppointmentMismatch(appointmentData, scannedId) {
+            console.log('Showing appointment mismatch error');
+            
             // Show mismatch error
             const scanResult = document.getElementById('scanResult');
             scanResult.innerHTML = `
-                <div class="alert alert-error">
+                <div class="alert alert-error" style="display: block; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 8px; margin: 10px 0;">
                     <i class="fas fa-exclamation-triangle"></i> <strong>❌ Appointment Mismatch!</strong><br>
                     <small>Expected: Appointment ${currentAppointmentId}<br>
                     Scanned: Appointment ${scannedId}<br>
                     Please scan the correct QR code or use manual entry.</small>
+                    
+                    <div style="text-align: center; margin-top: 15px;">
+                        <button type="button" 
+                                class="btn btn-info" 
+                                onclick="document.getElementById('manualTab').click(); document.getElementById('scanResult').style.display = 'none';"
+                                style="padding: 8px 15px; margin-right: 10px; background: #17a2b8; color: white; border: none; border-radius: 4px;">
+                            <i class="fas fa-keyboard"></i> Use Manual Entry
+                        </button>
+                        <button type="button" 
+                                class="btn btn-secondary" 
+                                onclick="document.getElementById('scanResult').style.display = 'none'"
+                                style="padding: 8px 15px; background: #6c757d; color: white; border: none; border-radius: 4px;">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
                 </div>
             `;
             
-            // Allow user to try again after 5 seconds
+            // Make sure the scan result is visible
+            scanResult.style.display = 'block';
+            
+            // Auto-hide after 15 seconds instead of 8
             setTimeout(() => {
-                document.getElementById('scanResult').style.display = 'none';
-            }, 8000);
+                if (document.getElementById('scanResult').innerHTML.includes('Appointment Mismatch')) {
+                    console.log('Auto-hiding mismatch error message');
+                    document.getElementById('scanResult').style.display = 'none';
+                }
+            }, 15000);
         }
 
         function showEnhancedPrioritySelection() {
@@ -2514,13 +2896,16 @@ switch ($user_role) {
         function verifyManualEntry() {
             const appointmentId = document.getElementById('manualAppointmentId').value.trim();
             if (!appointmentId) {
-                showErrorModal('Please enter an appointment ID');
+                showVerificationError('Please enter an appointment ID');
                 return;
             }
             
             // Remove APT- prefix if present and extract number
             const cleanId = appointmentId.replace(/^APT-/i, '');
-            const appointmentData = { appointment_id: cleanId };
+            const appointmentData = { 
+                appointment_id: cleanId,
+                qr_token: null // No QR token = requires additional verification
+            };
             
             // Verify the manually entered appointment
             verifyScannedAppointment(appointmentData);

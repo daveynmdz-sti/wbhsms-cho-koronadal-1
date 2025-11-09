@@ -59,16 +59,18 @@ try {
         exit();
     }
 
-    // Generate new QR code
+    // Generate new QR code with verification code
+    $verification_code = strtoupper(substr(md5(uniqid($appointment_id . time(), true)), 0, 8));
+    
     $qr_data = json_encode([
-        'type' => 'APPOINTMENT',
-        'appointment_id' => str_pad($appointment_id, 8, '0', STR_PAD_LEFT),
-        'patient_name' => trim($appointment['first_name'] . ' ' . $appointment['last_name']),
-        'facility' => $appointment['facility_name'],
-        'service' => $appointment['service_name'],
-        'date' => $appointment['scheduled_date'],
-        'time' => $appointment['scheduled_time'],
-        'generated' => date('Y-m-d H:i:s')
+        'type' => 'appointment',
+        'appointment_id' => $appointment_id,
+        'patient_id' => $patient_id,
+        'scheduled_date' => $appointment['scheduled_date'],
+        'scheduled_time' => $appointment['scheduled_time'],
+        'facility_id' => $appointment['facility_id'] ?? 1,
+        'generated_at' => date('Y-m-d H:i:s'),
+        'verification_code' => $verification_code
     ]);
 
     // Generate QR code PNG image
@@ -84,12 +86,12 @@ try {
         throw new Exception('Failed to generate QR code image using both methods');
     }
 
-    // Store QR code in database as LONGBLOB
-    $update_stmt = $conn->prepare("UPDATE appointments SET qr_code_path = ? WHERE appointment_id = ?");
-    $update_stmt->bind_param("bi", $qr_png_data, $appointment_id);
+    // Store QR code and verification code in database
+    $update_stmt = $conn->prepare("UPDATE appointments SET qr_code_path = ?, verification_code = ? WHERE appointment_id = ?");
+    $update_stmt->bind_param("bsi", $qr_png_data, $verification_code, $appointment_id);
     
     if (!$update_stmt->execute()) {
-        throw new Exception('Failed to save QR code to database');
+        throw new Exception('Failed to save QR code and verification code to database');
     }
     $update_stmt->close();
 
