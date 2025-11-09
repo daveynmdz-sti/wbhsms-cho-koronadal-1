@@ -457,6 +457,18 @@ $conn->close();
 
 // Function to send appointment confirmation email using the same pattern as OTP emails
 function sendAppointmentConfirmationEmail($patient_info, $appointment_num, $facility_name, $service, $appointment_date, $appointment_time, $referral_id = null, $qr_result = null) {
+    /*
+     * FIXED: QR Code Email Embedding Issue
+     * 
+     * Problem: The qr_code_path column contains binary PNG data, not a file path.
+     * The previous code was trying to use addEmbeddedImage() with binary data, 
+     * which expects a file path.
+     * 
+     * Solution: 
+     * 1. Use addStringEmbeddedImage() if available (PHPMailer 6.2+)
+     * 2. Fallback to creating a temporary file for older PHPMailer versions
+     * 3. Added comprehensive debugging to track QR code data flow
+     */
     try {
         // Get referral information if available
         $referral_num = '';
@@ -487,8 +499,11 @@ function sendAppointmentConfirmationEmail($patient_info, $appointment_num, $faci
         $qr_image_path = '';
         $qr_verification_code = '';
         
+        error_log("DEBUG: QR result passed to email function: " . json_encode($qr_result));
+        
         if ($qr_result && $qr_result['success']) {
             $qr_verification_code = $qr_result['verification_code'] ?? 'N/A';
+            error_log("DEBUG: QR result available with verification code: $qr_verification_code");
             
             // Get QR code from database
             global $conn;
@@ -501,9 +516,14 @@ function sendAppointmentConfirmationEmail($patient_info, $appointment_num, $faci
             $appointment_data = $result->fetch_assoc();
             $stmt->close();
             
+            error_log("DEBUG: Database query for appointment $appointment_id returned: " . ($appointment_data ? 'data found' : 'no data'));
+            
             if ($appointment_data && $appointment_data['qr_code_path']) {
                 $qr_image_cid = 'qr_code_' . $appointment_id;
                 $qr_image_path = $appointment_data['qr_code_path'];
+                
+                // Debug logging
+                error_log("DEBUG: QR code data found in database for appointment $appointment_id, size: " . strlen($qr_image_path) . " bytes");
                 
                 $qr_info_html = '
                         <tr style="border-bottom: 1px solid #e9ecef;">
@@ -523,6 +543,7 @@ function sendAppointmentConfirmationEmail($patient_info, $appointment_num, $faci
                 $qr_info_text = "\nQR Code: Available for seamless check-in\nVerification Code: {$qr_verification_code}";
             } else {
                 // QR data exists but no QR image path
+                error_log("DEBUG: QR result success but no QR image data in database for appointment $appointment_id");
                 $qr_info_html = '
                         <tr style="border-bottom: 1px solid #e9ecef;">
                             <td style="padding: 12px 0; font-weight: 600; color: #0077b6;">QR Code:</td>
@@ -535,6 +556,8 @@ function sendAppointmentConfirmationEmail($patient_info, $appointment_num, $faci
                 
                 $qr_info_text = "\nQR Code: Available for seamless check-in\nVerification Code: {$qr_verification_code}";
             }
+        } else {
+            error_log("DEBUG: QR result failed or not available for email function");
         }
 
         // For development: bypass email if SMTP_PASS is empty or 'disabled'
@@ -718,13 +741,38 @@ This is an automated message. Please do not reply to this email.
 
         // Embed QR code if available
         if (!empty($qr_image_path)) {
+            error_log("DEBUG: Attempting to embed QR code in email, data size: " . strlen($qr_image_path) . " bytes");
             try {
-                // Add QR code as embedded image
-                $mail->addEmbeddedImage($qr_image_path, $qr_image_cid, 'appointment_qr.png', 'base64', 'image/png');
+                // qr_image_path contains binary PNG data, not a file path
+                // Use addStringEmbeddedImage for binary data if available, otherwise create temp file
+                
+                if (method_exists($mail, 'addStringEmbeddedImage')) {
+                    // PHPMailer 6.2+ has addStringEmbeddedImage method for binary data
+                    $mail->addStringEmbeddedImage($qr_image_path, $qr_image_cid, 'appointment_qr.png', 'base64', 'image/png');
+                    error_log("DEBUG: QR code embedded using addStringEmbeddedImage method");
+                } else {
+                    // Fallback: Create temporary file for older PHPMailer versions
+                    $temp_qr_file = tempnam(sys_get_temp_dir(), 'qr_code_') . '.png';
+                    if (file_put_contents($temp_qr_file, $qr_image_path) !== false) {
+                        $mail->addEmbeddedImage($temp_qr_file, $qr_image_cid, 'appointment_qr.png', 'base64', 'image/png');
+                        error_log("DEBUG: QR code embedded using temporary file: $temp_qr_file");
+                        
+                        // Schedule temp file for cleanup after email is sent
+                        register_shutdown_function(function() use ($temp_qr_file) {
+                            if (file_exists($temp_qr_file)) {
+                                unlink($temp_qr_file);
+                            }
+                        });
+                    } else {
+                        error_log("Failed to create temporary QR code file for email attachment");
+                    }
+                }
             } catch (Exception $qr_e) {
                 error_log("Failed to embed QR code in email: " . $qr_e->getMessage());
                 // Continue without QR code if embedding fails
             }
+        } else {
+            error_log("DEBUG: No QR code data available for embedding in email");
         }
 
         $mail->send();

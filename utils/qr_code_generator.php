@@ -91,7 +91,7 @@ class QRCodeGenerator {
      * @param int $appointment_id
      * @return string
      */
-    private static function generateVerificationCode($appointment_id) {
+    public static function generateVerificationCode($appointment_id) {
         return strtoupper(substr(md5($appointment_id . date('Y-m-d') . 'WBHSMS_SECRET'), 0, 8));
     }
     
@@ -105,20 +105,23 @@ class QRCodeGenerator {
      */
     public static function saveQRToAppointment($appointment_id, $qr_image_data, $connection) {
         try {
+            // Generate the verification code that will be used in the QR
+            $qr_verification_code = self::generateVerificationCode($appointment_id);
+            
             if ($connection instanceof PDO) {
-                // PDO version
+                // PDO version - Update both QR code and verification code
                 $stmt = $connection->prepare("
                     UPDATE appointments 
-                    SET qr_code_path = ? 
+                    SET qr_code_path = ?, verification_code = ? 
                     WHERE appointment_id = ?
                 ");
-                return $stmt->execute([$qr_image_data, $appointment_id]);
+                return $stmt->execute([$qr_image_data, $qr_verification_code, $appointment_id]);
                 
             } elseif ($connection instanceof mysqli) {
-                // MySQLi version - fix for binary data
+                // MySQLi version - Update both QR code and verification code
                 $stmt = $connection->prepare("
                     UPDATE appointments 
-                    SET qr_code_path = ? 
+                    SET qr_code_path = ?, verification_code = ? 
                     WHERE appointment_id = ?
                 ");
                 
@@ -128,11 +131,13 @@ class QRCodeGenerator {
                 }
                 
                 // Bind parameters - use 's' for string data and 'i' for integer
-                $stmt->bind_param("si", $qr_image_data, $appointment_id);
+                $stmt->bind_param("ssi", $qr_image_data, $qr_verification_code, $appointment_id);
                 $result = $stmt->execute();
                 
                 if (!$result) {
                     error_log("Execute failed: " . $stmt->error);
+                } else {
+                    error_log("DEBUG: Updated appointment $appointment_id with QR verification code: $qr_verification_code");
                 }
                 
                 $stmt->close();

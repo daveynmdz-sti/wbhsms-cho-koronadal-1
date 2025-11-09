@@ -79,9 +79,28 @@ function verifyQRToken() {
     // Verify the QR token
     $token_valid = false;
     
+    // Debug: Log what we're comparing
+    error_log("DEBUG QR Verification - Appointment ID: $appointment_id");
+    error_log("DEBUG QR Verification - Provided token: '$qr_token'");
+    error_log("DEBUG QR Verification - Stored verification_code: '{$appointment['verification_code']}'");
+    
     // Check if it matches the stored verification code
     if ($appointment['verification_code'] && $appointment['verification_code'] === $qr_token) {
         $token_valid = true;
+        error_log("DEBUG QR Verification - Token matches stored verification code");
+    } else {
+        error_log("DEBUG QR Verification - Token does NOT match stored verification code");
+        
+        // Additional debugging - try regenerating the expected code for today's date
+        // Include the QR code generator for verification code validation
+        require_once dirname(__DIR__) . '/utils/qr_code_generator.php';
+        $expected_qr_code = QRCodeGenerator::generateVerificationCode($appointment_id);
+        error_log("DEBUG QR Verification - Expected QR code for today: '$expected_qr_code'");
+        
+        if ($expected_qr_code === $qr_token) {
+            $token_valid = true;
+            error_log("DEBUG QR Verification - Token matches expected QR code pattern");
+        }
     }
     
     if (!$token_valid) {

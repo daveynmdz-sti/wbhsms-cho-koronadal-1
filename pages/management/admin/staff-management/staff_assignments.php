@@ -1454,12 +1454,33 @@ $activePage = 'staff_assignments';
     <script>
         // Employee data organized by role (with error handling)
         let employeesByRole = {};
+        let stationsData = [];
+        
         try {
-            employeesByRole = <?php echo json_encode($employeesByRole, JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS); ?>;
+            employeesByRole = <?php echo json_encode($employeesByRole, JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE); ?>;
         } catch (e) {
             console.error('Error parsing employeesByRole:', e);
             employeesByRole = {};
         }
+        
+        try {
+            stationsData = <?php echo json_encode($stations, JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE); ?>;
+            if (!Array.isArray(stationsData)) {
+                console.warn('Stations data is not an array, defaulting to empty array');
+                stationsData = [];
+            }
+        } catch (e) {
+            console.error('Error parsing stations data:', e);
+            stationsData = [];
+        }
+        
+        const currentDate = <?php echo json_encode($date); ?>;
+        
+        // Add global error handler for JavaScript errors
+        window.addEventListener('error', function(e) {
+            console.error('JavaScript Error:', e.error);
+            console.error('Error details:', e.filename, e.lineno, e.colno);
+        });
         
         // Format role names to proper title case (JavaScript equivalent of PHP function)
         function formatRoleName(role) {
@@ -1563,7 +1584,7 @@ $activePage = 'staff_assignments';
                     const employeeName = selectedOption.textContent;
                     
                     // Check for conflicts (same function, but for reassignment)
-                    if (checkEmployeeConflicts(selectedEmployeeId, stationName, '<?php echo $date; ?>', '08:00', '17:00')) {
+                    if (checkEmployeeConflicts(selectedEmployeeId, stationName, currentDate, '08:00', '17:00')) {
                         // Show reassignment-specific warning
                         showReassignmentWarning(
                             employeeName,
@@ -1614,7 +1635,7 @@ $activePage = 'staff_assignments';
         // Check for assignment conflicts before showing assign modal
         function checkEmployeeConflicts(employeeId, stationName, startDate, shiftStart, shiftEnd) {
             // Get all current assignments to check for conflicts
-            const allAssignments = <?php echo json_encode($stations); ?>;
+            const allAssignments = stationsData;
             
             for (let i = 0; i < allAssignments.length; i++) {
                 const assignment = allAssignments[i];
@@ -1647,7 +1668,7 @@ $activePage = 'staff_assignments';
         // Show reassignment conflict warning
         function showReassignmentWarning(employeeName, targetStation) {
             // Find the employee's current assignment
-            const allAssignments = <?php echo json_encode($stations); ?>;
+            const allAssignments = stationsData;
             let currentAssignment = null;
             
             for (let i = 0; i < allAssignments.length; i++) {
@@ -1683,7 +1704,7 @@ $activePage = 'staff_assignments';
                     const employeeName = selectedOption.textContent;
                     
                     // Check for conflicts
-                    if (checkEmployeeConflicts(selectedEmployeeId, stationName, '<?php echo $date; ?>', '08:00', '17:00')) {
+                    if (checkEmployeeConflicts(selectedEmployeeId, stationName, currentDate, '08:00', '17:00')) {
                         // Conflict found - warning modal will show
                         this.value = ''; // Reset selection
                         return false;
