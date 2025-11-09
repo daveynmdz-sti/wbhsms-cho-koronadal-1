@@ -186,6 +186,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $visit_id = $conn->insert_id;
 
+            // Add patient to station_1_queue for triage processing
+            $queue_stmt = $conn->prepare("
+                INSERT INTO station_1_queue (
+                    patient_id, username, visit_id, appointment_id, service_id,
+                    queue_type, station_id, priority_level, status, time_in
+                ) VALUES (?, ?, ?, ?, ?, 'triage', 1, 'normal', 'waiting', NOW())
+            ");
+            $username = $appointment_data['first_name'] . ' ' . $appointment_data['last_name'];
+            $service_id = $appointment_data['service_id'] ?? 1; // Default to service 1 if not set
+            $queue_stmt->bind_param("isiii", 
+                $appointment_data['patient_id'], 
+                $username,
+                $visit_id, 
+                $appointment_id, 
+                $service_id
+            );
+            $queue_stmt->execute();
+
+            $queue_entry_id = $conn->insert_id;
+
             // Log the check-in in appointment_logs
             $log_stmt = $conn->prepare("INSERT INTO appointment_logs (appointment_id, patient_id, action, old_status, new_status, reason, created_by_type, created_by_id) VALUES (?, ?, 'updated', 'confirmed', 'checked_in', ?, 'employee', ?)");
             $log_reason = "Patient checked in for appointment - Attendance: " . ucfirst($attendance_status);
@@ -193,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $log_stmt->execute();
 
             $conn->commit();
-            $message = "Patient " . htmlspecialchars($appointment_data['first_name'] . ' ' . $appointment_data['last_name']) . " checked in successfully. Visit ID: " . $visit_id . " (Attendance: " . ucfirst($attendance_status) . ")";
+            $message = "Patient " . htmlspecialchars($appointment_data['first_name'] . ' ' . $appointment_data['last_name']) . " checked in successfully. Visit ID: " . $visit_id . ", Added to Station 1 Queue (Entry ID: " . $queue_entry_id . ") - Attendance: " . ucfirst($attendance_status);
         } catch (Exception $e) {
             $conn->rollback();
             $error = "Failed to check in patient: " . $e->getMessage();

@@ -342,27 +342,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 error_log("No service_id found for appointment {$appointment_id}, using default service_id: 1");
             }
             
-            // Determine triage station (manual override or automatic load balancing)
-            $manual_station = sanitize_input($_POST['triage_station'] ?? 'auto');
-            
-            if ($manual_station === 'auto' || empty($manual_station)) {
-                // Use automatic load balancing
-                $station_id = getOptimalTriageStation($pdo, $service_id);
-                $assignment_method = 'auto';
-            } else {
-                // Manual station selection
-                $requested_station = intval($manual_station);
-                if ($requested_station >= 1 && $requested_station <= 3) {
-                    $station_id = $requested_station;
-                    $assignment_method = 'manual';
-                } else {
-                    // Invalid station, fall back to auto
-                    $station_id = getOptimalTriageStation($pdo, $service_id);
-                    $assignment_method = 'auto_fallback';
-                    error_log("Invalid triage station requested: {$manual_station}, falling back to auto assignment");
-                }
-            }
-            
             // Map priority levels to queue format (database uses: normal, priority, emergency)
             $priority_mapping = [
                 'emergency' => 'emergency',
@@ -372,52 +351,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
             $mapped_priority = $priority_mapping[$priority] ?? 'normal';
             
-            // Generate queue number and code
-            $queue_info = generateQueueNumber($pdo, $station_id, $mapped_priority);
+            // Add patient directly to station_1_queue (simplified approach)
+            $username = $appointment_data['first_name'] . ' ' . $appointment_data['last_name'];
             
-            // Add patient to the optimal triage station queue
-            $queue_result = addToStationQueue(
-                $pdo,
-                $station_id,
-                $appointment_data['patient_id'],
-                $appointment_data['patient_id'], // Using patient_id as username fallback
-                $visit_id,
-                $appointment_id,
+            $queue_stmt = $pdo->prepare("
+                INSERT INTO station_1_queue (
+                    patient_id, username, visit_id, appointment_id, service_id,
+                    queue_type, station_id, priority_level, status, time_in
+                ) VALUES (?, ?, ?, ?, ?, 'triage', 1, ?, 'waiting', NOW())
+            ");
+            
+            $queue_result = $queue_stmt->execute([
+                $appointment_data['patient_id'], 
+                $username,
+                $visit_id, 
+                $appointment_id, 
                 $service_id,
-                'triage', // Queue type for triage
                 $mapped_priority
-            );
+            ]);
             
-            if (!$queue_result['success']) {
-                throw new Exception("Failed to add patient to triage queue: " . ($queue_result['message'] ?? 'Unknown error'));
+            if (!$queue_result) {
+                throw new Exception("Failed to add patient to Station 1 queue");
             }
+            
+            $queue_entry_id = $pdo->lastInsertId();
             
             // Commit transaction
             $pdo->commit();
             
             $priority_label = ucfirst($priority);
-            $queue_number = $queue_info['queue_number'];
-            $queue_code = $queue_info['queue_code'];
-            $station_name = "Triage Station {$station_id}";
+            $station_name = "Station 1 (Triage)";
             
-            // Create assignment method message
-            $assignment_info = '';
-            switch ($assignment_method) {
-                case 'manual':
-                    $assignment_info = ' (Manually Selected)';
-                    break;
-                case 'auto':
-                    $assignment_info = ' (Auto-Assigned)';
-                    break;
-                case 'auto_fallback':
-                    $assignment_info = ' (Auto-Assigned - Invalid Station Requested)';
-                    break;
-            }
-            
-            $message = "Patient successfully checked in with {$priority_label} priority! Assigned to {$station_name}{$assignment_info} - Queue Number: {$queue_number} (Code: {$queue_code})";
+            $message = "Patient successfully checked in with {$priority_label} priority! Added to {$station_name} - Queue Entry ID: {$queue_entry_id}";
             
             // Log the successful check-in for debugging
-            error_log("Successful check-in - Appointment ID: {$appointment_id}, Visit ID: {$visit_id}, Station: {$station_id} ({$assignment_method}), Queue Number: {$queue_number}");
+            error_log("Successful check-in - Appointment ID: {$appointment_id}, Visit ID: {$visit_id}, Queue Entry ID: {$queue_entry_id}, Priority: {$mapped_priority}");
             
         } catch (Exception $e) {
             // Rollback transaction

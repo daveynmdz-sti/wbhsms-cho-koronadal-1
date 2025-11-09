@@ -414,7 +414,7 @@ $patient_id = get_patient_session('patient_id');
                 
                 // Use universal path function for API calls
                 const basePath = getApiBasePath();
-                const apiUrl = `${basePath}/api/billing/patient/get_invoice_details.php?billing_id=${billingId}`;
+                const apiUrl = basePath ? `${basePath}/api/billing/patient/get_invoice_details.php?billing_id=${billingId}` : `/api/billing/patient/get_invoice_details.php?billing_id=${billingId}`;
                 console.log('API URL:', apiUrl);
                 
                 const response = await fetch(apiUrl, {
@@ -638,7 +638,7 @@ $patient_id = get_patient_session('patient_id');
             let projectRoot = '';
             for (let i = 0; i < pathParts.length; i++) {
                 if (pathParts[i] === 'pages') {
-                    projectRoot = pathParts.slice(0, i).join('/') || '/';
+                    projectRoot = pathParts.slice(0, i).join('/');
                     break;
                 }
             }
@@ -647,12 +647,19 @@ $patient_id = get_patient_session('patient_id');
             if (!projectRoot && currentPath.includes('wbhsms-cho-koronadal-1')) {
                 const index = currentPath.indexOf('wbhsms-cho-koronadal-1');
                 projectRoot = currentPath.substring(0, index + 'wbhsms-cho-koronadal-1'.length);
-            } else if (!projectRoot) {
-                // Fallback for production environments
+            }
+            
+            // Ensure we have a proper root path
+            if (!projectRoot) {
+                // For production environments, use relative path from domain root
                 projectRoot = '';
             }
             
-            return projectRoot;
+            // Ensure no trailing slash and proper formatting
+            projectRoot = projectRoot.replace(/\/+$/, '');
+            
+            // If projectRoot is empty, don't add leading slash to avoid double slash
+            return projectRoot || '';
         }
 
         function downloadReceipt(billingId) {
@@ -694,7 +701,7 @@ $patient_id = get_patient_session('patient_id');
         function viewReceipt(receiptId) {
             console.log('Opening receipt in popup window:', receiptId);
             const basePath = getApiBasePath();
-            const receiptUrl = `${basePath}/api/billing/patient/view_receipt.php?receipt_id=${receiptId}`;
+            const receiptUrl = basePath ? `${basePath}/api/billing/patient/view_receipt.php?receipt_id=${receiptId}` : `/api/billing/patient/view_receipt.php?receipt_id=${receiptId}`;
             
             // Open in popup window optimized for receipts
             const popup = window.open(
@@ -717,7 +724,7 @@ $patient_id = get_patient_session('patient_id');
             const billingId = new URLSearchParams(window.location.search).get('billing_id');
             if (billingId) {
                 const basePath = getApiBasePath();
-                const printUrl = `${basePath}/api/billing/patient/view_invoice.php?billing_id=${billingId}&format=html`;
+                const printUrl = basePath ? `${basePath}/api/billing/patient/view_invoice.php?billing_id=${billingId}&format=html` : `/api/billing/patient/view_invoice.php?billing_id=${billingId}&format=html`;
                 console.log('Print URL:', printUrl);
                 window.open(printUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
             } else {
@@ -730,7 +737,7 @@ $patient_id = get_patient_session('patient_id');
             const billingId = new URLSearchParams(window.location.search).get('billing_id');
             if (billingId) {
                 const basePath = getApiBasePath();
-                const downloadUrl = `${basePath}/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=pdf`;
+                const downloadUrl = basePath ? `${basePath}/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=pdf` : `/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=pdf`;
                 console.log('Download URL:', downloadUrl);
                 
                 // Create a temporary link element to trigger download
@@ -747,7 +754,7 @@ $patient_id = get_patient_session('patient_id');
             const billingId = new URLSearchParams(window.location.search).get('billing_id');
             if (billingId) {
                 const basePath = getApiBasePath();
-                const downloadUrl = `${basePath}/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=html`;
+                const downloadUrl = basePath ? `${basePath}/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=html` : `/api/billing/patient/download_invoice.php?billing_id=${billingId}&format=html`;
                 console.log('Download HTML URL:', downloadUrl);
                 
                 // Create a temporary link element to trigger download

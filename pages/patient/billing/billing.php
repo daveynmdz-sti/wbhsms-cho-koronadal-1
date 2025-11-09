@@ -1699,7 +1699,7 @@ try {
             let projectRoot = '';
             for (let i = 0; i < pathParts.length; i++) {
                 if (pathParts[i] === 'pages') {
-                    projectRoot = pathParts.slice(0, i).join('/') || '/';
+                    projectRoot = pathParts.slice(0, i).join('/');
                     break;
                 }
             }
@@ -1708,12 +1708,19 @@ try {
             if (!projectRoot && currentPath.includes('wbhsms-cho-koronadal-1')) {
                 const index = currentPath.indexOf('wbhsms-cho-koronadal-1');
                 projectRoot = currentPath.substring(0, index + 'wbhsms-cho-koronadal-1'.length);
-            } else if (!projectRoot) {
-                // Fallback for production environments
+            }
+            
+            // Ensure we have a proper root path
+            if (!projectRoot) {
+                // For production environments, use relative path from domain root
                 projectRoot = '';
             }
             
-            return projectRoot;
+            // Ensure no trailing slash and proper formatting
+            projectRoot = projectRoot.replace(/\/+$/, '');
+            
+            // If projectRoot is empty, don't add leading slash to avoid double slash
+            return projectRoot || '';
         }
 
         // Toggle receipt dropdown for individual receipts
@@ -1746,7 +1753,7 @@ try {
         function viewReceipt(receiptId) {
             console.log('Viewing receipt ID:', receiptId);
             const basePath = getApiBasePath();
-            const receiptUrl = `${basePath}/api/billing/patient/view_receipt.php?receipt_id=${receiptId}&format=html`;
+            const receiptUrl = basePath ? `${basePath}/api/billing/patient/view_receipt.php?receipt_id=${receiptId}&format=html` : `/api/billing/patient/view_receipt.php?receipt_id=${receiptId}&format=html`;
             console.log('Receipt URL:', receiptUrl);
             
             // Open in popup window with specific dimensions
