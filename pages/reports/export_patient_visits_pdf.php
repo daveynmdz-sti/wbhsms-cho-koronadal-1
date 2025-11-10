@@ -1102,11 +1102,30 @@ $options->set('defaultFont', 'DejaVu Sans');
 $options->set('isRemoteEnabled', true);
 $options->set('isHtml5ParserEnabled', true);
 $options->set('debugKeepTemp', false);
+// Temporary fix: Disable image processing if GD extension not available
+$options->set('isPhpEnabled', false);
+$options->set('isRemoteEnabled', false);
 
 $dompdf = new Dompdf($options);
 $dompdf->loadHtml($html);
 $dompdf->setPaper('A4', 'portrait');
-$dompdf->render();
+
+// Add error handling for missing GD extension
+try {
+    $dompdf->render();
+} catch (Exception $e) {
+    // If image processing fails, try without images
+    if (strpos($e->getMessage(), 'GD extension') !== false) {
+        // Remove images from HTML and try again
+        $html_no_images = preg_replace('/<img[^>]+>/i', '<div style="border: 1px solid #ccc; padding: 10px; text-align: center; color: #666;">Image placeholder (GD extension required)</div>', $html);
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html_no_images);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+    } else {
+        throw $e;
+    }
+}
 
 // Output PDF
 $filename = 'Patient_Visits_Report_' . date('Y-m-d_H-i-s') . '.pdf';
