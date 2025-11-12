@@ -199,6 +199,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $schedule_slot_id = !empty($_POST['schedule_slot_id']) ? (int)$_POST['schedule_slot_id'] : null;
                 $appointment_date = !empty($_POST['appointment_date']) ? $_POST['appointment_date'] : null;
 
+                // Debug: Log the submitted appointment_date value
+                error_log("Submitted appointment_date value: " . var_export($appointment_date, true));
+
                 if (!$assigned_doctor_id) {
                     throw new Exception('Please select a doctor for City Health Office referrals.');
                 }
@@ -210,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Validate appointment date is not in the past
-                if (strtotime($appointment_date) < strtotime(date('Y-m-d'))) {
+                if (!empty($appointment_date) && strtotime($appointment_date) < strtotime(date('Y-m-d'))) {
                     throw new Exception('Appointment date cannot be in the past.');
                 }
 
@@ -251,6 +254,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $scheduled_date = !empty($_POST['simple_scheduled_date']) ? $_POST['simple_scheduled_date'] : null;
                 $scheduled_time = !empty($_POST['simple_scheduled_time']) ? $_POST['simple_scheduled_time'] : null;
 
+                // Debug: Log the submitted scheduled_date value
+                error_log("Submitted simple_scheduled_date value: " . var_export($scheduled_date, true));
+                error_log("Submitted simple_scheduled_time value: " . var_export($scheduled_time, true));
+
                 // Only require scheduling for district_office, not for external facilities
                 if ($destination_type === 'district_office') {
                     if (!$scheduled_date) {
@@ -261,7 +268,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     // Validate scheduled date is not in the past
-                    if (strtotime($scheduled_date) < strtotime(date('Y-m-d'))) {
+                    if (!empty($scheduled_date) && strtotime($scheduled_date) < strtotime(date('Y-m-d'))) {
                         throw new Exception('Scheduled date cannot be in the past.');
                     }
                 }
@@ -365,6 +372,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $referral_status = 'issued'; // Status for external referrals
             }
 
+            // Ensure proper date format for MySQL
+            $mysql_appointment_date = null;
+            if (!empty($appointment_date) && $appointment_date !== '0000-00-00') {
+                // Clean up the date input - remove any extra characters
+                $appointment_date = trim($appointment_date);
+                
+                // Validate and format the date
+                $date_obj = DateTime::createFromFormat('Y-m-d', $appointment_date);
+                if ($date_obj && $date_obj->format('Y-m-d') === $appointment_date) {
+                    $mysql_appointment_date = $appointment_date;
+                    error_log("Valid appointment date: $mysql_appointment_date");
+                } else {
+                    // Try to parse other possible formats
+                    $alt_formats = ['m/d/Y', 'd/m/Y', 'Y/m/d'];
+                    foreach ($alt_formats as $format) {
+                        $date_obj = DateTime::createFromFormat($format, $appointment_date);
+                        if ($date_obj) {
+                            $mysql_appointment_date = $date_obj->format('Y-m-d');
+                            error_log("Converted appointment date from $appointment_date to $mysql_appointment_date");
+                            break;
+                        }
+                    }
+                    
+                    if (!$mysql_appointment_date) {
+                        error_log("Invalid appointment date format: $appointment_date");
+                        throw new Exception("Invalid appointment date format: $appointment_date. Expected format: YYYY-MM-DD");
+                    }
+                }
+            }
+
+            // Ensure proper time format for MySQL
+            $mysql_appointment_time = null;
+            if (!empty($appointment_time)) {
+                // Validate time format (HH:MM:SS or HH:MM)
+                if (preg_match('/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/', $appointment_time)) {
+                    $mysql_appointment_time = $appointment_time;
+                    // Ensure HH:MM:SS format
+                    if (strlen($mysql_appointment_time) === 5) {
+                        $mysql_appointment_time .= ':00';
+                    }
+                } else {
+                    throw new Exception("Invalid appointment time format: $appointment_time");
+                }
+            }
+
             // Insert referral
             $stmt = $conn->prepare("
                 INSERT INTO referrals (
@@ -375,7 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)
             ");
             $stmt->bind_param(
-                'siiisisssissis',
+                'siiisisssissss',
                 $referral_num,
                 $patient_id,
                 $employee_facility_id,
@@ -388,8 +440,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $employee_id,
                 $referral_status,
                 $assigned_doctor_id,
-                $appointment_date,
-                $appointment_time
+                $mysql_appointment_date,
+                $mysql_appointment_time
             );
             $stmt->execute();
 
@@ -402,8 +454,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $qr_data = [
                 'patient_id' => $patient_id,
                 'destination_type' => $destination_type,
-                'scheduled_date' => $appointment_date,
-                'scheduled_time' => $appointment_time,
+                'scheduled_date' => $mysql_appointment_date,
+                'scheduled_time' => $mysql_appointment_time,
                 'assigned_doctor_id' => $assigned_doctor_id,
                 'referred_to_facility_id' => $referred_to_facility_id
             ];
@@ -483,8 +535,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'referral_reason' => $final_referral_reason,
                         'facility_name' => $destination_facility_name,
                         'external_facility_name' => $external_facility_name,
-                        'scheduled_date' => $appointment_date,
-                        'scheduled_time' => $appointment_time,
+                        'scheduled_date' => $mysql_appointment_date,
+                        'scheduled_time' => $mysql_appointment_time,
                         'doctor_name' => $doctor_name,
                         'service_name' => $service_name,
                         'referring_facility' => $employee_facility_name,
