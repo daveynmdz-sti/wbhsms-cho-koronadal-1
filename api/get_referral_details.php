@@ -149,6 +149,7 @@ try {
         'contact_number' => $referral['contact_number'] ?? 'N/A',
         'referral_reason' => $referral['referral_reason'],
         'status' => $referral['status'],
+        'destination_type' => $referral['destination_type'],
         'facility_name' => $facility_name,
         'referring_facility_name' => $referral['referring_facility_name'] ?? 'N/A',
         'external_facility_name' => $referral['external_facility_name'],
@@ -156,6 +157,11 @@ try {
         'issuer_name' => $issuer_name,
         'issuer_position' => $referral['issuer_position'] ?? 'N/A',
         'service_name' => $referral['service_name'] ?? 'N/A',
+        'assigned_doctor_id' => $referral['assigned_doctor_id'],
+        'doctor_name' => $referral['doctor_name'],
+        'scheduled_date' => $referral['scheduled_date'] ?? null,
+        'scheduled_time' => $referral['scheduled_time'] ?? null,
+        'referred_by' => $referral['referred_by'],
         'vitals' => $vitals
     ];
 

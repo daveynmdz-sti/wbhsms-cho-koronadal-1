@@ -2707,7 +2707,7 @@ try {
 
         // Populate Referral Modal
         function populateReferralModal(referral) {
-            console.log('Populating modal with referral:', referral);
+            console.log('Populating modal for referral:', referral.referral_num, '| Type:', referral.destination_type);
 
             const modalBody = document.getElementById('referralDetailsContent');
             if (!modalBody) {
@@ -2736,9 +2736,37 @@ try {
                 `;
             }
 
-            // Add appointment details section for City Health Office referrals
+            // Add appointment details section for any referral with appointment information
             let appointmentSection = '';
-            if (referral.destination_type === 'city_office' && referral.assigned_doctor_id) {
+            
+            // Check for valid appointment data (not null, not empty, not "null" string)
+            const hasValidDate = referral.scheduled_date && 
+                                referral.scheduled_date !== null && 
+                                referral.scheduled_date !== 'null' && 
+                                referral.scheduled_date !== '';
+            const hasValidTime = referral.scheduled_time && 
+                                referral.scheduled_time !== null && 
+                                referral.scheduled_time !== 'null' && 
+                                referral.scheduled_time !== '';
+            const hasValidDoctor = referral.assigned_doctor_id && 
+                                  referral.assigned_doctor_id !== null && 
+                                  referral.assigned_doctor_id !== 'null';
+            
+            const hasAppointmentData = hasValidDoctor || hasValidDate || hasValidTime;
+            
+            if ((referral.destination_type === 'city_office' && hasValidDoctor) || 
+                (referral.destination_type === 'district_office' && hasAppointmentData)) {
+                
+                console.log('Creating appointment section');
+                console.log('Raw data - Doctor:', referral.doctor_name, 'Date:', referral.scheduled_date, 'Time:', referral.scheduled_time);
+                console.log('Valid checks - Date:', hasValidDate, 'Time:', hasValidTime, 'Doctor:', hasValidDoctor);
+                
+                // Test the formatting functions
+                const formattedDate = hasValidDate ? formatAppointmentDate(referral.scheduled_date) : 'N/A';
+                const formattedTime = hasValidTime ? formatAppointmentTime(referral.scheduled_time) : 'N/A';
+                
+                console.log('Formatted results - Date:', formattedDate, 'Time:', formattedTime);
+                
                 appointmentSection = `
                     <div class="summary-section">
                         <div class="summary-title">
@@ -2752,11 +2780,11 @@ try {
                             </div>
                             <div class="summary-item">
                                 <div class="summary-label">Appointment Date</div>
-                                <div class="summary-value">${referral.scheduled_date ? formatAppointmentDate(referral.scheduled_date) : 'N/A'}</div>
+                                <div class="summary-value">${formattedDate}</div>
                             </div>
                             <div class="summary-item">
                                 <div class="summary-label">Appointment Time</div>
-                                <div class="summary-value">${referral.scheduled_time ? formatAppointmentTime(referral.scheduled_time) : 'N/A'}</div>
+                                <div class="summary-value">${formattedTime}</div>
                             </div>
                         </div>
                     </div>
@@ -3199,24 +3227,97 @@ try {
 
         // Utility function to format appointment dates
         function formatAppointmentDate(dateString) {
-            if (!dateString) return '';
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { 
-                weekday: 'long',
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
+            console.log('formatAppointmentDate input:', dateString, 'type:', typeof dateString);
+            
+            // Handle null, undefined, empty string, "null" string, and MySQL NULL date
+            if (!dateString || 
+                dateString === 'null' || 
+                dateString === null || 
+                dateString === undefined ||
+                dateString === '0000-00-00' ||
+                dateString === '0000-00-00 00:00:00') {
+                console.log('Date is null/empty/MySQL NULL, returning N/A');
+                return 'N/A';
+            }
+            
+            try {
+                // Handle different date formats from database
+                let date;
+                
+                // Check for MySQL NULL date format first
+                if (typeof dateString === 'string' && dateString.startsWith('0000-00-00')) {
+                    console.log('MySQL NULL date detected, returning N/A');
+                    return 'N/A';
+                }
+                
+                // If it's already a valid date string that JavaScript can parse
+                if (typeof dateString === 'string' && dateString.includes('-')) {
+                    // MySQL DATE format: YYYY-MM-DD
+                    date = new Date(dateString + 'T00:00:00'); // Add time to avoid timezone issues
+                } else {
+                    // Fallback to regular parsing
+                    date = new Date(dateString);
+                }
+                
+                // Check if date is valid
+                if (isNaN(date.getTime())) {
+                    console.error('Invalid date:', dateString);
+                    return 'N/A';
+                }
+                
+                const formattedDate = date.toLocaleDateString('en-US', { 
+                    weekday: 'long',
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+                
+                console.log('Formatted date result:', formattedDate);
+                return formattedDate;
+                
+            } catch (error) {
+                console.error('Error formatting date:', error, dateString);
+                return 'N/A';
+            }
         }
 
         // Utility function to format appointment times
         function formatAppointmentTime(timeString) {
-            if (!timeString) return '';
-            // timeString format is usually HH:MM:SS, convert to 12-hour format
-            const [hours, minutes] = timeString.split(':');
-            const hour12 = hours % 12 || 12;
-            const ampm = hours < 12 ? 'AM' : 'PM';
-            return `${hour12}:${minutes} ${ampm}`;
+            console.log('formatAppointmentTime input:', timeString, 'type:', typeof timeString);
+            
+            // Handle null, undefined, empty string, or "null" string
+            if (!timeString || timeString === 'null' || timeString === null || timeString === undefined) {
+                console.log('Time is null/empty, returning N/A');
+                return 'N/A';
+            }
+            
+            try {
+                // timeString format is usually HH:MM:SS or HH:MM, convert to 12-hour format
+                const timeParts = timeString.split(':');
+                if (timeParts.length < 2) {
+                    console.error('Invalid time format:', timeString);
+                    return 'Invalid Time';
+                }
+                
+                const hours = parseInt(timeParts[0]);
+                const minutes = timeParts[1];
+                
+                if (isNaN(hours) || hours < 0 || hours > 23) {
+                    console.error('Invalid hours:', hours);
+                    return 'Invalid Time';
+                }
+                
+                const hour12 = hours % 12 || 12;
+                const ampm = hours < 12 ? 'AM' : 'PM';
+                const formattedTime = `${hour12}:${minutes} ${ampm}`;
+                
+                console.log('Formatted time result:', formattedTime);
+                return formattedTime;
+                
+            } catch (error) {
+                console.error('Error formatting time:', error, timeString);
+                return 'Invalid Time';
+            }
         }
 
         // Custom Notification System (No Alerts)
