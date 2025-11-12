@@ -45,6 +45,7 @@ try {
         SELECT r.referral_id, r.referral_num, r.patient_id, r.referral_reason, 
                r.destination_type, r.referred_to_facility_id, r.external_facility_name, 
                r.referral_date, r.status, r.referred_by, r.service_id, r.referring_facility_id,
+               r.assigned_doctor_id, r.scheduled_date, r.scheduled_time,
                p.first_name, p.middle_name, p.last_name, p.username as patient_number, 
                p.date_of_birth, p.sex, p.contact_number,
                b.barangay_name as barangay,
@@ -52,7 +53,9 @@ try {
                ro.role_name as issuer_position,
                f.name as referred_facility_name,
                rf.name as referring_facility_name,
-               s.name as service_name
+               s.name as service_name,
+               doc.first_name as doctor_first_name, doc.last_name as doctor_last_name,
+               CONCAT(doc.first_name, ' ', doc.last_name) as doctor_name
         FROM referrals r
         LEFT JOIN patients p ON r.patient_id = p.patient_id
         LEFT JOIN barangay b ON p.barangay_id = b.barangay_id
@@ -61,6 +64,7 @@ try {
         LEFT JOIN facilities f ON r.referred_to_facility_id = f.facility_id
         LEFT JOIN facilities rf ON r.referring_facility_id = rf.facility_id
         LEFT JOIN services s ON r.service_id = s.service_id
+        LEFT JOIN employees doc ON r.assigned_doctor_id = doc.employee_id
         WHERE r.referral_id = ?
     ";
 

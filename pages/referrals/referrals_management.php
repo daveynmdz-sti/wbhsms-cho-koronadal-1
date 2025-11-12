@@ -1263,6 +1263,18 @@ try {
             box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
         }
 
+        .modal-btn-info {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            box-shadow: 0 4px 15px rgba(23, 162, 184, 0.3);
+        }
+
+        .modal-btn-info:hover {
+            background: linear-gradient(135deg, #138496, #117a8b);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(23, 162, 184, 0.4);
+        }
+
         .modal-btn-danger {
             background: linear-gradient(135deg, #dc3545, #c82333);
             color: white;
@@ -1624,6 +1636,112 @@ try {
 
         .modal-content-small {
             max-width: 400px;
+        }
+
+        .modal-content-medium {
+            max-width: 600px;
+        }
+
+        /* QR Scanner Modal Styles */
+        .qr-scanner-container {
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .scanner-instructions {
+            margin-bottom: 1.5rem;
+        }
+
+        .scanner-instructions i {
+            font-size: 2.5rem;
+            color: #007bff;
+            margin-bottom: 1rem;
+        }
+
+        .scanner-instructions p {
+            margin: 0.5rem 0;
+        }
+
+        .qr-video-container {
+            position: relative;
+            display: inline-block;
+            margin: 1rem 0;
+        }
+
+        .scanner-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+
+        .scanner-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            border: 3px solid #007bff;
+            border-radius: 12px;
+            box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.3);
+        }
+
+        .scanner-frame::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            border: 3px solid rgba(0, 123, 255, 0.3);
+            border-radius: 12px;
+            animation: scannerPulse 2s infinite;
+        }
+
+        @keyframes scannerPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .scanner-status {
+            margin: 1rem 0;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .status-ready {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-left: 4px solid #2196f3;
+        }
+
+        .status-scanning {
+            background: #fff3e0;
+            color: #f57c00;
+            border-left: 4px solid #ff9800;
+        }
+
+        .status-success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border-left: 4px solid #4caf50;
+        }
+
+        .status-error {
+            background: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #f44336;
+        }
+
+        .scanner-actions {
+            margin-top: 1.5rem;
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
         }
 
         /* Text alignment */
@@ -2371,6 +2489,11 @@ try {
                     <i class="fas fa-print"></i> Print
                 </button>
 
+                <!-- Download QR Code Button - Show for active referrals -->
+                <button type="button" class="modal-btn modal-btn-info" onclick="downloadReferralQR(currentReferralId)" id="downloadQRBtn">
+                    <i class="fas fa-qrcode"></i> Download QR Code
+                </button>
+
                 <!-- Download Button - Always available -->
                 <button type="button" class="modal-btn modal-btn-success" onclick="downloadReferral(currentReferralId)" id="downloadReferralBtn">
                     <i class="fas fa-download"></i> Download PDF
@@ -2439,6 +2562,47 @@ try {
                     <button type="submit" class="btn btn-primary">Verify & Proceed</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- QR Scanner Modal for Check-in -->
+    <div id="qrScannerModal" class="modal">
+        <div class="modal-content modal-content-medium">
+            <div class="modal-header">
+                <h3><i class="fas fa-qrcode"></i> QR Code Check-in</h3>
+                <button type="button" class="close" onclick="closeModal('qrScannerModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="qr-scanner-container">
+                    <div class="scanner-instructions">
+                        <i class="fas fa-camera"></i>
+                        <p>Position the patient's QR code within the camera frame</p>
+                        <p class="text-muted">The QR code can be found on their patient card or appointment confirmation</p>
+                    </div>
+                    
+                    <div id="qrScannerVideo" class="qr-video-container">
+                        <video id="qrVideoElement" width="300" height="300" style="border: 2px solid #ddd; border-radius: 8px;"></video>
+                        <div class="scanner-overlay">
+                            <div class="scanner-frame"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="scanner-status">
+                        <div id="scannerStatus" class="status-ready">
+                            <i class="fas fa-camera"></i> Ready to scan
+                        </div>
+                    </div>
+                    
+                    <div class="scanner-actions">
+                        <button type="button" class="btn btn-secondary" onclick="stopQRScanner(); closeModal('qrScannerModal');">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="initializeQRScanner()" id="startScanBtn">
+                            <i class="fas fa-play"></i> Start Scanner
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2572,6 +2736,33 @@ try {
                 `;
             }
 
+            // Add appointment details section for City Health Office referrals
+            let appointmentSection = '';
+            if (referral.destination_type === 'city_office' && referral.assigned_doctor_id) {
+                appointmentSection = `
+                    <div class="summary-section">
+                        <div class="summary-title">
+                            <i class="fas fa-calendar-check"></i>
+                            Appointment Details
+                        </div>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <div class="summary-label">Assigned Doctor</div>
+                                <div class="summary-value highlight">${referral.doctor_name || 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Appointment Date</div>
+                                <div class="summary-value">${referral.scheduled_date ? formatAppointmentDate(referral.scheduled_date) : 'N/A'}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Appointment Time</div>
+                                <div class="summary-value">${referral.scheduled_time ? formatAppointmentTime(referral.scheduled_time) : 'N/A'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
             const modalContent = `
                 <div class="referral-summary-card">
                     <div class="summary-section">
@@ -2640,6 +2831,7 @@ try {
                         </div>
                     </div>
 
+                    ${appointmentSection}
                     ${vitalsSection}
                 </div>
             `;
@@ -2647,22 +2839,64 @@ try {
             modalBody.innerHTML = modalContent;
 
             // Update button visibility based on status and creator
-            updateModalButtons(referral.status, referral.referred_by);
+            updateModalButtons(referral.status, referral.referred_by, referral);
         }
 
         // Update Modal Button Visibility with Creator-Based Permissions
-        function updateModalButtons(status, referredBy = null) {
+        function updateModalButtons(status, referredBy = null, referral = null) {
             const cancelBtn = document.getElementById('cancelReferralBtn');
+            const qrDownloadBtn = document.getElementById('downloadQRBtn');
+            const buttonContainer = document.querySelector('.referral-modal-actions');
 
             // Hide cancel button first
             if (cancelBtn) cancelBtn.style.display = 'none';
+            
+            // Hide QR download button for issued referrals (external facilities)
+            if (qrDownloadBtn) {
+                if (status === 'issued') {
+                    qrDownloadBtn.style.display = 'none';
+                } else {
+                    qrDownloadBtn.style.display = 'inline-flex';
+                }
+            }
+            
+            // Remove existing check-in buttons if any
+            const existingCheckInBtns = buttonContainer ? buttonContainer.querySelectorAll('.checkin-btn') : [];
+            existingCheckInBtns.forEach(btn => btn.remove());
 
             // Check if current employee can modify this referral
             const canModify = isAdmin || (referredBy && referredBy == currentEmployeeId);
 
+            // Add check-in buttons for City Health Office referrals with appointments
+            if (referral && referral.destination_type === 'city_office' && 
+                referral.assigned_doctor_id && referral.scheduled_date && referral.scheduled_time &&
+                status === 'active' && buttonContainer) {
+                
+                // QR Scanner Check-in Button
+                const qrCheckInBtn = document.createElement('button');
+                qrCheckInBtn.className = 'btn btn-primary checkin-btn';
+                qrCheckInBtn.innerHTML = '<i class="fas fa-qrcode"></i> QR Check-in';
+                qrCheckInBtn.onclick = () => openQRCheckInModal(referral.referral_id);
+                
+                // Quick Check-in Button  
+                const quickCheckInBtn = document.createElement('button');
+                quickCheckInBtn.className = 'btn btn-success checkin-btn';
+                quickCheckInBtn.innerHTML = '<i class="fas fa-user-check"></i> Quick Check-in';
+                quickCheckInBtn.onclick = () => quickCheckInReferral(referral.referral_id);
+
+                // Add buttons before existing buttons
+                const firstButton = buttonContainer.querySelector('button');
+                if (firstButton) {
+                    buttonContainer.insertBefore(qrCheckInBtn, firstButton);
+                    buttonContainer.insertBefore(quickCheckInBtn, firstButton);
+                } else {
+                    buttonContainer.appendChild(qrCheckInBtn);
+                    buttonContainer.appendChild(quickCheckInBtn);
+                }
+            }
+
             if (!canModify) {
                 // Show info message about permissions
-                const buttonContainer = document.querySelector('.referral-modal-actions');
                 if (buttonContainer) {
                     let permissionInfo = buttonContainer.querySelector('.permission-info');
                     if (!permissionInfo) {
@@ -2691,6 +2925,155 @@ try {
             // Create a new referral if needed.
         }
 
+        // Check-in Functions
+        function openQRCheckInModal(referralId) {
+            console.log('Opening QR Check-in modal for referral:', referralId);
+            // Store referral ID for processing
+            window.currentCheckInReferralId = referralId;
+            
+            // Open QR scanner modal (similar to appointments_management.php)
+            openModal('qrScannerModal');
+            
+            // Initialize QR scanner if available
+            if (typeof initializeQRScanner === 'function') {
+                initializeQRScanner();
+            }
+        }
+
+        function quickCheckInReferral(referralId) {
+            console.log('Quick check-in for referral:', referralId);
+            
+            if (!referralId) {
+                showNotification('Invalid referral ID', 'error');
+                return;
+            }
+
+            // Confirm check-in action
+            if (!confirm('Are you sure you want to check in this patient for their appointment?')) {
+                return;
+            }
+
+            // Show loading state
+            showNotification('Processing check-in...', 'info');
+
+            // Send check-in request
+            fetch('../../api/referral_checkin.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'checkin_appointment',
+                    referral_id: referralId,
+                    checkin_type: 'quick'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Check-in response:', data);
+                
+                if (data.success) {
+                    showNotification('Patient checked in successfully!', 'success');
+                    
+                    // Close view modal
+                    closeModal('viewReferralModal');
+                    
+                    // Refresh the referrals table to show updated status
+                    loadReferrals();
+                    
+                    // Show visit details if available
+                    if (data.visit_id) {
+                        showNotification(`Visit record created (ID: ${data.visit_id}). Patient added to queue.`, 'info');
+                    }
+                } else {
+                    showNotification(data.message || 'Failed to check in patient', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Check-in error:', error);
+                showNotification('Error processing check-in: ' + error.message, 'error');
+            });
+        }
+
+        // QR Code Check-in Processing
+        function processQRCheckIn(qrData) {
+            console.log('Processing QR check-in:', qrData);
+            
+            // Parse QR data (should contain referral information)
+            let referralData = null;
+            let referralId = window.currentCheckInReferralId;
+            
+            try {
+                // QR data should be JSON with referral information
+                if (qrData.startsWith('{')) {
+                    const qrJson = JSON.parse(qrData);
+                    
+                    // Verify this is a referral QR code
+                    if (qrJson.type !== 'referral') {
+                        throw new Error('Invalid QR code type. Expected referral QR code.');
+                    }
+                    
+                    // Verify the referral ID matches
+                    if (qrJson.referral_id && qrJson.referral_id != referralId) {
+                        throw new Error('QR code referral ID does not match the selected referral');
+                    }
+                    
+                    referralData = qrJson;
+                } else {
+                    // If not JSON, might be just a patient ID or verification code
+                    referralData = { patient_id: qrData };
+                }
+                
+                if (!referralId) {
+                    throw new Error('No referral selected for check-in');
+                }
+                
+                // Process check-in with QR verification
+                fetch('../../api/referral_checkin.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'checkin_appointment',
+                        referral_id: referralId,
+                        qr_data: qrData,
+                        referral_data: referralData,
+                        checkin_type: 'qr'
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('QR Check-in response:', data);
+                    
+                    if (data.success) {
+                        showNotification('Patient checked in successfully via QR!', 'success');
+                        
+                        // Close modals
+                        closeModal('qrScannerModal');
+                        closeModal('viewReferralModal');
+                        
+                        // Refresh data
+                        loadReferrals();
+                        
+                        if (data.data && data.data.visit_id) {
+                            showNotification(`Visit record created (ID: ${data.data.visit_id}). Patient added to queue.`, 'info');
+                        }
+                    } else {
+                        showNotification(data.message || 'QR check-in failed', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('QR Check-in error:', error);
+                    showNotification('Error processing QR check-in: ' + error.message, 'error');
+                });
+                
+            } catch (error) {
+                console.error('QR parsing error:', error);
+                showNotification('Invalid QR code: ' + error.message, 'error');
+            }
+        }
+
         // Download Referral Function - Simple PDF Preview Popup
         function downloadReferral(referralId) {
             console.log('Download referral:', referralId);
@@ -2714,6 +3097,54 @@ try {
             } else {
                 showNotification('Please allow popups to view PDF', 'error');
             }
+        }
+
+        // Download Referral QR Code Function
+        function downloadReferralQR(referralId) {
+            console.log('Download referral QR code:', referralId);
+
+            if (!referralId) {
+                showNotification('Invalid referral ID', 'error');
+                return;
+            }
+
+            // Show loading notification
+            showNotification('Generating QR code...', 'info');
+
+            // Fetch QR code from API
+            fetch(`../../api/generate_referral_qr_code.php?referral_id=${referralId}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log('QR Code response:', data);
+                    
+                    if (data.success) {
+                        // Create download link for QR code image
+                        const link = document.createElement('a');
+                        link.href = data.qr_code_url;
+                        link.download = `referral_qr_code_${String(referralId).padStart(8, '0')}.png`;
+                        
+                        // Trigger download
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        // Show success with verification code
+                        const verificationCode = data.verification_code || 'N/A';
+                        showNotification(`QR code downloaded! Verification code: ${verificationCode}`, 'success');
+                        
+                        // Show QR code info
+                        if (data.referral_info) {
+                            const info = data.referral_info;
+                            console.log('Referral info:', info);
+                        }
+                    } else {
+                        showNotification('Failed to generate QR code: ' + (data.error || 'Unknown error'), 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('QR Code generation error:', error);
+                    showNotification('Error generating QR code: ' + error.message, 'error');
+                });
         }
 
         // Print Referral Function - Simple PDF Preview Popup
@@ -2764,6 +3195,28 @@ try {
                 hour: '2-digit',
                 minute: '2-digit'
             });
+        }
+
+        // Utility function to format appointment dates
+        function formatAppointmentDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { 
+                weekday: 'long',
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        }
+
+        // Utility function to format appointment times
+        function formatAppointmentTime(timeString) {
+            if (!timeString) return '';
+            // timeString format is usually HH:MM:SS, convert to 12-hour format
+            const [hours, minutes] = timeString.split(':');
+            const hour12 = hours % 12 || 12;
+            const ampm = hours < 12 ? 'AM' : 'PM';
+            return `${hour12}:${minutes} ${ampm}`;
         }
 
         // Custom Notification System (No Alerts)
@@ -2879,6 +3332,152 @@ try {
             url.searchParams.set('page', '1'); // Reset to first page
             window.location.href = url.toString();
         }
+
+        // QR Scanner Functions
+        let qrCodeReader = null;
+        let qrStream = null;
+
+        function initializeQRScanner() {
+            const videoElement = document.getElementById('qrVideoElement');
+            const statusElement = document.getElementById('scannerStatus');
+            
+            if (!videoElement) {
+                console.error('Video element not found');
+                return;
+            }
+
+            // Update status
+            statusElement.className = 'scanner-status status-scanning';
+            statusElement.innerHTML = '<i class="fas fa-camera"></i> Initializing camera...';
+
+            // Get camera permission and start video
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { min: 300, ideal: 400, max: 600 },
+                    height: { min: 300, ideal: 400, max: 600 },
+                    facingMode: "environment" // Use back camera if available
+                } 
+            })
+            .then(stream => {
+                qrStream = stream;
+                videoElement.srcObject = stream;
+                videoElement.play();
+                
+                statusElement.className = 'scanner-status status-scanning';
+                statusElement.innerHTML = '<i class="fas fa-search"></i> Scanning for QR code...';
+
+                // Start QR detection
+                startQRDetection(videoElement);
+            })
+            .catch(err => {
+                console.error('Camera access error:', err);
+                statusElement.className = 'scanner-status status-error';
+                statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Camera access denied or not available';
+                
+                showNotification('Camera access is required for QR scanning', 'error');
+            });
+        }
+
+        function startQRDetection(videoElement) {
+            // Simple QR detection using canvas
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            const scanInterval = setInterval(() => {
+                if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+                    canvas.width = videoElement.videoWidth;
+                    canvas.height = videoElement.videoHeight;
+                    context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                    
+                    // Get image data for QR detection
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    // Here you would use a QR code library like jsQR
+                    // For now, we'll provide a manual input fallback
+                    // checkForQRCode(imageData);
+                }
+            }, 500); // Check every 500ms
+
+            // Store interval for cleanup
+            window.qrScanInterval = scanInterval;
+
+            // Add manual input button after 5 seconds
+            setTimeout(() => {
+                addManualInputOption();
+            }, 5000);
+        }
+
+        function addManualInputOption() {
+            const statusElement = document.getElementById('scannerStatus');
+            
+            // Add manual input option
+            const manualInputDiv = document.createElement('div');
+            manualInputDiv.className = 'manual-qr-input';
+            manualInputDiv.innerHTML = `
+                <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                    <p><strong>Having trouble with camera?</strong></p>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="text" id="manualQRInput" placeholder="Enter Patient ID manually" 
+                               style="flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <button type="button" onclick="processManualQRInput()" class="btn btn-primary btn-sm">
+                            <i class="fas fa-check"></i> Submit
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            if (statusElement && !document.querySelector('.manual-qr-input')) {
+                statusElement.parentNode.insertBefore(manualInputDiv, statusElement.nextSibling);
+            }
+        }
+
+        function processManualQRInput() {
+            const input = document.getElementById('manualQRInput');
+            const patientId = input ? input.value.trim() : '';
+            
+            if (patientId) {
+                stopQRScanner();
+                processQRCheckIn(patientId);
+            } else {
+                showNotification('Please enter a valid Patient ID', 'error');
+            }
+        }
+
+        function stopQRScanner() {
+            // Stop video stream
+            if (qrStream) {
+                qrStream.getTracks().forEach(track => track.stop());
+                qrStream = null;
+            }
+
+            // Clear scan interval
+            if (window.qrScanInterval) {
+                clearInterval(window.qrScanInterval);
+                window.qrScanInterval = null;
+            }
+
+            // Clear video element
+            const videoElement = document.getElementById('qrVideoElement');
+            if (videoElement) {
+                videoElement.srcObject = null;
+            }
+
+            // Reset status
+            const statusElement = document.getElementById('scannerStatus');
+            if (statusElement) {
+                statusElement.className = 'scanner-status status-ready';
+                statusElement.innerHTML = '<i class="fas fa-camera"></i> Ready to scan';
+            }
+
+            // Remove manual input
+            const manualInput = document.querySelector('.manual-qr-input');
+            if (manualInput) {
+                manualInput.remove();
+            }
+        }
+
+        // Note: For full QR code scanning, you would need to include a QR code library like jsQR
+        // This implementation provides the framework and manual input fallback
     </script>
 </body>
 

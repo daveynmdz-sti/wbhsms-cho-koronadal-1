@@ -35,6 +35,34 @@ $checks['.env Configuration'] = [
     'required' => false
 ];
 
+// Check email configuration
+$email_status = true;
+$email_message = '';
+try {
+    $smtp_user = getenv('SMTP_USER') ?: '';
+    $smtp_pass = getenv('SMTP_PASS') ?: '';
+    $smtp_host = getenv('SMTP_HOST') ?: '';
+    
+    if (empty($smtp_user) || empty($smtp_host)) {
+        $email_status = false;
+        $email_message = 'SMTP not configured ⚠️';
+    } elseif (empty($smtp_pass) || $smtp_pass === 'disabled') {
+        $email_status = false;
+        $email_message = 'Development mode - emails disabled ⚠️';
+    } else {
+        $email_message = 'SMTP configured ✅';
+    }
+} catch (Exception $e) {
+    $email_status = false;
+    $email_message = 'Email check failed: ' . $e->getMessage() . ' ❌';
+}
+
+$checks['Email System'] = [
+    'status' => $email_status,
+    'message' => $email_message,
+    'required' => false
+];
+
 // Check database connection
 $db_status = true;
 $db_message = '';

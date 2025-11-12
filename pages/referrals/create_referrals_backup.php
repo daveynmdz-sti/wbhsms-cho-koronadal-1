@@ -178,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $referral_reason = trim($_POST['referral_reason'] ?? '');
-            $destination_type = trim($_POST['destination_type'] ?? ''); // district_office, city_office, external
+            $destination_type = trim($_POST['destination_type'] ?? ''); // barangay_center, district_office, city_office, external
             $referred_to_facility_id = !empty($_POST['referred_to_facility_id']) ? (int)$_POST['referred_to_facility_id'] : null;
             $external_facility_type = trim($_POST['external_facility_type'] ?? '');
             $external_facility_name = trim($_POST['external_facility_name'] ?? '');
@@ -186,89 +186,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $other_facility_name = trim($_POST['other_facility_name'] ?? '');
             $service_id = !empty($_POST['service_id']) ? (int)$_POST['service_id'] : null;
             $custom_service_name = trim($_POST['custom_service_name'] ?? '');
-
-            // Process appointment fields based on destination type
+            
+            // New appointment scheduling fields
             $assigned_doctor_id = null;
-            $schedule_id = null;
-            $appointment_date = null;
-            $appointment_time = null;
-
+            $schedule_slot_id = null;
+            $scheduled_date = null;
+            $scheduled_time = null;
+            
             if ($destination_type === 'city_office') {
-                // For City Health Office - require doctor assignment and time slot
+                // For city office, require doctor and time slot selection
                 $assigned_doctor_id = !empty($_POST['assigned_doctor_id']) ? (int)$_POST['assigned_doctor_id'] : null;
                 $schedule_slot_id = !empty($_POST['schedule_slot_id']) ? (int)$_POST['schedule_slot_id'] : null;
-                $appointment_date = !empty($_POST['appointment_date']) ? $_POST['appointment_date'] : null;
-
+                
                 if (!$assigned_doctor_id) {
-                    throw new Exception('Please select a doctor for City Health Office referrals.');
-                }
-                if (!$appointment_date) {
-                    throw new Exception('Please select an appointment date.');
+                    throw new Exception('Please select a doctor for City Health Office referral.');
                 }
                 if (!$schedule_slot_id) {
-                    throw new Exception('Please select an appointment time slot.');
+                    throw new Exception('Please select an available time slot.');
                 }
-
-                // Validate appointment date is not in the past
-                if (strtotime($appointment_date) < strtotime(date('Y-m-d'))) {
-                    throw new Exception('Appointment date cannot be in the past.');
-                }
-
-                // Get the appointment time from the selected slot and find the schedule_id
-                $stmt = $conn->prepare("
-                    SELECT dss.slot_time, ds.doctor_id, ds.schedule_id
-                    FROM doctor_schedule_slots dss
-                    INNER JOIN doctor_schedule ds ON dss.schedule_id = ds.schedule_id
-                    WHERE dss.slot_id = ? AND ds.doctor_id = ? AND ds.is_active = 1 AND dss.is_booked = 0
-                ");
-                $stmt->bind_param("ii", $schedule_slot_id, $assigned_doctor_id);
-                $stmt->execute();
-                $slot_result = $stmt->get_result();
-
-                if (!$slot_result->num_rows) {
+                
+                // Get the date and time from the selected slot
+                $slot_stmt = $conn->prepare("SELECT slot_date, slot_time FROM doctor_schedule_slots WHERE slot_id = ? AND is_booked = 0");
+                $slot_stmt->bind_param('i', $schedule_slot_id);
+                $slot_stmt->execute();
+                $slot_result = $slot_stmt->get_result();
+                if ($slot_row = $slot_result->fetch_assoc()) {
+                    $scheduled_date = $slot_row['slot_date'];
+                    $scheduled_time = $slot_row['slot_time'];
+                } else {
                     throw new Exception('Selected time slot is no longer available.');
                 }
-
-                $slot_data = $slot_result->fetch_assoc();
-                $appointment_time = $slot_data['slot_time'];
-                $schedule_id = $slot_data['schedule_id'];
-
-                // Check if slot is already booked by checking if referral_id is set
-                $stmt = $conn->prepare("
-                    SELECT referral_id 
-                    FROM doctor_schedule_slots 
-                    WHERE slot_id = ? AND referral_id IS NOT NULL
-                ");
-                $stmt->bind_param("i", $schedule_slot_id);
-                $stmt->execute();
-                $booking_result = $stmt->get_result();
-
-                if ($booking_result->num_rows > 0) {
-                    throw new Exception('Selected time slot is already booked. Please choose another time.');
-                }
+                $slot_stmt->close();
+                
             } else {
-                // For other destinations - use simple date/time scheduling
+                // For barangay_center and district_office, just get simple date/time
                 $scheduled_date = !empty($_POST['simple_scheduled_date']) ? $_POST['simple_scheduled_date'] : null;
                 $scheduled_time = !empty($_POST['simple_scheduled_time']) ? $_POST['simple_scheduled_time'] : null;
-
-                // Only require scheduling for district_office, not for external facilities
-                if ($destination_type === 'district_office') {
-                    if (!$scheduled_date) {
-                        throw new Exception('Please select a scheduled date for district office referrals.');
-                    }
-                    if (!$scheduled_time) {
-                        throw new Exception('Please select a scheduled time for district office referrals.');
-                    }
-
-                    // Validate scheduled date is not in the past
-                    if (strtotime($scheduled_date) < strtotime(date('Y-m-d'))) {
-                        throw new Exception('Scheduled date cannot be in the past.');
-                    }
-                }
-
-                // Use the simple scheduling fields (can be null for external)
-                $appointment_date = $scheduled_date;
-                $appointment_time = $scheduled_time;
             }
 
             // Determine final external facility name based on type
@@ -371,11 +324,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     referral_num, patient_id, referring_facility_id, referred_to_facility_id, 
                     external_facility_name, vitals_id, service_id, referral_reason, 
                     destination_type, referred_by, referral_date, status,
-                    assigned_doctor_id, scheduled_date, scheduled_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)
+                    assigned_doctor_id, schedule_id, scheduled_date, scheduled_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)
             ");
             $stmt->bind_param(
-                'siiisisssissis',
+                'siiisisssiiiiss',
                 $referral_num,
                 $patient_id,
                 $employee_facility_id,
@@ -388,160 +341,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $employee_id,
                 $referral_status,
                 $assigned_doctor_id,
-                $appointment_date,
-                $appointment_time
+                $schedule_slot_id,
+                $scheduled_date,
+                $scheduled_time
             );
             $stmt->execute();
-
-            // Get the inserted referral ID
-            $referral_id = $conn->insert_id;
-
-            // Generate QR code for the referral
-            require_once $root_path . '/utils/qr_code_generator.php';
-
-            $qr_data = [
-                'patient_id' => $patient_id,
-                'destination_type' => $destination_type,
-                'scheduled_date' => $appointment_date,
-                'scheduled_time' => $appointment_time,
-                'assigned_doctor_id' => $assigned_doctor_id,
-                'referred_to_facility_id' => $referred_to_facility_id
-            ];
-
-            $qr_result = QRCodeGenerator::generateAndSaveReferralQR($referral_id, $qr_data, $conn);
-
-            if (!$qr_result['success']) {
-                // Log QR generation failure but don't fail the entire transaction
-                error_log("Failed to generate QR code for referral $referral_id: " . $qr_result['error']);
-            } else {
-                error_log("QR code generated successfully for referral $referral_id");
-            }
-
-            // Send referral confirmation email
-            try {
-                // Get patient information including email
-                $stmt = $conn->prepare("
-                    SELECT p.*, b.barangay_name, 
-                           CONCAT(p.first_name, ' ', COALESCE(p.middle_name, ''), ' ', p.last_name) as full_name
-                    FROM patients p 
-                    LEFT JOIN barangay b ON p.barangay_id = b.barangay_id 
-                    WHERE p.patient_id = ?
-                ");
-                $stmt->bind_param('i', $patient_id);
-                $stmt->execute();
-                $patient_result = $stmt->get_result();
-                $patient_email_info = $patient_result->fetch_assoc();
-
-                if ($patient_email_info && !empty($patient_email_info['email'])) {
-                    // Get destination facility name
-                    $destination_facility_name = $external_facility_name;
-                    if ($referred_to_facility_id) {
-                        $stmt = $conn->prepare("SELECT name FROM facilities WHERE facility_id = ?");
-                        $stmt->bind_param('i', $referred_to_facility_id);
-                        $stmt->execute();
-                        $facility_result = $stmt->get_result();
-                        $facility_data = $facility_result->fetch_assoc();
-                        if ($facility_data) {
-                            $destination_facility_name = $facility_data['name'];
-                        }
-                    }
-
-                    // Get doctor name if assigned
-                    $doctor_name = '';
-                    if ($assigned_doctor_id) {
-                        $stmt = $conn->prepare("
-                            SELECT CONCAT(first_name, ' ', last_name) as doctor_name 
-                            FROM employees 
-                            WHERE employee_id = ?
-                        ");
-                        $stmt->bind_param('i', $assigned_doctor_id);
-                        $stmt->execute();
-                        $doctor_result = $stmt->get_result();
-                        $doctor_data = $doctor_result->fetch_assoc();
-                        if ($doctor_data) {
-                            $doctor_name = $doctor_data['doctor_name'];
-                        }
-                    }
-
-                    // Get service name
-                    $service_name = '';
-                    if ($final_service_id) {
-                        $stmt = $conn->prepare("SELECT name FROM services WHERE service_id = ?");
-                        $stmt->bind_param('i', $final_service_id);
-                        $stmt->execute();
-                        $service_result = $stmt->get_result();
-                        $service_data = $service_result->fetch_assoc();
-                        if ($service_data) {
-                            $service_name = $service_data['name'];
-                        }
-                    } elseif (!empty($custom_service_name)) {
-                        $service_name = $custom_service_name;
-                    }
-
-                    // Prepare referral details for email
-                    $referral_details = [
-                        'referral_reason' => $final_referral_reason,
-                        'facility_name' => $destination_facility_name,
-                        'external_facility_name' => $external_facility_name,
-                        'scheduled_date' => $appointment_date,
-                        'scheduled_time' => $appointment_time,
-                        'doctor_name' => $doctor_name,
-                        'service_name' => $service_name,
-                        'referring_facility' => $employee_facility_name,
-                        'destination_type' => $destination_type
-                    ];
-
-                    // Include email utility
-                    require_once $root_path . '/utils/referral_email.php';
-
-                    // Send the email
-                    $email_result = sendReferralConfirmationEmail(
-                        $patient_email_info,
-                        $referral_num,
-                        $referral_details,
-                        $qr_result
-                    );
-
-                    if ($email_result['success']) {
-                        error_log("Referral confirmation email sent successfully for referral $referral_num to {$patient_email_info['email']}");
-                    } else {
-                        error_log("Failed to send referral confirmation email for referral $referral_num: " . $email_result['message']);
-                        // Don't fail the transaction for email issues
-                    }
-                } else {
-                    error_log("No email address available for patient $patient_id - referral email not sent");
-                }
-            } catch (Exception $email_exception) {
-                error_log("Exception while sending referral confirmation email: " . $email_exception->getMessage());
-                // Don't fail the transaction for email issues
-            }
-
+            
             // If this is a city office referral with a time slot, mark the slot as booked
-            if ($destination_type === 'city_office' && isset($schedule_slot_id) && $schedule_slot_id) {
-                $stmt = $conn->prepare("
-                    UPDATE doctor_schedule_slots 
-                    SET is_booked = 1, referral_id = ? 
-                    WHERE slot_id = ?
-                ");
-                $stmt->bind_param("ii", $referral_id, $schedule_slot_id);
-                $stmt->execute();
+            if ($schedule_slot_id) {
+                $update_slot_stmt = $conn->prepare("UPDATE doctor_schedule_slots SET is_booked = 1, referral_id = ? WHERE slot_id = ?");
+                $update_slot_stmt->bind_param('ii', $stmt->insert_id, $schedule_slot_id);
+                $update_slot_stmt->execute();
+                $update_slot_stmt->close();
             }
 
             $conn->commit();
-
-            // Prepare success message
-            $success_msg = "Referral created successfully! Referral #: $referral_num";
-
-            // Add email notification to success message if patient has email
-            if (!empty($patient_email_info['email'])) {
-                if (isset($email_result) && $email_result['success']) {
-                    $success_msg .= " A confirmation email has been sent to " . $patient_email_info['email'] . ".";
-                } else {
-                    $success_msg .= " Note: Confirmation email could not be sent to " . $patient_email_info['email'] . ".";
-                }
-            }
-
-            $_SESSION['snackbar_message'] = $success_msg;
+            $_SESSION['snackbar_message'] = "Referral created successfully! Referral #: $referral_num";
 
             // Redirect to referrals management page after successful creation
             header('Location: referrals_management.php');
@@ -578,7 +393,7 @@ if ($keep_patient_selected) {
         WHERE p.patient_id = ? AND p.status = 'active'
         $jurisdiction_restriction
     ";
-
+    
     $stmt = $conn->prepare($sql);
     // Bind patient ID first, then jurisdiction parameters
     $all_params = array_merge([$keep_patient_selected], $jurisdiction_params);
@@ -701,8 +516,7 @@ try {
 }
 
 // Function to get latest vitals for a patient
-function getLatestVitals($conn, $patient_id)
-{
+function getLatestVitals($conn, $patient_id) {
     try {
         $stmt = $conn->prepare("
             SELECT v.*, CONCAT(e.first_name, ' ', e.last_name) as recorded_by_name
@@ -727,7 +541,7 @@ function getLatestVitals($conn, $patient_id)
 
 <head>
     <meta charset="UTF-8" />
-    <!-- Favicon -->
+        <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="shortcut icon" type="image/png" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
     <link rel="apple-touch-icon" href="https://ik.imagekit.io/wbhsmslogo/Nav_LogoClosed.png?updatedAt=1751197276128">
@@ -1128,8 +942,6 @@ function getLatestVitals($conn, $patient_id)
             align-items: center;
             justify-content: center;
             padding: 1rem;
-            z-index: 99999;
-
         }
 
         .referral-modal-content {
@@ -1428,146 +1240,6 @@ function getLatestVitals($conn, $patient_id)
                 padding: 0.8rem 1.5rem;
             }
         }
-
-        /* Appointment Scheduling Section Styles */
-        .appointment-section,
-        .simple-schedule-section {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            border-left: 4px solid #28a745;
-            /* Green border for appointment sections */
-        }
-
-        .appointment-section .section-title h3,
-        .simple-schedule-section .section-title h3 {
-            color: #28a745;
-            font-size: 1.2rem;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .appointment-section .form-row,
-        .simple-schedule-section .form-row {
-            margin-bottom: 1rem;
-        }
-
-        .appointment-section .form-group label,
-        .simple-schedule-section .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .appointment-section .form-group select,
-        .appointment-section .form-group input,
-        .simple-schedule-section .form-group select,
-        .simple-schedule-section .form-group input {
-            width: 100%;
-            padding: 0.8rem;
-            border: 2px solid #e1e5e9;
-            border-radius: 5px;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
-        }
-
-        .appointment-section .form-group select:focus,
-        .appointment-section .form-group input:focus,
-        .simple-schedule-section .form-group select:focus,
-        .simple-schedule-section .form-group input:focus {
-            outline: none;
-            border-color: #28a745;
-            box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.1);
-        }
-
-        .appointment-section small,
-        .simple-schedule-section small {
-            display: block;
-            margin-top: 0.5rem;
-            color: #666;
-            font-size: 0.85em;
-        }
-
-        #noSlotsMessage {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            border-radius: 5px;
-            padding: 0.75rem;
-            margin-top: 0.5rem;
-            font-size: 0.9rem;
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-
-            .appointment-section,
-            .simple-schedule-section {
-                padding: 1rem;
-                margin-bottom: 1rem;
-            }
-
-            .appointment-section .section-title h3,
-            .simple-schedule-section .section-title h3 {
-                font-size: 1.1rem;
-            }
-
-            /* Stack doctor select and badge vertically on mobile */
-            .form-group div[style*="display: flex"] {
-                flex-direction: column !important;
-                align-items: flex-start !important;
-            }
-
-            .slots-badge {
-                margin-top: 8px;
-                align-self: flex-start;
-            }
-        }
-
-        /* Slots Available Badge Styles */
-        .slots-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: 600;
-            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
-            white-space: nowrap;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .slots-badge i {
-            font-size: 0.9em;
-        }
-
-        .slots-badge.warning {
-            background: linear-gradient(135deg, #ffc107, #ff8c00);
-            color: #212529;
-        }
-
-        .slots-badge.danger {
-            background: linear-gradient(135deg, #dc3545, #c82333);
-            color: white;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-5px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
     </style>
 </head>
 
@@ -1606,7 +1278,6 @@ function getLatestVitals($conn, $patient_id)
                     <li>Search and select a patient from the list below before creating a referral.</li>
                     <li>You can search by patient ID, name, or barangay.</li>
                     <li>Patient vitals are optional but recommended for medical referrals.</li>
-                    <li><strong>Email notifications:</strong> If the patient has an email address on file, they will automatically receive a referral confirmation email with all details and QR code.</li>
                     <li>All referral information should be accurate and complete.</li>
                     <li>Fields marked with * are required.</li>
                 </ul>
@@ -1873,6 +1544,7 @@ function getLatestVitals($conn, $patient_id)
 
                                     <?php // Admin can refer to all destinations, others can refer to city office and external
                                     elseif ($current_role === 'admin'): ?>
+                                        <option value="barangay_center">Barangay Health Center</option>
                                         <!-- District Health Office option will be dynamically shown/hidden based on patient's district -->
                                         <option value="district_office" id="districtOfficeOptionAdmin">District Health Office</option>
                                         <option value="city_office">City Health Office (Main District)</option>
@@ -1894,7 +1566,7 @@ function getLatestVitals($conn, $patient_id)
 
                                 <?php if ($current_role === 'admin'): ?>
                                     <small style="color: #666; font-size: 0.85em;">
-                                        <i class="fas fa-info-circle"></i> As Admin, you can create referrals to District Offices, City Office, or External facilities for comprehensive patient follow-up care
+                                        <i class="fas fa-info-circle"></i> As Admin, you can create referrals to all facilities (Barangay Centers, District Offices, City Office, or External) for comprehensive patient follow-up care
                                     </small>
                                 <?php elseif (in_array($current_role, ['doctor', 'nurse', 'records_officer'])): ?>
                                     <small style="color: #666; font-size: 0.85em;">
@@ -1909,6 +1581,20 @@ function getLatestVitals($conn, $patient_id)
                                         <i class="fas fa-info-circle"></i> As Barangay Health Worker, you can refer to District Office (for non-Main District patients), City Health Office, or external facilities
                                     </small>
                                 <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <!-- Auto-populated Barangay Health Center -->
+                        <div class="form-row conditional-field" id="barangayFacilityField">
+                            <div class="form-group">
+                                <label for="barangay_facility_display">Facility Name</label>
+                                <input type="text" id="barangay_facility_display" readonly
+                                    placeholder="Will be auto-populated based on patient's barangay"
+                                    style="background: #f8f9fa; border: 2px solid #e9ecef;">
+
+                                <small style="color: #666; font-size: 0.85em;">
+                                    <i class="fas fa-info-circle"></i> Auto-selected based on patient's barangay
+                                </small>
                             </div>
                         </div>
 
@@ -2012,100 +1698,6 @@ function getLatestVitals($conn, $patient_id)
                         </div>
                     </div>
 
-                    <!-- Doctor Selection and Appointment Scheduling Section -->
-                    <div class="appointment-section" id="appointmentSection" style="display: none;">
-                        <div class="section-title">
-                            <h3><i class="fas fa-user-md"></i> Doctor Assignment & Appointment Scheduling</h3>
-                        </div>
-
-                        <!-- Date Selection (First Step) -->
-                        <div class="form-row" id="dateSelectionField">
-                            <div class="form-group">
-                                <label for="appointment_date">1. Appointment Date *</label>
-                                <input type="date" id="appointment_date" name="appointment_date"
-                                    min="<?= date('Y-m-d') ?>"
-                                    max="<?= date('Y-m-d', strtotime('+60 days')) ?>">
-                                <small style="color: #666; font-size: 0.85em;">
-                                    <i class="fas fa-calendar-alt"></i> Step 1: Select a date within the next 60 days
-                                </small>
-                            </div>
-                        </div>
-
-                        <!-- Doctor Selection (Second Step - depends on date) -->
-                        <div class="form-row" id="doctorSelectionField">
-                            <div class="form-group">
-                                <label for="assigned_doctor_id">2. Assign Doctor *</label>
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <select id="assigned_doctor_id" name="assigned_doctor_id" style="flex: 1;">
-                                        <option value="">First select appointment date...</option>
-                                    </select>
-                                    <div id="slotsAvailableBadge" style="display: none;">
-                                        <span class="slots-badge">
-                                            <i class="fas fa-calendar-check"></i>
-                                            <span id="slotCount">0</span> slots available
-                                        </span>
-                                    </div>
-                                </div>
-                                <small class="field-help-text">
-                                    <i class="fas fa-user-md"></i>
-                                    Step 2: Only doctors with available slots for the selected date will be shown
-                                </small>
-                            </div>
-                        </div>
-
-                        <!-- Time Slot Selection (Third Step - depends on doctor and date) -->
-                        <div class="form-row" id="timeSlotField">
-                            <div class="form-group">
-                                <label for="schedule_slot_id">3. Available Time Slots *</label>
-                                <select id="schedule_slot_id" name="schedule_slot_id">
-                                    <option value="">First select date and doctor...</option>
-                                </select>
-                                <small style="color: #666; font-size: 0.85em;">
-                                    <i class="fas fa-clock"></i> Step 3: Available slots will appear after selecting date and doctor
-                                </small>
-                                <div id="noSlotsMessage" style="display: none; color: #dc3545; margin-top: 8px;">
-                                    <i class="fas fa-exclamation-triangle"></i> <span id="noSlotsText">No available time slots for selected date. Please choose another date.</span>
-                                </div>
-                                <div id="weekendMessage" style="display: none; color: #f39c12; margin-top: 8px; background: #fef9e7; padding: 8px; border-radius: 4px; border-left: 3px solid #f39c12;">
-                                    <i class="fas fa-calendar-times"></i> <strong>Weekend Selected:</strong> The City Health Office is closed on weekends (Saturday & Sunday) and public holidays. Please select a weekday.
-                                </div>
-                                <div id="noScheduleMessage" style="display: none; color: #6c757d; margin-top: 8px; background: #f8f9fa; padding: 8px; border-radius: 4px; border-left: 3px solid #6c757d;">
-                                    <i class="fas fa-calendar-plus"></i> <strong>No Schedule Available:</strong> The selected doctor doesn't have a schedule set for this date yet. Please try another date or contact the administrator to set up the doctor's schedule.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Simple Date/Time Selection (for non-City Health Office destinations) -->
-                    <div class="simple-schedule-section" id="simpleScheduleSection" style="display: none;">
-                        <div class="section-title">
-                            <h3><i class="fas fa-calendar-check"></i> Schedule Appointment</h3>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="simple_scheduled_date">Scheduled Date *</label>
-                                <input type="date" id="simple_scheduled_date" name="simple_scheduled_date"
-                                    min="<?= date('Y-m-d') ?>"
-                                    max="<?= date('Y-m-d', strtotime('+90 days')) ?>">
-                                <small style="color: #666; font-size: 0.85em;">
-                                    <i class="fas fa-calendar-alt"></i> Select appointment date
-                                </small>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="simple_scheduled_time">Scheduled Time *</label>
-                                <input type="time" id="simple_scheduled_time" name="simple_scheduled_time"
-                                    min="08:00" max="17:00">
-                                <small style="color: #666; font-size: 0.85em;">
-                                    <i class="fas fa-clock"></i> Business hours: 8:00 AM - 5:00 PM
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary" disabled>
                             <i class="fas fa-share"></i> Create Referral
@@ -2192,15 +1784,15 @@ function getLatestVitals($conn, $patient_id)
                         if (vitalsForm) vitalsForm.classList.add('enabled');
                         if (submitBtn) submitBtn.disabled = false;
                         if (saveVitalsBtn) saveVitalsBtn.disabled = false;
-
+                        
                         // Set patient IDs for both forms
                         referralPatientId.value = this.value;
                         vitalsPatientId.value = this.value;
-
+                        
                         // Set patient names for both forms
                         referralPatientName.textContent = this.dataset.patientName;
                         vitalsPatientName.textContent = this.dataset.patientName;
-
+                        
                         // Show patient info for both forms
                         referralPatientInfo.style.display = 'block';
                         vitalsPatientInfo.style.display = 'block';
@@ -2275,23 +1867,10 @@ function getLatestVitals($conn, $patient_id)
                     if (field) field.classList.remove('show');
                 });
 
-                // Hide appointment sections
-                const appointmentSection = document.getElementById('appointmentSection');
-                const simpleScheduleSection = document.getElementById('simpleScheduleSection');
-                if (appointmentSection) appointmentSection.style.display = 'none';
-                if (simpleScheduleSection) simpleScheduleSection.style.display = 'none';
-
                 // Clear required attributes
                 if (externalFacilityType) externalFacilityType.required = false;
                 if (hospitalName) hospitalName.required = false;
                 if (otherFacilityName) otherFacilityName.required = false;
-
-                // Clear appointment required attributes
-                const appointmentFields = ['assigned_doctor_id', 'appointment_date', 'schedule_slot_id', 'simple_scheduled_date', 'simple_scheduled_time'];
-                appointmentFields.forEach(fieldId => {
-                    const field = document.getElementById(fieldId);
-                    if (field) field.required = false;
-                });
             }
 
             // Handle destination type change
@@ -2302,15 +1881,19 @@ function getLatestVitals($conn, $patient_id)
                     const selectedPatientId = document.getElementById('referralPatientId') ? document.getElementById('referralPatientId').value : null;
 
                     switch (this.value) {
+                        case 'barangay_center':
+                            if (selectedPatientId && currentPatientFacilities) {
+                                populateBarangayFacility();
+                            }
+                            if (barangayFacilityField) barangayFacilityField.classList.add('show');
+                            filterServicesByDestination('barangay_center');
+                            break;
+
                         case 'district_office':
                             if (selectedPatientId && currentPatientFacilities) {
                                 populateDistrictOffice();
                             }
                             if (districtOfficeField) districtOfficeField.classList.add('show');
-
-                            // Show simple scheduling for non-city office destinations
-                            showSimpleScheduling();
-
                             filterServicesByDestination('district_office');
                             break;
 
@@ -2319,24 +1902,6 @@ function getLatestVitals($conn, $patient_id)
                             const referredToFacilityId = document.getElementById('referredToFacilityId');
                             if (referredToFacilityId) referredToFacilityId.value = '1';
                             if (cityOfficeField) cityOfficeField.classList.add('show');
-
-                            // Show appointment section for doctor assignment
-                            const appointmentSection = document.getElementById('appointmentSection');
-                            const simpleScheduleSection = document.getElementById('simpleScheduleSection');
-                            if (appointmentSection) {
-                                appointmentSection.style.display = 'block';
-                                // Make required fields required
-                                document.getElementById('assigned_doctor_id').required = true;
-                                document.getElementById('appointment_date').required = true;
-                                document.getElementById('schedule_slot_id').required = true;
-                            }
-                            if (simpleScheduleSection) {
-                                simpleScheduleSection.style.display = 'none';
-                                // Remove required from simple scheduling fields
-                                document.getElementById('simple_scheduled_date').required = false;
-                                document.getElementById('simple_scheduled_time').required = false;
-                            }
-
                             filterServicesByDestination('city_office');
                             break;
 
@@ -2348,24 +1913,6 @@ function getLatestVitals($conn, $patient_id)
                                 externalFacilityTypeField.classList.add('show');
                                 if (externalFacilityType) externalFacilityType.required = true;
                             }
-
-                            // Hide appointment section for external facilities - no doctor assignment needed
-                            const appointmentSectionExt = document.getElementById('appointmentSection');
-                            const simpleScheduleSectionExt = document.getElementById('simpleScheduleSection');
-                            if (appointmentSectionExt) {
-                                appointmentSectionExt.style.display = 'none';
-                                // Remove required from appointment fields
-                                document.getElementById('assigned_doctor_id').required = false;
-                                document.getElementById('appointment_date').required = false;
-                                document.getElementById('schedule_slot_id').required = false;
-                            }
-                            if (simpleScheduleSectionExt) {
-                                simpleScheduleSectionExt.style.display = 'none';
-                                // Remove required from simple scheduling fields
-                                document.getElementById('simple_scheduled_date').required = false;
-                                document.getElementById('simple_scheduled_time').required = false;
-                            }
-
                             filterServicesByDestination('external');
                             break;
                     }
@@ -2394,6 +1941,21 @@ function getLatestVitals($conn, $patient_id)
                         }
                     }
                 });
+            }
+
+            // Function to populate barangay facility
+            function populateBarangayFacility() {
+                const barangayDisplay = document.getElementById('barangay_facility_display');
+                const referredToFacilityId = document.getElementById('referredToFacilityId');
+
+                if (currentPatientFacilities && currentPatientFacilities.facilities.barangay_center) {
+                    const facility = currentPatientFacilities.facilities.barangay_center;
+                    if (barangayDisplay) barangayDisplay.value = facility.name;
+                    if (referredToFacilityId) referredToFacilityId.value = facility.facility_id;
+                } else {
+                    if (barangayDisplay) barangayDisplay.value = 'No barangay health center found';
+                    if (referredToFacilityId) referredToFacilityId.value = '';
+                }
             }
 
             // Function to populate district office
@@ -2533,7 +2095,9 @@ function getLatestVitals($conn, $patient_id)
 
                             // Update destination type selection based on current selection
                             const currentDestinationType = destinationType.value;
-                            if (currentDestinationType === 'district_office') {
+                            if (currentDestinationType === 'barangay_center') {
+                                populateBarangayFacility();
+                            } else if (currentDestinationType === 'district_office') {
                                 populateDistrictOffice();
                             }
 
@@ -2586,9 +2150,7 @@ function getLatestVitals($conn, $patient_id)
                 if (destinationSelect && destinationSelect.value === 'district_office' && districtId == 1) {
                     destinationSelect.value = 'city_office';
                     // Trigger change event to update the UI
-                    const event = new Event('change', {
-                        bubbles: true
-                    });
+                    const event = new Event('change', { bubbles: true });
                     destinationSelect.dispatchEvent(event);
                 }
             }
@@ -2672,10 +2234,10 @@ function getLatestVitals($conn, $patient_id)
                 console.log('showLastVitalsInfo called with:', vitals);
                 const lastVitalsInfo = document.getElementById('lastVitalsInfo');
                 const lastVitalsText = document.getElementById('lastVitalsText');
-
+                
                 console.log('lastVitalsInfo element:', lastVitalsInfo);
                 console.log('lastVitalsText element:', lastVitalsText);
-
+                
                 if (vitals && vitals.recorded_at) {
                     const recordedDate = new Date(vitals.recorded_at).toLocaleDateString();
                     const recordedBy = vitals.recorded_by_name || 'Unknown';
@@ -2733,7 +2295,7 @@ function getLatestVitals($conn, $patient_id)
             function showCurrentVitalsInfo(vitals) {
                 const currentVitalsInfo = document.getElementById('currentVitalsInfo');
                 const currentVitalsText = document.getElementById('currentVitalsText');
-
+                
                 if (vitals && vitals.recorded_at) {
                     const recordedDate = new Date(vitals.recorded_at).toLocaleDateString();
                     currentVitalsText.textContent = `Latest vitals available from ${recordedDate} (will be attached to referral)`;
@@ -2814,6 +2376,10 @@ function getLatestVitals($conn, $patient_id)
                 let destinationName = '';
 
                 switch (destinationType) {
+                    case 'barangay_center':
+                        const barangayDisplay = document.getElementById('barangay_facility_display');
+                        destinationName = barangayDisplay ? barangayDisplay.value : 'Barangay Health Center';
+                        break;
                     case 'district_office':
                         const districtDisplay = document.getElementById('district_office_display');
                         destinationName = districtDisplay ? districtDisplay.value : 'District Health Office';
@@ -2859,9 +2425,6 @@ function getLatestVitals($conn, $patient_id)
                 // Referral reason
                 const referralReason = document.getElementById('referral_reason').value;
                 document.getElementById('modalReason').textContent = referralReason || 'No reason specified';
-
-                // Appointment Details (for City Health Office)
-                populateAppointmentModal(destinationType);
 
                 // Vitals (if provided)
                 populateVitalsModal();
@@ -2941,54 +2504,6 @@ function getLatestVitals($conn, $patient_id)
 
                 // Show/hide vitals card based on whether we have any vitals data
                 vitalsCard.style.display = hasVitals ? 'block' : 'none';
-            }
-
-            // Function to populate appointment details in modal
-            function populateAppointmentModal(destinationType) {
-                const appointmentCard = document.getElementById('modalAppointmentCard');
-
-                if (destinationType === 'city_office') {
-                    // Get appointment details for City Health Office referrals
-                    const doctorSelect = document.getElementById('assigned_doctor_id');
-                    const appointmentDate = document.getElementById('appointment_date');
-                    const timeSlotSelect = document.getElementById('schedule_slot_id');
-
-                    // Populate doctor name
-                    let doctorName = '-';
-                    if (doctorSelect && doctorSelect.value) {
-                        const selectedOption = doctorSelect.options[doctorSelect.selectedIndex];
-                        // Use data-doctor-name attribute to get clean doctor name without slot count
-                        doctorName = selectedOption.getAttribute('data-doctor-name') || selectedOption.textContent;
-                    }
-                    document.getElementById('modalAssignedDoctor').textContent = doctorName;
-
-                    // Populate appointment date
-                    let formattedDate = '-';
-                    if (appointmentDate && appointmentDate.value) {
-                        const dateObj = new Date(appointmentDate.value);
-                        formattedDate = dateObj.toLocaleDateString('en-US', {
-                            weekday: 'long',
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                        });
-                    }
-                    document.getElementById('modalAppointmentDate').textContent = formattedDate;
-
-                    // Populate appointment time
-                    let appointmentTime = '-';
-                    if (timeSlotSelect && timeSlotSelect.value) {
-                        const selectedOption = timeSlotSelect.options[timeSlotSelect.selectedIndex];
-                        appointmentTime = selectedOption.textContent;
-                    }
-                    document.getElementById('modalAppointmentTime').textContent = appointmentTime;
-
-                    // Show appointment card
-                    appointmentCard.style.display = 'block';
-                } else {
-                    // Hide appointment card for non-city office referrals
-                    appointmentCard.style.display = 'none';
-                }
             }
 
             // Function to show modal
@@ -3196,7 +2711,7 @@ function getLatestVitals($conn, $patient_id)
                     // Check if at least one field is filled
                     const vitalsFields = ['systolic_bp', 'diastolic_bp', 'heart_rate', 'respiratory_rate', 'temperature', 'weight', 'height'];
                     const vitalsRemarks = document.getElementById('vitals_remarks').value.trim();
-
+                    
                     const hasVitalData = vitalsFields.some(field => {
                         const value = document.getElementById(field).value;
                         return value && value.trim() !== '';
@@ -3230,286 +2745,27 @@ function getLatestVitals($conn, $patient_id)
                     console.log('Found patient checkbox:', patientCheckbox);
                     if (patientCheckbox) {
                         patientCheckbox.checked = true;
-                        const event = new Event('change', {
-                            bubbles: true
-                        });
+                        const event = new Event('change', { bubbles: true });
                         patientCheckbox.dispatchEvent(event);
                         console.log('Auto-selected patient and triggered change event');
-
+                        
                         // Show auto-selected info notice
                         setTimeout(() => {
                             showAutoSelectedInfo();
                         }, 500); // Small delay to let vitals load first
-
+                        
                         // Scroll to the patient to make it visible
                         const parentRow = patientCheckbox.closest('.patient-row');
                         const parentCard = patientCheckbox.closest('.patient-card');
                         if (parentRow) {
-                            parentRow.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'center'
-                            });
+                            parentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         } else if (parentCard) {
-                            parentCard.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'center'
-                            });
+                            parentCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                     } else {
                         console.error('Could not find patient checkbox for ID:', keepPatientSelected);
                     }
                 }, 100);
-            }
-
-            // Function to show simple scheduling section for non-city office destinations
-            function showSimpleScheduling() {
-                const appointmentSection = document.getElementById('appointmentSection');
-                const simpleScheduleSection = document.getElementById('simpleScheduleSection');
-
-                if (appointmentSection) appointmentSection.style.display = 'none';
-                if (simpleScheduleSection) {
-                    simpleScheduleSection.style.display = 'block';
-                    // Make simple scheduling fields required
-                    document.getElementById('simple_scheduled_date').required = true;
-                    document.getElementById('simple_scheduled_time').required = true;
-                }
-
-                // Remove required from appointment fields
-                const appointmentFields = ['assigned_doctor_id', 'appointment_date', 'schedule_slot_id'];
-                appointmentFields.forEach(fieldId => {
-                    const field = document.getElementById(fieldId);
-                    if (field) field.required = false;
-                });
-            }
-
-            // Function to load available doctors for selected date
-            function loadAvailableDoctors() {
-                const appointmentDate = document.getElementById('appointment_date').value;
-                const doctorSelect = document.getElementById('assigned_doctor_id');
-
-                if (!appointmentDate) {
-                    doctorSelect.innerHTML = '<option value="">First select appointment date...</option>';
-                    // Hide badge when no date selected
-                    const slotsAvailableBadge = document.getElementById('slotsAvailableBadge');
-                    if (slotsAvailableBadge) {
-                        slotsAvailableBadge.style.display = 'none';
-                    }
-                    return;
-                }
-
-                // Check if selected date is weekend (Saturday = 6, Sunday = 0)
-                const selectedDate = new Date(appointmentDate);
-                const dayOfWeek = selectedDate.getDay();
-
-                if (dayOfWeek === 0 || dayOfWeek === 6) { // Sunday or Saturday
-                    doctorSelect.innerHTML = '<option value="">Weekend - No doctors available</option>';
-                    return;
-                }
-
-                // Show loading
-                doctorSelect.innerHTML = '<option value="">Loading available doctors...</option>';
-
-                // Fetch available doctors for this date
-                console.log('Fetching available doctors for date:', appointmentDate);
-                fetch(`get_available_doctors.php?date=${appointmentDate}`)
-                    .then(response => {
-                        console.log('Response status:', response.status);
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log('Available doctors API response:', data);
-                        if (data.success && data.doctors && data.doctors.length > 0) {
-                            console.log('Found', data.doctors.length, 'doctors with available slots');
-                            doctorSelect.innerHTML = '<option value="">Select Doctor...</option>';
-                            data.doctors.forEach(doctor => {
-                                const option = document.createElement('option');
-                                option.value = doctor.employee_id;
-                                option.setAttribute('data-doctor-name', `Dr. ${doctor.full_name}`);
-                                option.setAttribute('data-slot-count', doctor.available_slots_count);
-                                option.textContent = `Dr. ${doctor.full_name}`;
-                                doctorSelect.appendChild(option);
-                            });
-                        } else {
-                            console.log('No doctors with available slots found');
-                            doctorSelect.innerHTML = '<option value="">No doctors with available slots for this date</option>';
-                            // Hide badge when no doctors available
-                            const slotsAvailableBadge = document.getElementById('slotsAvailableBadge');
-                            if (slotsAvailableBadge) {
-                                slotsAvailableBadge.style.display = 'none';
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error loading available doctors:', error);
-                        doctorSelect.innerHTML = '<option value="">Error loading doctors</option>';
-                        // Hide badge on error
-                        const slotsAvailableBadge = document.getElementById('slotsAvailableBadge');
-                        if (slotsAvailableBadge) {
-                            slotsAvailableBadge.style.display = 'none';
-                        }
-                    });
-            }
-
-            // Function to update the slots available badge
-            function updateSlotsBadge() {
-                const doctorSelect = document.getElementById('assigned_doctor_id');
-                const slotsAvailableBadge = document.getElementById('slotsAvailableBadge');
-                const slotCountElement = document.getElementById('slotCount');
-
-                if (!doctorSelect.value) {
-                    // No doctor selected, hide badge
-                    if (slotsAvailableBadge) {
-                        slotsAvailableBadge.style.display = 'none';
-                    }
-                    return;
-                }
-
-                const selectedOption = doctorSelect.options[doctorSelect.selectedIndex];
-                const slotCount = selectedOption.getAttribute('data-slot-count');
-
-                if (slotCount && slotCountElement && slotsAvailableBadge) {
-                    slotCountElement.textContent = slotCount;
-                    slotsAvailableBadge.style.display = 'block';
-
-                    // Update badge styling based on slot availability
-                    const slotsBadge = slotsAvailableBadge.querySelector('.slots-badge');
-                    if (slotsBadge) {
-                        slotsBadge.className = 'slots-badge'; // Reset classes
-                        
-                        const count = parseInt(slotCount);
-                        if (count <= 2) {
-                            slotsBadge.classList.add('danger');
-                        } else if (count <= 5) {
-                            slotsBadge.classList.add('warning');
-                        }
-                        // Green (default) for count > 5
-                    }
-                }
-            }
-
-            // Function to load available time slots for selected doctor and date
-            function loadTimeSlots() {
-                const doctorSelect = document.getElementById('assigned_doctor_id');
-                const doctorId = doctorSelect.value;
-                const appointmentDate = document.getElementById('appointment_date').value;
-                const slotSelect = document.getElementById('schedule_slot_id');
-                const noSlotsMessage = document.getElementById('noSlotsMessage');
-                const weekendMessage = document.getElementById('weekendMessage');
-                const noScheduleMessage = document.getElementById('noScheduleMessage');
-
-                // Update slots badge
-                updateSlotsBadge();
-
-                // Hide all messages initially
-                if (noSlotsMessage) noSlotsMessage.style.display = 'none';
-                if (weekendMessage) weekendMessage.style.display = 'none';
-                if (noScheduleMessage) noScheduleMessage.style.display = 'none';
-
-                if (!doctorId || !appointmentDate) {
-                    slotSelect.innerHTML = '<option value="">First select date and doctor...</option>';
-                    return;
-                }
-
-                // Check if selected date is weekend (Saturday = 6, Sunday = 0)
-                const selectedDate = new Date(appointmentDate);
-                const dayOfWeek = selectedDate.getDay();
-
-                if (dayOfWeek === 0 || dayOfWeek === 6) { // Sunday or Saturday
-                    slotSelect.innerHTML = '<option value="">Weekend - No appointments available</option>';
-                    if (weekendMessage) weekendMessage.style.display = 'block';
-                    return;
-                }
-
-                // Show loading
-                slotSelect.innerHTML = '<option value="">Loading available slots...</option>';
-
-                // Fetch available time slots
-                console.log('Fetching slots for doctor:', doctorId, 'date:', appointmentDate);
-                fetch(`get_available_time_slots.php?doctor_id=${doctorId}&date=${appointmentDate}`)
-                    .then(response => {
-                        console.log('Response status:', response.status);
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log('API response:', data);
-                        if (data.success && data.slots && data.slots.length > 0) {
-                            console.log('Found', data.slots.length, 'slots');
-                            slotSelect.innerHTML = '<option value="">Select time slot...</option>';
-                            data.slots.forEach(slot => {
-                                const option = document.createElement('option');
-                                option.value = slot.slot_id;
-                                option.textContent = slot.start_time; // Use start_time only since we don't have end_time
-                                slotSelect.appendChild(option);
-                            });
-                        } else {
-                            console.log('No slots available or API error:', data);
-                            console.log('Debug data:', data.debug);
-                            console.log('Total slots on date:', data.debug ? data.debug.total_slots_on_date : 'undefined');
-                            slotSelect.innerHTML = '<option value="">No slots available</option>';
-
-                            // Check if API was successful but returned no slots
-                            if (data.success && data.slots && data.slots.length === 0) {
-                                // API successful but no slots found
-                                // Check if there are any slots at all for this doctor on this date
-                                console.log('Checking total_slots_on_date:', data.debug ? data.debug.total_slots_on_date : 'no debug data');
-
-                                if (data.debug && data.debug.total_slots_on_date === 0) {
-                                    // No slots found for this doctor on this date (doctor has no schedule)
-                                    console.log('Showing no schedule message');
-                                    if (noScheduleMessage) noScheduleMessage.style.display = 'block';
-                                } else if (data.debug && data.debug.total_slots_on_date > 0) {
-                                    // There are slots for this date, but all are booked
-                                    console.log('Showing no available slots message');
-                                    if (noSlotsMessage) {
-                                        document.getElementById('noSlotsText').textContent = 'Selected doctor has no available slots to book. Please choose another date or doctor.';
-                                        noSlotsMessage.style.display = 'block';
-                                    }
-                                } else {
-                                    // No debug info available, default to no schedule message
-                                    console.log('No debug info, defaulting to no schedule message');
-                                    if (noScheduleMessage) noScheduleMessage.style.display = 'block';
-                                }
-                            } else {
-                                // API error or other issue
-                                console.log('API error or other issue');
-                                if (noSlotsMessage) {
-                                    document.getElementById('noSlotsText').textContent = 'Error loading time slots. Please try again.';
-                                    noSlotsMessage.style.display = 'block';
-                                }
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error loading time slots:', error);
-                        slotSelect.innerHTML = '<option value="">Error loading slots</option>';
-                        if (noSlotsMessage) {
-                            document.getElementById('noSlotsText').textContent = 'Error loading time slots. Please try again.';
-                            noSlotsMessage.style.display = 'block';
-                        }
-                    });
-            }
-
-            // Event listeners for appointment scheduling
-            const doctorSelect = document.getElementById('assigned_doctor_id');
-            const dateSelect = document.getElementById('appointment_date');
-
-            if (dateSelect) {
-                dateSelect.addEventListener('change', function() {
-                    // Clear doctor and time slot selections when date changes
-                    const doctorSelect = document.getElementById('assigned_doctor_id');
-                    const slotSelect = document.getElementById('schedule_slot_id');
-
-                    // Load available doctors first
-                    loadAvailableDoctors();
-
-                    // Clear time slots since doctor selection will change
-                    if (slotSelect) {
-                        slotSelect.innerHTML = '<option value="">First select date and doctor...</option>';
-                    }
-                });
-            }
-            if (doctorSelect) {
-                doctorSelect.addEventListener('change', loadTimeSlots);
             }
         });
     </script>
@@ -3571,30 +2827,6 @@ function getLatestVitals($conn, $patient_id)
                         <div class="summary-item" style="margin-top: 1rem;">
                             <div class="summary-label">Reason for Referral</div>
                             <div class="summary-value reason" id="modalReason">-</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Appointment Details (for City Health Office referrals) -->
-                <div class="referral-summary-card" id="modalAppointmentCard" style="display: none;">
-                    <div class="summary-section">
-                        <div class="summary-title">
-                            <i class="fas fa-calendar-check"></i>
-                            Appointment Details
-                        </div>
-                        <div class="summary-grid">
-                            <div class="summary-item">
-                                <div class="summary-label">Assigned Doctor</div>
-                                <div class="summary-value highlight" id="modalAssignedDoctor">-</div>
-                            </div>
-                            <div class="summary-item">
-                                <div class="summary-label">Appointment Date</div>
-                                <div class="summary-value" id="modalAppointmentDate">-</div>
-                            </div>
-                            <div class="summary-item">
-                                <div class="summary-label">Appointment Time</div>
-                                <div class="summary-value" id="modalAppointmentTime">-</div>
-                            </div>
                         </div>
                     </div>
                 </div>

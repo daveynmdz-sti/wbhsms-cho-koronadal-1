@@ -7,6 +7,87 @@
 class QRCodeGenerator {
     
     /**
+     * Generate QR code for referral
+     * Using Google Charts API as a simple solution (no external library needed)
+     * 
+     * @param int $referral_id
+     * @param array $referral_data Additional data to include in QR
+     * @return array Result with success status and QR code data
+     */
+    public static function generateReferralQR($referral_id, $referral_data = []) {
+        try {
+            // Create QR data payload for referral
+            $qr_data = [
+                'type' => 'referral',
+                'referral_id' => $referral_id,
+                'patient_id' => $referral_data['patient_id'] ?? null,
+                'destination_type' => $referral_data['destination_type'] ?? null,
+                'scheduled_date' => $referral_data['scheduled_date'] ?? null,
+                'scheduled_time' => $referral_data['scheduled_time'] ?? null,
+                'assigned_doctor_id' => $referral_data['assigned_doctor_id'] ?? null,
+                'facility_id' => $referral_data['referred_to_facility_id'] ?? null,
+                'generated_at' => date('Y-m-d H:i:s'),
+                'verification_code' => self::generateReferralVerificationCode($referral_id)
+            ];
+            
+            // Convert to JSON for QR content
+            $qr_content = json_encode($qr_data);
+            
+            // Generate QR code using Google Charts API
+            $qr_size = '200x200';
+            $qr_url = 'https://chart.googleapis.com/chart?chs=' . $qr_size . '&cht=qr&chl=' . urlencode($qr_content);
+            
+            // Get QR code image data
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 15, // Increase timeout for production
+                    'user_agent' => 'WBHSMS-QR-Generator/1.0',
+                    'method' => 'GET',
+                    'follow_location' => true,
+                    'max_redirects' => 3
+                ]
+            ]);
+            
+            $qr_image_data = @file_get_contents($qr_url, false, $context);
+            
+            if ($qr_image_data === false) {
+                // Fallback: Try alternative QR service
+                error_log("Google Charts API failed, trying alternative QR service");
+                
+                // Try qr-server.com as backup
+                $alt_qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . urlencode($qr_content);
+                $qr_image_data = @file_get_contents($alt_qr_url, false, $context);
+                
+                if ($qr_image_data === false) {
+                    // Final fallback: Generate placeholder QR
+                    error_log("All QR services failed, using local fallback");
+                    $qr_image_data = self::generateFallbackQR($qr_content);
+                    if ($qr_image_data === false) {
+                        throw new Exception('Failed to generate QR code - all methods failed');
+                    }
+                }
+            }
+            
+            return [
+                'success' => true,
+                'qr_data' => $qr_content,
+                'qr_image_data' => $qr_image_data,
+                'qr_size' => strlen($qr_image_data),
+                'verification_code' => $qr_data['verification_code']
+            ];
+            
+        } catch (Exception $e) {
+            error_log("Referral QR Code Generation Error: " . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'qr_data' => null,
+                'qr_image_data' => null
+            ];
+        }
+    }
+
+    /**
      * Generate QR code for appointment
      * Using Google Charts API as a simple solution (no external library needed)
      * 
@@ -96,6 +177,74 @@ class QRCodeGenerator {
     }
     
     /**
+     * Generate verification code for referral
+     * 
+     * @param int $referral_id
+     * @return string
+     */
+    public static function generateReferralVerificationCode($referral_id) {
+        return strtoupper(substr(md5($referral_id . date('Y-m-d') . 'WBHSMS_REFERRAL_SECRET'), 0, 8));
+    }
+    
+    /**
+     * Save QR code to referral record
+     * 
+     * @param int $referral_id
+     * @param string $qr_image_data Binary QR image data
+     * @param mysqli|PDO $connection Database connection
+     * @return bool Success status
+     */
+    public static function saveQRToReferral($referral_id, $qr_image_data, $connection) {
+        try {
+            // Generate the verification code that will be used in the QR
+            $qr_verification_code = self::generateReferralVerificationCode($referral_id);
+            
+            if ($connection instanceof PDO) {
+                // PDO version - Update both QR code and verification code
+                $stmt = $connection->prepare("
+                    UPDATE referrals 
+                    SET qr_code_path = ?, verification_code = ? 
+                    WHERE referral_id = ?
+                ");
+                return $stmt->execute([$qr_image_data, $qr_verification_code, $referral_id]);
+                
+            } elseif ($connection instanceof mysqli) {
+                // MySQLi version - Update both QR code and verification code
+                $stmt = $connection->prepare("
+                    UPDATE referrals 
+                    SET qr_code_path = ?, verification_code = ? 
+                    WHERE referral_id = ?
+                ");
+                
+                if (!$stmt) {
+                    error_log("Prepare failed: " . $connection->error);
+                    return false;
+                }
+                
+                // Bind parameters - use 's' for string data and 'i' for integer
+                $stmt->bind_param("ssi", $qr_image_data, $qr_verification_code, $referral_id);
+                $result = $stmt->execute();
+                
+                if (!$result) {
+                    error_log("Execute failed: " . $stmt->error);
+                } else {
+                    error_log("DEBUG: Updated referral $referral_id with QR verification code: $qr_verification_code");
+                }
+                
+                $stmt->close();
+                return $result;
+                
+            } else {
+                throw new Exception('Unsupported database connection type');
+            }
+            
+        } catch (Exception $e) {
+            error_log("Referral QR Code Save Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Save QR code to appointment record
      * 
      * @param int $appointment_id
@@ -153,6 +302,43 @@ class QRCodeGenerator {
         }
     }
     
+    /**
+     * Generate and save QR code for referral (combined operation)
+     * 
+     * @param int $referral_id
+     * @param array $referral_data
+     * @param mysqli|PDO $connection
+     * @return array Result with success status
+     */
+    public static function generateAndSaveReferralQR($referral_id, $referral_data, $connection) {
+        // Generate QR code
+        $qr_result = self::generateReferralQR($referral_id, $referral_data);
+        
+        if (!$qr_result['success']) {
+            return $qr_result;
+        }
+        
+        // Save to database
+        $save_success = self::saveQRToReferral($referral_id, $qr_result['qr_image_data'], $connection);
+        
+        if (!$save_success) {
+            return [
+                'success' => false,
+                'error' => 'Failed to save QR code to database',
+                'qr_data' => $qr_result['qr_data']
+            ];
+        }
+        
+        return [
+            'success' => true,
+            'qr_data' => $qr_result['qr_data'],
+            'qr_image_data' => $qr_result['qr_image_data'], // Include image data for email embedding
+            'qr_size' => $qr_result['qr_size'],
+            'verification_code' => $qr_result['verification_code'],
+            'message' => 'Referral QR code generated and saved successfully'
+        ];
+    }
+
     /**
      * Generate and save QR code for appointment (combined operation)
      * 
@@ -274,7 +460,7 @@ class QRCodeGenerator {
     }
     
     /**
-     * Validate QR code data
+     * Validate QR code data for appointment
      * 
      * @param string $qr_content JSON QR content
      * @param int $appointment_id Expected appointment ID
@@ -299,6 +485,36 @@ class QRCodeGenerator {
             
         } catch (Exception $e) {
             error_log("QR Validation Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Validate QR code data for referral
+     * 
+     * @param string $qr_content JSON QR content
+     * @param int $referral_id Expected referral ID
+     * @return bool Validation result
+     */
+    public static function validateReferralQRData($qr_content, $referral_id) {
+        try {
+            $qr_data = json_decode($qr_content, true);
+            
+            if (!$qr_data || !isset($qr_data['referral_id']) || !isset($qr_data['verification_code'])) {
+                return false;
+            }
+            
+            // Check referral ID matches
+            if ($qr_data['referral_id'] != $referral_id) {
+                return false;
+            }
+            
+            // Verify verification code
+            $expected_code = self::generateReferralVerificationCode($referral_id);
+            return $qr_data['verification_code'] === $expected_code;
+            
+        } catch (Exception $e) {
+            error_log("Referral QR Validation Error: " . $e->getMessage());
             return false;
         }
     }

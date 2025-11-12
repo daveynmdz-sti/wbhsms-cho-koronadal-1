@@ -178,6 +178,10 @@ $nav_base = $base_path . 'pages/';
             class="<?= $activePage === 'staff_assignments' ? 'active' : '' ?>" role="menuitem">
             <i class="fa-solid fa-person-booth"></i> Station Assignment
         </a>
+        <a href="<?= $nav_base ?>management/admin/staff-management/doctor_schedules.php"
+            class="<?= $activePage === 'doctor_schedules' ? 'active' : '' ?>" role="menuitem">
+            <i class="fas fa-calendar-alt"></i> Doctor Schedules
+        </a>
         <a href="<?= $nav_base ?>management/admin/user-management/employee_list.php"
             class="<?= $activePage === 'user_management' ? 'active' : '' ?>" role="menuitem">
             <i class="fas fa-users-cog"></i> Employee Management
